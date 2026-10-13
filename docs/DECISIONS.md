@@ -74,7 +74,11 @@ docs/                ARCHITECTURE, DECISIONS, DEPLOYMENTS, SECURITY, DEMO_SCRIPT
 
 17. **Jobs.** Inngest when keys exist. The same job functions run in-process in tests with a fake clock, so the 72h and 7-day timers are exercised without a network.
 
-18. **x402.** Our own `/api/paid/weather` and `/api/paid/materials-price` are wrapped with `@x402/next`. The pour-stage check pays $0.01 from the workspace allowance and logs `x402_calls`. A third-party call is attempted when `X402_FACILITATOR_URL` is set and skipped cleanly when it is not.
+18. **x402.** `/api/paid/weather` and `/api/paid/materials-price` return HTTP 402 with an x402 v2 challenge (`amount` `"10000"` = $0.01 USDC on `eip155:84532`). The official `@x402/next` seller middleware is not mounted. Coinbase's CDP SDK imports optional `@x402/*` clients that are not installed, and pulling that graph into the Next bundle broke the build. A `demo` payment header is accepted only when `DEMO_MODE` is not `"0"`. A real facilitator settle, a third-party paid call, and a row in `x402_calls` wait on `X402_FACILITATOR_URL` and a funded operator wallet.
+
+23. **Inngest 4.23 takes two arguments.** Triggers, including cron, live on the options object: `createFunction({ id, triggers: [{ cron }] }, handler)`. The three-argument form from older examples does not type-check.
+
+24. **CDP stays out of the Next bundle.** `createPartyWallet` loads `@coinbase/cdp-sdk` with a webpack-ignored dynamic import, and only when all three CDP env vars are set. Without them the address is `sha256(partyId)` and marked mock.
 
 19. **Off-ramp.** `OffRampProvider` with a demo stub: quote, bank details, then "coming soon". No live Cleva or Spenda call.
 
