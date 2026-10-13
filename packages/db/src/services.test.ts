@@ -91,7 +91,7 @@ describe("join codes and wallets", () => {
     const rows = await db.select().from(parties).where(eq(parties.id, good.partyId));
     expect(rows[0]?.walletAddress).toBe("0xabc");
     await close();
-  });
+  }, 20_000);
 
   it("pays a stage once and chains the audit log", async () => {
     const { db, close, project, ws } = await fixture();

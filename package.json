@@ -17,6 +17,9 @@
     "db:seed": "pnpm --filter @certa/db seed",
     "db:generate": "pnpm --filter @certa/db generate"
   },
+  "dependencies": {
+    "next": "15.5.27"
+  },
   "devDependencies": {
     "typescript": "5.9.3"
   }

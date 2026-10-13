@@ -80,6 +80,8 @@ docs/                ARCHITECTURE, DECISIONS, DEPLOYMENTS, SECURITY, DEMO_SCRIPT
 
 24. **CDP stays out of the Next bundle.** `createPartyWallet` loads `@coinbase/cdp-sdk` with a webpack-ignored dynamic import, and only when all three CDP env vars are set. Without them the address is `sha256(partyId)` and marked mock.
 
+25. **PGlite is a direct dependency of the web app.** The demo database is in-memory Postgres. Next externalises `@electric-sql/pglite`, and Node resolves it from `apps/web/node_modules`. The root `package.json` also depends on `next` so Vercel's Next detector accepts this monorepo. The Vercel build copies `apps/web/.next` to the repository root, which is where that builder looks for the output.
+
 19. **Off-ramp.** `OffRampProvider` with a demo stub: quote, bank details, then "coming soon". No live Cleva or Spenda call.
 
 20. **Local bot transport.** Long polling in `pnpm dev`. Vercel serves `POST /api/telegram` via `webhookCallback`. The webhook rejects a missing or wrong `x-telegram-bot-api-secret-token`.

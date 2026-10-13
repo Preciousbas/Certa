@@ -11,6 +11,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@electric-sql/pglite": "0.5.9",
     "@certa/ai": "workspace:*",
     "@certa/bot": "workspace:*",
     "@certa/chain": "workspace:*",
