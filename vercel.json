@@ -1,5 +1,5 @@
 {
   "installCommand": "pnpm install",
-  "buildCommand": "pnpm --filter @certa/web build && rm -rf .next && cp -a apps/web/.next .next",
+  "buildCommand": "pnpm --filter @certa/web build",
   "framework": "nextjs"
 }
