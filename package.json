@@ -1,0 +1,23 @@
+{
+  "name": "certa",
+  "private": true,
+  "version": "0.1.0",
+  "packageManager": "pnpm@10.18.2",
+  "engines": {
+    "node": ">=20.18.0"
+  },
+  "scripts": {
+    "dev": "pnpm --parallel --filter @certa/web --filter @certa/bot dev",
+    "test": "pnpm -r --if-present test && pnpm contracts:test",
+    "typecheck": "pnpm -r --if-present typecheck",
+    "lint": "pnpm -r --if-present lint",
+    "contracts:setup": "bash scripts/setup-contracts.sh",
+    "contracts:test": "forge test --root contracts -vv",
+    "contracts:coverage": "forge coverage --root contracts --report summary",
+    "db:seed": "pnpm --filter @certa/db seed",
+    "db:generate": "pnpm --filter @certa/db generate"
+  },
+  "devDependencies": {
+    "typescript": "5.9.3"
+  }
+}

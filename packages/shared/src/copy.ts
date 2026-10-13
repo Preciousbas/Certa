@@ -1,0 +1,25 @@
+/** Product copy. Short, plain, no marketing voice. */
+export const copy = {
+  brand: "Certa",
+  start:
+    "Certa checks site photos against the contract stages, then releases the locked USDC for a finished stage.",
+  startClient: "Create a workspace, add the project, and invite the contractor with a code.",
+  startJoin: "Enter the 8-character code from your client.",
+  paymentAccountReady: "Your payment account is ready.",
+  paymentAccountAdvanced: "Payment account address",
+  invalidCode: "That code is not valid. Check it with the person who sent it.",
+  expiredCode: "That code has expired. Ask for a new one.",
+  rateLimited: "Too many tries. Wait a few minutes.",
+  switched: "Switched project.",
+  noProjects: "You are not on a project yet.",
+  fundingLocked: "Both sides accept the summary before money can be locked.",
+  recommendRelease: "Recommend release",
+  consultantReview: "A consultant needs to review this stage.",
+  holdPhotos: "Hold. Send clearer photos of this stage.",
+  paidWeather: (amount: string) => `Agent paid ${amount} for the weather check.`,
+  paidMaterials: (amount: string) => `Agent paid ${amount} for the materials price check.`,
+  galleryRejected: "Gallery photos are not accepted. Take the photo in the camera page.",
+  disputeLocked: "This stage is locked while the dispute is open.",
+  aboveCap: "This stage is above the spending cap. The client has to approve it.",
+  header: (project: string, stage: string) => `📍 ${project} · ${stage}`,
+} as const;
