@@ -79,3 +79,7 @@ docs/                ARCHITECTURE, DECISIONS, DEPLOYMENTS, SECURITY, DEMO_SCRIPT
 19. **Off-ramp.** `OffRampProvider` with a demo stub: quote, bank details, then "coming soon". No live Cleva or Spenda call.
 
 20. **Local bot transport.** Long polling in `pnpm dev`. Vercel serves `POST /api/telegram` via `webhookCallback`. The webhook rejects a missing or wrong `x-telegram-bot-api-secret-token`.
+
+21. **Stage column.** The stage order column is `stage_index`. `index` is awkward in SQL and in Drizzle.
+
+22. **App database role.** RLS is forced for `certa_app`, a non-login role without bypass. The request sets `app.current_user_id`, `app.current_workspace_id`, and `app.current_workspace_role` inside the transaction, then `SET LOCAL ROLE certa_app`. Tests run on PGlite. A service-role connection would skip RLS, so production should use `certa_app` for tenant queries. `authorize()` still runs first.
