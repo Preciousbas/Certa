@@ -1,0 +1,32 @@
+{
+  "name": "@certa/bot",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
+  },
+  "scripts": {
+    "dev": "tsx src/poll.ts",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "lint": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@certa/db": "workspace:*",
+    "drizzle-orm": "0.45.4",
+    "@certa/shared": "workspace:*",
+    "@grammyjs/conversations": "2.1.1",
+    "@grammyjs/ratelimiter": "1.2.1",
+    "grammy": "1.46.0"
+  },
+  "devDependencies": {
+    "@types/node": "22.19.1",
+    "tsx": "4.20.6",
+    "typescript": "5.9.3",
+    "vitest": "3.2.4"
+  }
+}

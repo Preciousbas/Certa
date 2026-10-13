@@ -1,0 +1,41 @@
+{
+  "name": "@certa/web",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev --port 3000",
+    "build": "next build",
+    "start": "next start --port 3000",
+    "typecheck": "tsc --noEmit",
+    "lint": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@certa/ai": "workspace:*",
+    "@certa/bot": "workspace:*",
+    "@certa/chain": "workspace:*",
+    "@certa/db": "workspace:*",
+    "@certa/pdf": "workspace:*",
+    "@certa/shared": "workspace:*",
+    "drizzle-orm": "0.45.4",
+    "@react-email/components": "1.0.12",
+    "grammy": "1.46.0",
+    "inngest": "4.23.0",
+    "next": "15.5.27",
+    "pino": "10.4.0",
+    "react": "19.2.4",
+    "react-dom": "19.2.4",
+    "resend": "6.32.1",
+    "sharp": "0.35.5",
+    "zod": "3.25.76"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "4.3.3",
+    "@types/node": "22.19.1",
+    "@types/react": "19.2.2",
+    "@types/react-dom": "19.2.2",
+    "tailwindcss": "4.3.3",
+    "typescript": "5.9.3",
+    "vitest": "3.2.4"
+  }
+}
