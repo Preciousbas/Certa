@@ -9,7 +9,7 @@ Recorded 13 Oct 2026. Addresses below are the ones this repo actually used. Noth
 | Escrow factory | — | Not deployed |
 | Operator wallet | — | Not created |
 | Treasury | — | Not set |
-| Vercel | — | Not deployed in this pass until the CLI is authenticated |
+| Vercel preview | — | https://certa-qcaa4nsi0-precious-projects-cdb8e677.vercel.app |
 
 `contracts/script/Deploy.s.sol` deploys the implementation and the factory. It does not create a project escrow. Run it only with a funded deployer key that stays out of git:
 
@@ -20,4 +20,4 @@ forge script script/Deploy.s.sol --root contracts --rpc-url "$BASE_SEPOLIA_RPC_U
 
 Paste the logged implementation and factory into this file in the same commit that broadcasts. Do not invent them.
 
-The Mini App build command is `pnpm --filter @certa/web build`. `vercel.json` at the repo root points Vercel at that command. The project root for the Next app is the repository root, not `apps/web`, because the workspace packages are imported from `packages/*`.
+The Vercel project is `certa` under Precious' projects. The root directory is `apps/web`. Install is `cd ../.. && pnpm install`, then `next build`. Checked on 13 Oct 2026: `/api/health` returns the demo database ok, `/api/paid/weather` returns 402, and `/` renders the Lekki duplex. Vercel Authentication is still on, so a logged-out browser is asked to sign in. Turn that off in the project settings before sending the link to judges. Nothing has been promoted to the production alias. The bot webhook is not set, because `TELEGRAM_BOT_TOKEN` is not on the project.
