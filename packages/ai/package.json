@@ -1,0 +1,33 @@
+{
+  "name": "@certa/ai",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "lint": "tsc --noEmit",
+    "eval": "tsx src/eval.ts"
+  },
+  "dependencies": {
+    "@certa/shared": "workspace:*",
+    "jszip": "3.10.1",
+    "mammoth": "1.13.0",
+    "pdf-parse": "2.4.5",
+    "xlsx": "0.18.5",
+    "zod": "3.25.76"
+  },
+  "devDependencies": {
+    "@types/node": "22.19.1",
+    "pdf-lib": "1.17.1",
+    "tsx": "4.20.6",
+    "typescript": "5.9.3",
+    "vitest": "3.2.4"
+  }
+}

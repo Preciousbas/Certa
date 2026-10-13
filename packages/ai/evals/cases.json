@@ -1,0 +1,22 @@
+[
+  { "id": "slab-01", "family": "slab", "notes": "First floor slab formwork is up and the rebar is tied.", "stageIndex": 4 },
+  { "id": "slab-02", "family": "slab", "notes": "Ready for the first floor pour. Poker vibrator on site.", "stageIndex": 4 },
+  { "id": "slab-03", "family": "slab", "notes": "Soffit formwork and rebar chairs in place.", "stageIndex": 4 },
+  { "id": "slab-04", "family": "slab", "notes": "Concrete pump set for the first floor slab.", "stageIndex": 4 },
+  { "id": "slab-05", "family": "slab", "notes": "Edge formwork fixed. Rebar lapped at the beams.", "stageIndex": 4 },
+  { "id": "slab-06", "family": "slab", "notes": "Pour of the first floor slab finished this morning.", "stageIndex": 4 },
+  { "id": "slab-07", "family": "slab", "notes": "Formwork underside still propped under the slab.", "stageIndex": 4 },
+  { "id": "slab-08", "family": "slab", "notes": "Rebar for the slab is complete. Cover blocks in place.", "stageIndex": 4 },
+  { "id": "slab-09", "family": "slab", "notes": "Maybe the slab or the beams. Unclear from this angle.", "stageIndex": 4 },
+  { "id": "slab-10", "family": "slab", "notes": "Both the slab pour and blockwork are in the frame. Unclear.", "stageIndex": 4 },
+  { "id": "blk-01", "family": "blockwork", "notes": "Ground floor blockwork is at window level.", "stageIndex": 3 },
+  { "id": "blk-02", "family": "blockwork", "notes": "Ground floor columns cast and blockwork started.", "stageIndex": 3 },
+  { "id": "blk-03", "family": "blockwork", "notes": "Laying ground floor block from the DPC up.", "stageIndex": 2 },
+  { "id": "blk-04", "family": "blockwork", "notes": "Ground floor columns boxed and blockwork to lintel.", "stageIndex": 3 },
+  { "id": "blk-05", "family": "blockwork", "notes": "First floor columns steel is fixed.", "stageIndex": 5 },
+  { "id": "blk-06", "family": "blockwork", "notes": "First floor columns poured and blockwork following.", "stageIndex": 5 },
+  { "id": "blk-07", "family": "blockwork", "notes": "Ground floor blockwork stopped at door height.", "stageIndex": 3 },
+  { "id": "blk-08", "family": "blockwork", "notes": "Staircase block and ground floor columns.", "stageIndex": 3 },
+  { "id": "blk-09", "family": "blockwork", "notes": "Blockwork looks like ground floor but maybe first. Unclear.", "stageIndex": 3 },
+  { "id": "blk-10", "family": "blockwork", "notes": "Open edge at the slab and no guardrail beside the blockwork.", "stageIndex": 3 }
+]
