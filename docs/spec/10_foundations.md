@@ -10,7 +10,7 @@ Known from a black-box audit on 20 Oct 2026 (confirm each in code; do not trust 
 - Supabase is used for DB and storage. CDP (Coinbase Developer Platform) server wallets are configured.
 - Telegram webhook is probably `POST /api/telegram` (GET returns 405). Mini App APIs live under `/api/mini/*` and return 401 without Telegram auth.
 - EscrowFactory `0x4F4c6cc95465ceFe8a967E351EEdE69d40660423` and escrow `0x5289dcc36EdC15AdC6314F75EcBFa745e70BD44d` on Ethereum Sepolia (chainId 11155111).
-- The UI shows a seeded project "EM 22 — 4-Bedroom Duplex, Lekki Phase 1, Lagos", a "written contract is ₦45,000,000" note, a seeded dispute ("Released in full") and a seeded 600 USDC / ₦900,000 "Extra soakaway" change, hard-coded daily notes, and two FX rates (≈₦1,500 and ₦1,331.11).
+- The UI shows a seeded project "EM 22 — 4-Bedroom Duplex, Lekki Phase 1, Lagos", a note that treated a fixed sample sum as the contract, a seeded dispute ("Released in full") and a seeded 600 USDC / ₦900,000 "Extra soakaway" change, hard-coded daily notes, and two FX rates (≈₦1,500 and ₦1,331.11).
 
 ## Goal
 A clean, strict, persistent foundation that every later prompt builds on: an accurate map of the code, strict TypeScript, validated env, the full schema from 02 with RLS, private object storage, a bigint money library, a job queue/outbox, one FX source, the stage state-machine module, the audit log, and **all seeded data removed from production paths**.
@@ -34,7 +34,7 @@ Run and read, then write `docs/spec/CODEBASE_MAP.md` containing:
 4. Contracts: is there a `contracts/` (Foundry/Hardhat) folder? ABI files used by the app? Which addresses are read from env vs hard-coded?
 5. Data layer: Supabase client usage, existing tables/migrations, ORM if any, what "storage: memory" in /api/health refers to.
 6. Every env var referenced in code (`grep -rn "process.env" src app lib`), and where.
-7. **Every place seed/demo/hard-coded data lives**: search for `45,000,000`, `45000000`, `EM 22`, `Lekki`, `soakaway`, `0.78`, `Released in full`, `1500`, `1331`, `seed`, `demo`, `mock`, `sample`. List file:line for each.
+7. **Every place seed/demo/hard-coded data lives**: search for `EM 22`, `Lekki`, `soakaway`, `0.78`, `Released in full`, `1500`, `1331`, `seed`, `demo`, `mock`, `sample`. List file:line for each.
 8. Existing tests and CI.
 Stop and show me CODEBASE_MAP.md before continuing **only if** something fundamental contradicts this prompt (e.g. not Next.js, not Supabase). Otherwise continue.
 

@@ -68,7 +68,7 @@ docs/                ARCHITECTURE, DECISIONS, DEPLOYMENTS, SECURITY, DEMO_SCRIPT
 
 14. **Email and phone numbers are encrypted with AES-256-GCM** under `APP_ENCRYPTION_KEY` before they touch Postgres. GPS is omitted from documents sent outside the project.
 
-15. **Demo FX.** Seed locks ₦1,500 per USDC (`fx_rate_locked` stored as 150000 kobo per USDC). Contract sum ₦45,000,000 is exactly 30,000.000000 USDC. Display rounding is half-up to 2 decimals and is never written back to storage.
+15. **Demo FX.** Seed locks ₦1,500 per USDC (`fx_rate_locked` stored as 150000 kobo per USDC). Display rounding is half-up to 2 decimals and is never written back to storage.
 
 16. **Mini App aesthetic.** Navy ledger from the review mockups. Inter, weights 400–800. Light background `#F8FAFC`, cards `#FFFFFF`, navy `#0F2A44`, action orange `#F97316`. Button labels are `#1E293B` on that orange so the contrast clears WCAG AA. White on `#F97316` does not. Status chips use the released, locked, pending, and disputed pairs. Dark follows Telegram `colorScheme`, with `#0B1220` / `#111A2E` when no theme colours are passed. Phone nav is a 72px four-item bar with a navy active pill. At 1024px and wider the same links move into a navy sidebar. Buttons shrink on hover.
 

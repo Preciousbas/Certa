@@ -1,0 +1,102 @@
+"use client";
+
+import { useState } from "react";
+
+type Chip = { name: string; status: string; progress: number };
+
+export default function DocumentsPage() {
+  const [files, setFiles] = useState<Chip[]>([]);
+  const [message, setMessage] = useState<string | null>(null);
+
+  async function upload(list: FileList | File[]) {
+    const projectId = window.location.pathname.split("/").at(3) ?? "";
+    const headers = new Headers();
+    const initData = window.Telegram?.WebApp?.initData;
+    if (initData) headers.set("authorization", `tma ${initData}`);
+    const csrf = document.cookie.split("; ").find((row) => row.startsWith("certa_csrf="))?.split("=")[1];
+    if (csrf) headers.set("x-csrf-token", decodeURIComponent(csrf));
+    for (const file of Array.from(list)) {
+      if (!/\.(pdf|docx|xlsx|xls|csv|jpe?g|png|heic|heif)$/i.test(file.name)) {
+        setMessage("Please send a PDF, Word, Excel or CSV file, or a clear photo of each page.");
+        continue;
+      }
+      if (file.size > 20 * 1024 * 1024) {
+        setMessage("This file is bigger than 20 MB.");
+        continue;
+      }
+      setFiles((current) => [...current, { name: file.name, status: "Uploaded", progress: 10 }]);
+      try {
+        const issued = await fetch(`/api/projects/${projectId}/documents/upload-url`, {
+          method: "POST",
+          headers: { ...Object.fromEntries(headers), "content-type": "application/json" },
+          body: JSON.stringify({ fileName: file.name, size: file.size }),
+        });
+        const ticket = (await issued.json()) as { uploadUrl?: string; documentId?: string; message?: string };
+        if (!issued.ok || !ticket.uploadUrl || !ticket.documentId) {
+          setMessage(ticket.message ?? "Upload failed: the connection dropped. Your file wasn't saved. Try again.");
+          continue;
+        }
+        setFiles((current) => current.map((row) => (row.name === file.name ? { ...row, progress: 45, status: "Reading" } : row)));
+        const put = await fetch(ticket.uploadUrl, { method: "PUT", headers: { "content-type": file.type || "application/octet-stream" }, body: file });
+        if (!put.ok) {
+          setMessage("Upload failed: the connection dropped. Your file wasn't saved. Try again.");
+          continue;
+        }
+        const done = await fetch(`/api/projects/${projectId}/documents/${ticket.documentId}/complete`, { method: "POST", headers });
+        const body = (await done.json()) as { message?: string };
+        if (!done.ok) {
+          setMessage(body.message ?? "Upload failed: the connection dropped. Your file wasn't saved. Try again.");
+          continue;
+        }
+        setFiles((current) => current.map((row) => (row.name === file.name ? { ...row, progress: 100, status: "Read" } : row)));
+      } catch {
+        setMessage("Upload failed: the connection dropped. Your file wasn't saved. Try again.");
+      }
+    }
+  }
+
+  return (
+    <div>
+      <p className="eyebrow">Documents</p>
+      <h1>Upload the contract</h1>
+      <form
+        onSubmit={(event) => event.preventDefault()}
+        onDragOver={(event) => event.preventDefault()}
+        onDrop={(event) => {
+          event.preventDefault();
+          if (event.dataTransfer.files.length > 0) void upload(event.dataTransfer.files);
+        }}
+      >
+        <label className="card" style={{ display: "block", cursor: "pointer" }}>
+          Drop your contract, BoQ or payment schedule here, or <strong>choose files</strong>. PDF, Word, Excel, CSV or photos. Up to 20 MB each, 10 files.
+          <input
+            type="file"
+            multiple
+            accept=".pdf,.docx,.xlsx,.xls,.csv,.jpg,.jpeg,.png,.heic,.heif"
+            style={{ display: "block", marginTop: 12 }}
+            onChange={(event) => {
+              if (event.target.files) void upload(event.target.files);
+            }}
+          />
+        </label>
+      </form>
+      {files.length === 0 ? (
+        <p className="muted">No documents yet. Upload the signed contract and the priced BoQ — Certa will read every figure from them.</p>
+      ) : (
+        <ul className="plain">
+          {files.map((file) => (
+            <li key={file.name}>
+              {file.name}
+              <div style={{ height: 6, background: "var(--border)", marginTop: 6 }}>
+                <div style={{ width: `${file.progress}%`, height: 6, background: "var(--action)" }} />
+              </div>
+              <span className="faint">{file.status}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+      {message ? <p className="toast">{message}</p> : null}
+      <p className="muted">Button Extract figures is enabled once a file is Read.</p>
+    </div>
+  );
+}

@@ -6,7 +6,7 @@ The local rehearsal lives in `scripts/e2e-demo/` (gitignored). Run `pnpm demo:e2
 
 **0:00** Hook. Contractors wait months to get paid. Clients pay for work that is not done.
 
-**0:15** Client uploads the sample stage breakdown. The Mini App shows the ten Lekki stages, the ₦45,000,000 sum, and 30,000.00 USDC at the locked ₦1,500 rate. The contractor accepts the same summary.
+**0:15** Client uploads the sample stage breakdown. The Mini App shows the ten Lekki stages, the sample contract sum, and the USDC amount at the locked rate. The contractor accepts the same summary.
 
 **0:45** Part-payment through the first-floor slab. Confirm the stages covered and the exact USDC. Open the Etherscan transaction once a deployer key has broadcast one. Until then, say the escrow tests prove the quote and the chain deploy is the next cut.
 

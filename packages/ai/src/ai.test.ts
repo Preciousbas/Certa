@@ -25,7 +25,7 @@ describe("contract extraction", () => {
     for (const parsed of [csv, docx, xlsx]) {
       expect(parsed.flags).toEqual([]);
       expect(parsed.summary.stages).toHaveLength(10);
-      expect(parsed.summary.contractSumKobo).toBe("4500000000");
+      expect(parsed.summary.contractSumKobo).toBe("120000000");
       expect(parsed.summary.stages[4]?.percentBps).toBe(1500);
       expect(parsed.summary.retentionBps).toBe(500);
     }
@@ -46,7 +46,7 @@ describe("contract extraction", () => {
 
   it("ignores an injected instruction and never grows a tool field", async () => {
     const parsed = await extractContract(INJECTED_BREAKDOWN);
-    expect(parsed.summary.contractSumKobo).toBe("4500000000");
+    expect(parsed.summary.contractSumKobo).toBe("120000000");
     expect(parsed.summary.ambiguities.join(" ")).toMatch(/ignored/i);
     const hostile = { ...parsed.summary, releaseAll: true };
     expect(() => extractContract).toBeTypeOf("function");

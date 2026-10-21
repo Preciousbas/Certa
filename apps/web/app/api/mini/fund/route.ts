@@ -1,4 +1,4 @@
-import { contractSummaries, recordPayment, stages } from "@certa/db";
+import { contractSummaries, contractVersions, recordPayment, stages } from "@certa/db";
 import { koboFromUsdc } from "@certa/shared";
 import { eq } from "drizzle-orm";
 import type { Hex } from "viem";
@@ -15,7 +15,13 @@ export const POST = withAuth(
       .filter((stage) => stage.stageIndex <= input.data.upToStage)
       .sort((a, b) => a.stageIndex - b.stageIndex);
     if (rows.length === 0) return apiError(400, "No stages fall in that range.");
-    if (project.termsHash !== "seeded-terms") {
+    const versions = await db.select().from(contractVersions).where(eq(contractVersions.projectId, project.id));
+    if (versions.length > 0) {
+      const current = versions.find((row) => row.id === project.currentContractVersionId) ?? versions.find((row) => row.status === "accepted");
+      if (!current || current.status !== "accepted") {
+        return apiError(409, "Both sides accept the schedule before money can be locked.");
+      }
+    } else if (project.termsHash !== "seeded-terms") {
       const summaries = await db.select().from(contractSummaries).where(eq(contractSummaries.projectId, project.id));
       const latest = summaries.sort((a, b) => b.version - a.version)[0];
       if (!latest?.acceptedByClientAt || !latest?.acceptedByContractorAt) {

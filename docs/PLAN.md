@@ -17,7 +17,7 @@ Written 20 Oct 2026 after a black-box audit of https://certa-two.vercel.app. The
 ## What this pass changes
 
 - `/api/health` names the factory even when the Vercel env var is empty, and reports `supabase` when `DATABASE_URL` is a Supabase host.
-- Timeline, stage ledger, and the fund total use the chain stage amount times that one Central Bank rate. The written ₦45,000,000 schedule stays in one sentence, so it no longer pretends to be the money in the escrow.
+- Timeline, stage ledger, and the fund total use the chain stage amount times that one Central Bank rate. The schedule printed on the page stays in one sentence, so it no longer pretends to be the money in the escrow.
 - The fund page total follows the Naira / USDC choice on that form.
 - The seeded 0.78 score is not shown as a live AI check.
 - x402 uses `X402_PAY_TO_ADDRESS`, then `CLIENT_ADDRESS`, so the paid routes can return a payment challenge instead of "not configured".

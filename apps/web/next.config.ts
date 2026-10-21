@@ -46,7 +46,7 @@ const nextConfig: NextConfig = {
   outputFileTracingRoot: path.join(path.dirname(fileURLToPath(import.meta.url)), "../.."),
   allowedDevOrigins: ["127.0.0.1"],
   transpilePackages: ["@certa/db", "@certa/ai", "@certa/chain", "@certa/pdf", "@certa/shared", "@certa/bot"],
-  serverExternalPackages: ["postgres", "pdf-parse", "sharp", "pino", "@electric-sql/pglite", "@coinbase/cdp-sdk", "@x402/core", "@x402/evm", "@x402/fetch"],
+  serverExternalPackages: ["postgres", "pdf-parse", "pdfjs-dist", "exceljs", "mammoth", "jszip", "file-type", "xlsx", "heic-convert", "sharp", "pino", "@electric-sql/pglite", "@coinbase/cdp-sdk", "@x402/core", "@x402/evm", "@x402/fetch"],
   async headers() {
     return [
       {

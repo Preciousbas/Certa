@@ -3,9 +3,12 @@ import { getDatabase } from "@certa/db";
 import { webhookCallback } from "grammy";
 import { tokensMatch } from "../../../../../../src/server/auth/http";
 import { setTelegramUpdateDispatch } from "../../../../../../src/server/jobs/telegramUpdate";
+import { registerIntakeJobs } from "../../../../../../src/server/intake/register";
 import { drainJobs } from "../../../../../../src/server/jobs/worker";
 import { fetchCbnRate } from "../../../../lib/cbn-rate";
 import { apiError, emptyQuery, queryOf } from "../../../../lib/schemas";
+
+registerIntakeJobs();
 
 setTelegramUpdateDispatch(async (update) => {
   const token = process.env.TELEGRAM_BOT_TOKEN ?? "";

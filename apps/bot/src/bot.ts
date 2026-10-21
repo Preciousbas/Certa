@@ -23,6 +23,8 @@ import { limit } from "@grammyjs/ratelimiter";
 import { Bot, InlineKeyboard, session, type Context, type SessionFlavor } from "grammy";
 import { eq } from "drizzle-orm";
 import { parties, projects, stages, users } from "@certa/db";
+import { awaitingProject, enqueueExtraction, ingestDocument, setAwaitingDocuments } from "../../../src/server/intake/flow.js";
+import { gotFile, READING, telegramTooBig } from "../../../src/server/intake/messages.js";
 import { applyGapAnswer, contractGaps, contractNote, filenameOf, MAX_CONTRACT_STAGES, readFailure, savedContractMessage } from "./intake.js";
 import { syncEscrowProject } from "./sync.js";
 
@@ -303,6 +305,27 @@ export function createBot(token: string, deps: BotDeps): Bot<BotContext> {
   bot.on("message:document", async (ctx) => {
     if (!(await gate(ctx, false))) return;
     const document = ctx.message?.document;
+    const waiting = ctx.from ? await awaitingProject(deps.db, BigInt(ctx.from.id)) : null;
+    if (waiting && document) {
+      const name = filenameOf(document) ?? document.file_name ?? "file";
+      if ((document.file_size ?? 0) > 20 * 1024 * 1024) {
+        await ctx.reply(telegramTooBig(process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || "", waiting));
+        return;
+      }
+      const row = await active(deps.db, BigInt(ctx.from?.id ?? 0));
+      const project = (await deps.db.select().from(projects).where(eq(projects.id, waiting)))[0];
+      if (!project || !row?.user) return;
+      const bytes = deps.loadDocument ? await deps.loadDocument(document.file_id) : await telegramFile(document.file_id);
+      const saved = await ingestDocument(deps.db, {
+        projectId: project.id,
+        workspaceId: project.workspaceId,
+        userId: row.user.id,
+        fileName: name,
+        bytes,
+      });
+      await ctx.reply(saved.ok ? gotFile(name, saved.pagesOrSheets) : saved.message);
+      return;
+    }
     if (!document || !filenameOf(document)) {
       await say(ctx, "Send the contract as a PDF, Word, Excel, CSV, or text file.");
       return;
@@ -312,6 +335,46 @@ export function createBot(token: string, deps: BotDeps): Bot<BotContext> {
       return;
     }
     await ctx.conversation.enter("contract");
+  });
+
+  bot.command("done", async (ctx) => {
+    if (!(await gate(ctx, true))) return;
+    const row = ctx.from ? await active(deps.db, BigInt(ctx.from.id)) : null;
+    if (!row?.project) return;
+    await enqueueExtraction(deps.db, row.project.id);
+    await ctx.reply(READING);
+  });
+
+  bot.callbackQuery("upload-boq", async (ctx) => {
+    if (!(await gate(ctx, true))) return;
+    await ctx.answerCallbackQuery();
+    const row = ctx.from ? await active(deps.db, BigInt(ctx.from.id)) : null;
+    if (!row?.project || !ctx.from) return;
+    await setAwaitingDocuments(deps.db, BigInt(ctx.from.id), row.project.id);
+    await ctx.reply("Send the contract or BoQ. Tap Done when you've sent everything.");
+  });
+
+  bot.on("message:photo", async (ctx) => {
+    if (!(await gate(ctx, false))) return;
+    const waiting = ctx.from ? await awaitingProject(deps.db, BigInt(ctx.from.id)) : null;
+    const photo = ctx.message?.photo?.at(-1);
+    if (!waiting || !photo || !ctx.from) return;
+    if ((photo.file_size ?? 0) > 20 * 1024 * 1024) {
+      await ctx.reply(telegramTooBig(process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || "", waiting));
+      return;
+    }
+    const row = await active(deps.db, BigInt(ctx.from.id));
+    const project = (await deps.db.select().from(projects).where(eq(projects.id, waiting)))[0];
+    if (!project || !row?.user) return;
+    const bytes = deps.loadDocument ? await deps.loadDocument(photo.file_id) : await telegramFile(photo.file_id);
+    const saved = await ingestDocument(deps.db, {
+      projectId: project.id,
+      workspaceId: project.workspaceId,
+      userId: row.user.id,
+      fileName: "photo.jpg",
+      bytes,
+    });
+    await ctx.reply(saved.ok ? gotFile("photo.jpg", saved.pagesOrSheets) : saved.message);
   });
 
   bot.command("start", async (ctx) => {
@@ -324,7 +387,7 @@ export function createBot(token: string, deps: BotDeps): Bot<BotContext> {
     }
     const row = ctx.from ? await active(deps.db, BigInt(ctx.from.id)) : null;
     const keyboard = row?.project
-      ? new InlineKeyboard().text("Join a project", "go-join").text("Stages", "go-stages")
+      ? new InlineKeyboard().text("Join a project", "go-join").text("Stages", "go-stages").row().text("Upload contract or BoQ", "upload-boq")
       : new InlineKeyboard().text("Start a project", "go-start").text("I have an invite link", "go-join");
     await say(ctx, `${copy.start}\n\n${copy.startClient}`);
     await ctx.reply("Choose one.", { reply_markup: keyboard });

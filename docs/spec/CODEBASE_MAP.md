@@ -105,6 +105,32 @@ Inspected before the auth changes. Paths are the ones in this repo, not a single
 - Rate limit is an in-memory 30/minute bucket in `apps/web/lib/rate-limit.ts:10-18`, with the message "Too many requests. Wait a minute."
 - `users.platform_role` is not a column. `ADMIN_TELEGRAM_IDS` and `SESSION_SECRET` are in `src/env.ts` and `.env.example` only.
 
+## Intake as found
+
+Inspected before the contract and BoQ intake work. Paths are the ones in this repo.
+
+### Contract and stage creation
+
+- `packages/db/src/services.ts` `recordUploadedContract` writes a project, stages, a `documents` row (`kind` contract), a `blobs` row, and a `contract_summaries` row. That path is still the one the bot uses when the chat is not waiting for documents.
+- `apps/web/app/upload/page.tsx` exists. It posts a file to `/api/contract/preview` and does not write a document row. `/contract`, `/new`, and `/projects` are not App Router pages. The new pages are `/app/p/[projectId]/documents`, `/app/p/[projectId]/contract/review`, `/app/p/[projectId]/contract`, and `/mini/contract`.
+- `documents` started as `id, project_id, workspace_id, kind, storage_key, sha256, parsed_json, parse_status`. Intake columns were added in `0005_intake.sql` rather than replacing that table. `document_chunks`, `extractions`, `contract_versions`, `contract_acceptances`, and `boq_items` already existed in `0003_spec_schema.sql`. Drizzle did not map the chunk, extraction, or BoQ tables until this work.
+- Stage money columns are `amount_ngn_kobo` and `amount_usdc` (micro). `on_chain_idx` is required. `0005` adds `contract_version_id`, `kind`, `acceptance_criteria`, and `tags` with defaults so older inserts still work.
+- `projects.status` was `draft|active|paused|closed`. `0005` adds `awaiting_acceptance` and `completed`, plus `current_contract_version_id`.
+- `contract_versions` is immutable except the status moves in the `contract_versions_immutable` trigger: `pending_acceptance` to `accepted` or `draft`, and `accepted` to `superseded`. Draft content cannot be updated in place, so review edits stay on `extractions.validated_json` until Send.
+
+### Bot files
+
+- `apps/bot/src/bot.ts` treated every document as the older contract conversation, capped at 8 MB, studied by `@certa/ai`, and accepted with a typed reply plus contractor `/accept` (`acceptContractSide`). There was no `awaiting_documents` state until `bot_sessions.state` and `state_expires_at` in `0005`.
+- The new path runs only while that state is set. Otherwise the 8 MB conversation stays.
+
+### acceptTerms
+
+- `contracts/src/CertaEscrow.sol` `acceptTerms()` takes no arguments and no content hash. It sets `clientAccepted` or `contractorAccepted` from `msg.sender`. `termsHash` is set in the constructor. `fund()` reverts until both have called it. Retention is a single release after the defects period. Intake does not call the chain. It enqueues `accept_terms_deferred` for prompt 40.
+
+### Duration and plan
+
+- No route sets `maxDuration`. `apps/web/vercel.json` crons `GET /api/cron/jobs` at `0 0 * * *`. The root `vercel.json` has install and build only. The Vercel plan is not recorded in the repo, so a function duration above the plan default was not set. `drainJobs` stops after 50 seconds.
+
 ## What differed from the prompt
 
 - Not a single `src/` Next app. Supabase is Postgres via `DATABASE_URL`, not a Supabase Storage SDK.

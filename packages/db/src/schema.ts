@@ -6,6 +6,7 @@ import {
   integer,
   jsonb,
   pgTable,
+  real,
   text,
   timestamp,
   uniqueIndex,
@@ -79,6 +80,7 @@ export const projects = pgTable("projects", {
   contractSumKobo: bigint("contract_sum_kobo", { mode: "bigint" }).notNull(),
   contractSumUsdc: bigint("contract_sum_usdc", { mode: "bigint" }).notNull(),
   termsHash: text("terms_hash"),
+  currentContractVersionId: uuid("current_contract_version_id"),
   ...timestamps,
 });
 
@@ -131,6 +133,10 @@ export const stages = pgTable("stages", {
   onChainIdx: integer("on_chain_idx").notNull(),
   assignedPartyId: uuid("assigned_party_id"),
   pour: boolean("pour").notNull().default(false),
+  contractVersionId: uuid("contract_version_id"),
+  kind: text("kind").notNull().default("work"),
+  acceptanceCriteria: jsonb("acceptance_criteria").$type<string[]>().notNull().default([]),
+  tags: text("tags").array().notNull().default([]),
   ...timestamps,
 });
 
@@ -155,7 +161,59 @@ export const documents = pgTable("documents", {
   sha256: text("sha256").notNull(),
   parsedJson: jsonb("parsed_json"),
   parseStatus: text("parse_status").notNull().default("pending"),
+  uploadedBy: uuid("uploaded_by"),
+  fileName: text("file_name"),
+  mimeType: text("mime_type"),
+  detectedType: text("detected_type"),
+  sizeBytes: integer("size_bytes"),
+  pageCount: integer("page_count"),
+  sheetNames: text("sheet_names").array(),
+  failureCode: text("failure_code"),
+  status: text("status").notNull().default("uploaded"),
   ...timestamps,
+});
+
+export const documentChunks = pgTable("document_chunks", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  documentId: uuid("document_id").notNull(),
+  anchor: text("anchor").notNull(),
+  kind: text("kind").notNull(),
+  content: text("content").notNull(),
+  ocrConfidence: real("ocr_confidence"),
+  ord: integer("ord").notNull(),
+});
+
+export const extractions = pgTable("extractions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  projectId: uuid("project_id").notNull(),
+  documentIds: uuid("document_ids").array().notNull(),
+  status: text("status").notNull(),
+  model: text("model").notNull(),
+  promptVersion: text("prompt_version").notNull(),
+  rawJson: jsonb("raw_json").notNull().default({}),
+  validatedJson: jsonb("validated_json"),
+  issues: jsonb("issues").notNull().default([]),
+  inputTokens: integer("input_tokens"),
+  outputTokens: integer("output_tokens"),
+  costMicro: bigint("cost_micro", { mode: "bigint" }),
+  startedAt: timestamp("started_at", { withTimezone: true }),
+  finishedAt: timestamp("finished_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const boqItems = pgTable("boq_items", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  contractVersionId: uuid("contract_version_id").notNull(),
+  billRef: text("bill_ref").notNull(),
+  itemRef: text("item_ref").notNull(),
+  description: text("description").notNull(),
+  unit: text("unit"),
+  quantityMilli: bigint("quantity_milli", { mode: "bigint" }),
+  rateKobo: bigint("rate_kobo", { mode: "bigint" }),
+  amountKobo: bigint("amount_kobo", { mode: "bigint" }).notNull(),
+  statedAmountKobo: bigint("stated_amount_kobo", { mode: "bigint" }),
+  sourceAnchor: text("source_anchor").notNull(),
+  confidence: real("confidence").notNull(),
 });
 
 export const submissions = pgTable("submissions", {
@@ -298,6 +356,19 @@ export const fxRates = pgTable("fx_rates", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+export const notifications = pgTable("notifications", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id").notNull(),
+  kind: text("kind").notNull(),
+  payload: jsonb("payload").$type<Record<string, unknown>>().notNull(),
+  channel: text("channel").notNull().default("telegram"),
+  status: text("status").notNull(),
+  telegramMessageId: bigint("telegram_message_id", { mode: "bigint" }),
+  dedupeKey: text("dedupe_key").notNull().unique(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  sentAt: timestamp("sent_at", { withTimezone: true }),
+});
+
 export const jobs = pgTable("jobs", {
   id: uuid("id").primaryKey().defaultRandom(),
   kind: text("kind").notNull(),
@@ -342,6 +413,8 @@ export const captureNonces = pgTable("capture_nonces", {
 export const botSessions = pgTable("bot_sessions", {
   telegramId: bigint("telegram_id", { mode: "bigint" }).primaryKey(),
   activeProjectId: uuid("active_project_id"),
+  state: jsonb("state").$type<Record<string, unknown> | null>(),
+  stateExpiresAt: timestamp("state_expires_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });

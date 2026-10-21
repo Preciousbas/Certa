@@ -1,7 +1,7 @@
 # Prompt 30 — Contract & BoQ intake: upload → parse → AI extract → validate → review → both accept (paste into a NEW Cursor chat)
 
 ## Context
-This is **Certa's core feature** and the reason the product currently looks like a demo. Today there is no upload anywhere (/upload, /contract, /new, /projects all 404), stages are seeded, and the UI says "The written contract is ₦45,000,000. The escrow is the pilot". After this prompt, every money figure in Certa comes from a document the client uploaded, extracted by AI, **checked by code**, and accepted by both client and contractor.
+This is **Certa's core feature** and the reason the product currently looks like a demo. Today there is no upload anywhere (/upload, /contract, /new, /projects all 404), stages are seeded, and the UI used a fixed sample sum and called the escrow a pilot. After this prompt, every money figure in Certa comes from a document the client uploaded, extracted by AI, **checked by code**, and accepted by both client and contractor.
 
 Read first: `docs/spec/01_PRODUCT_SPEC.md` (§4 J2–J4, §5 S4–S7, §3 tooltips), `docs/spec/02_DATA_AND_STATE.md` (documents, document_chunks, extractions, contract_versions, contract_acceptances, boq_items, stages; money rules), `docs/spec/CODEBASE_MAP.md`. Prompts 10 and 20 are done (schema, storage, money lib, jobs, auth, RBAC).
 
@@ -281,7 +281,7 @@ Web errors (S4/S6): "Upload failed: the connection dropped. Your file wasn't sav
 - [ ] Stage sums always equal the contract sum exactly (property test with random stage edits: split/merge/re-amount).
 - [ ] Contractor sees an identical summary (same content_hash) and both acceptances are stored; any edit after acceptance creates a new version needing both accepts.
 - [ ] Accepted versions cannot be updated (DB trigger test).
-- [ ] No seeded ₦45M contract or "written contract is…" note remains anywhere.
+- [ ] No seeded sample contract sum or fixed-schedule note remains anywhere.
 - [ ] Eval report committed with real numbers for ≥2 models.
 
 ## Definition of Done — run these commands and paste output
@@ -292,7 +292,7 @@ pnpm test -- --reporter=verbose src/server/intake src/lib/validation tests/intak
 pnpm test:integration -- tests/integration/intake
 pnpm tsx scripts/eval-extraction.ts --models "$AI_DOC_MODEL,$AI_DOC_FALLBACK_MODEL" && cat docs/eval/extraction-*.md | tail -60
 pnpm build
-grep -rnE "written contract|45,?000,?000" src app lib | grep -vE "test|fixtures" ; echo "grep exit: $?"
+Search src for the old sample-sum sentence. There should be no matches.
 ```
 Also: record a 30-second screen capture or 4 screenshots (upload → review with an issue → contractor accept in Telegram → accepted summary) into `docs/evidence/30/` and list the paths.
 Then reply with this report, in this order:

@@ -74,6 +74,20 @@ export async function getObject(
   return { bytes, contentType: response.headers.get("content-type") ?? "application/octet-stream" };
 }
 
+export async function createSignedUploadUrl(bucket: string, key: string): Promise<{ uploadUrl: string; token: string; path: string }> {
+  const response = await storageFetch(`object/upload/sign/${bucket}/${key}`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: "{}",
+  });
+  if (!response.ok) throw new StorageError("A signed upload link could not be created.");
+  const body = (await response.json()) as { url?: string; token?: string };
+  const config = storageConfig();
+  if (!config || !body.url || !body.token) throw new StorageError("A signed upload link could not be created.");
+  const uploadUrl = body.url.startsWith("http") ? body.url : `${config.url}/storage/v1${body.url.startsWith("/") ? body.url : `/${body.url}`}`;
+  return { uploadUrl, token: body.token, path: key };
+}
+
 export async function signedUrl(bucket: string, key: string, ttlSeconds = 300): Promise<string> {
   const response = await storageFetch(`object/sign/${bucket}/${key}`, {
     method: "POST",

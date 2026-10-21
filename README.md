@@ -22,7 +22,7 @@ flowchart TD
 | Area | What ships in this repo |
 | --- | --- |
 | Escrow | `CertaEscrow` plus an EIP-1167 factory. Foundry unit, fuzz, and invariant tests. |
-| Money | Kobo and 6-decimal USDC only. Display pairs such as ₦45,000,000 (≈ 30,000.00 USDC @ ₦1,500). |
+| Money | Kobo and 6-decimal USDC only. Display pairs show naira and USDC at the locked rate. |
 | Tenancy | Workspaces, join codes, forced RLS, and `authorize()`. |
 | Bot | `/start`, `/join`, `/switch`, `/project`, `/stages`, `/wallet`, `/report`. Webhook route and local polling. |
 | Mini App | Timeline, stages, camera page, part-payment fund, changes, payment account, plan, cash-out stub, desk. |
@@ -73,7 +73,7 @@ The bot answers `/start` on Vercel only after `TELEGRAM_BOT_TOKEN`, `TELEGRAM_WE
 
 Send an Excel, CSV, Word, or PDF to `@CertaApp_bot`, or drop the same file on `/upload`. A bill is read only when it has item, description, quantity, rate, and amount columns. The code recomputes every row: quantity times rate must equal the amount, in kobo, with no floating point. Section totals become the stages, and those stage amounts must add up to the contract sum. A row that does not reconcile is listed in plain language, for example `25 x 12,000 should be 300,000 but the document says 30,000`, and the schedule is not accepted. Instructions hidden in the file are ignored and do not change the figures.
 
-The person who uploads replies `accept`. The contractor joins with the code and sends `/accept`. Money stays locked until both of those are stored. The Lekki ₦45,000,000 sample is not shown unless `DEMO_SEED=true`.
+The person who uploads replies `accept`. The contractor joins with the code and sends `/accept`. Money stays locked until both of those are stored. The Lekki sample is not shown unless `DEMO_SEED=true`.
 
 A photo of a paper bill is refused until it is sent as Excel or PDF. Old `.xls` files are read. HEIC photos are refused.
 

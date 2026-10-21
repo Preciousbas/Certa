@@ -11,7 +11,13 @@
     "../../src/server/auth/rbac.ts",
     "../../src/server/auth/errors.ts",
     "../../src/server/auth/matrix.ts",
-    "../../src/server/projects/**/*.ts"
+    "../../src/server/intake/**/*.ts",
+    "../../src/server/projects/**/*.ts",
+    "../../src/server/ai/**/*.ts",
+    "../../src/server/jobs/**/*.ts",
+    "../../src/server/storage.ts",
+    "../../src/server/audit.ts",
+    "../../src/lib/**/*.ts"
   ],
   "exclude": ["../../src/**/*.test.ts"]
 }

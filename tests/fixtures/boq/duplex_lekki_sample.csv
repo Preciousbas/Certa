@@ -1,0 +1,78 @@
+SAMPLE BoQ — fictitious, for Certa testing only
+Project,Proposed 4-Bedroom Duplex with BQ
+Location,"Plot 14 (sample), Lekki Phase 1, Lagos"
+Client,Mrs A. Okafor (sample)
+Contractor,Emmy Builders Ltd (sample)
+Consultant,Bisi Adeyemi & Partners (sample)
+
+Bill,2,Substructure
+Item,Description,Unit,Qty,Rate,Amount
+2.1,Excavate foundation trench not exceeding 1.50 m deep starting from stripped level,m3,48.6,6500.00,315900.00
+2.2,50 mm thick plain concrete blinding (1:3:6) under strip footings,m2,72,3800.00,273600.00
+2.3,Plain in-situ concrete (1:2:4 - 19 mm aggregate) in strip footings,m3,21.6,145000.00,3132000.00
+2.4,225 mm sandcrete hollow blockwork in foundation filled solid with concrete up to DPC,m2,118,14500.00,1711000.00
+2.5,"Hardcore filling, well rammed and consolidated, in 150 mm layers",m2,186,4200.00,781200.00
+2.6,Anti-termite treatment to surface of hardcore (approved chemical),m2,186,950.00,176700.00
+2.7,"1000-gauge polythene damp-proof membrane, 150 mm laps",m2,186,650.00,120900.00
+2.8,150 mm reinforced concrete (1:2:4) ground floor oversite slab,m3,27.9,145000.00,4045500.00
+,Carried to Summary,,,,10556800.00
+
+Bill,3,Ground Floor Frame
+Item,Description,Unit,Qty,Rate,Amount
+3.1,Reinforced concrete (1:2:4) in columns and beams,m3,14.4,165000.00,2376000.00
+3.2,"High-yield steel reinforcement, Y12-Y16, cut, bent and fixed",kg,1850,1450.00,2682500.00
+3.3,Sawn formwork to sides and soffits of columns and beams,m2,96,4800.00,460800.00
+3.4,225 x 225 mm reinforced concrete lintel over openings,m,25,12000.00,300000.00
+,Carried to Summary,,,,5819300.00
+
+Bill,1,Preliminaries
+Item,Description,Unit,Qty,Rate,Amount
+1.1,Preliminaries,sum,1,2500000.00,2500000.00
+,Carried to Summary,,,,2500000.00
+
+Bill,4,Upper Floor (slab columns blockwork)
+Item,Description,Unit,Qty,Rate,Amount
+4.1,Upper floor slab columns and blockwork,sum,1,9800000.00,9800000.00
+,Carried to Summary,,,,9800000.00
+
+Bill,6,Finishes
+Item,Description,Unit,Qty,Rate,Amount
+6.1,Finishes,sum,1,7450000.00,7450000.00
+,Carried to Summary,,,,7450000.00
+
+Bill,5,Roofing
+Item,Description,Unit,Qty,Rate,Amount
+5.1,Roofing,sum,1,6200000.00,6200000.00
+,Carried to Summary,,,,6200000.00
+
+Bill,7,Electrical & Plumbing Services
+Item,Description,Unit,Qty,Rate,Amount
+7.1,Electrical and plumbing services,sum,1,3900000.00,3900000.00
+,Carried to Summary,,,,3900000.00
+
+Bill,8,External Works
+Item,Description,Unit,Qty,Rate,Amount
+8.1,External works,sum,1,1773900.00,1773900.00
+,Carried to Summary,,,,1773900.00
+
+General Summary
+Bill,Description,Amount
+1,Preliminaries,2500000.00
+2,Substructure,10556800.00
+3,Ground Floor Frame,5819300.00
+4,Upper Floor (slab columns blockwork),9800000.00
+5,Roofing,6200000.00
+6,Finishes,7450000.00
+7,Electrical & Plumbing Services,3900000.00
+8,External Works,1773900.00
+,Sub-total,48000000.00
+,Provisional Sum (soakaway & septic tank),1000000.00
+,Contingency (5% of sub-total),2400000.00
+,Total before VAT,51400000.00
+,VAT @ 7.5%,3855000.00
+,CONTRACT SUM,55255000.00
+Note,"Retention: 5% of each interim payment, half released at practical completion and half at the end of the 6-month defects liability period."
+Note,Mobilisation advance: nil.
+Note,Payment within 14 days of certificate.
+Note,"Liquidated damages: N50,000 per week, capped at 10% of the contract sum."
+Note,Commencement 3 Nov 2026; completion 28 Aug 2027.
