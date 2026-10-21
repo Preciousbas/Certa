@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { generateJoinCode, parseStartPayload } from "./codes.js";
+import { generateJoinCode, joinDeepLink, parseStartPayload } from "./codes.js";
 import { insideGeofence } from "./geo.js";
 import { averageHash, evaluatePhoto, isPerceptualDuplicate } from "./photos.js";
 
@@ -10,7 +10,9 @@ describe("join codes", () => {
     const code = generateJoinCode(new Uint8Array([0, 1, 15, 18, 31, 10, 20, 7]));
     expect(code).toHaveLength(8);
     expect(code).not.toMatch(/[01IO]/);
+    expect(parseStartPayload(code)).toEqual({ kind: "join", code });
     expect(parseStartPayload(`join_${code}`)).toEqual({ kind: "join", code });
+    expect(joinDeepLink("CertaApp_bot", code)).toBe(`https://t.me/CertaApp_bot?start=${code}`);
   });
 });
 

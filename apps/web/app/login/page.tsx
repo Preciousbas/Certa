@@ -12,7 +12,7 @@ export default async function LoginPage() {
     <div>
       <p className="eyebrow">Account</p>
       <h1>Sign in</h1>
-      <p className="muted">Use the Telegram account that was invited to the project.</p>
+      <p className="muted">Sign in with Telegram to start a project or join one.</p>
       <div className="card">
         <LoginWidget username={username.replace(/^@/, "")} authUrl={origin ? `${origin}/api/auth/telegram` : ""} />
       </div>

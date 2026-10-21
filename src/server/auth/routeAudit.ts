@@ -7,6 +7,7 @@ export const AUTH_HELPERS = [
   "requireUser(",
   "withAuth(",
   "withUser(",
+  "withProject(",
   "requireSignedDownload(",
   "requireCronSecret(",
   "requireWebhookSecret(",

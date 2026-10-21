@@ -31,6 +31,79 @@ export function newJoinCode(): string {
   return generateJoinCode(randomBytes(8));
 }
 
+export const STARTER_ROLES = ["client", "consultant", "contractor", "subcontractor"] as const;
+export type StarterRole = (typeof STARTER_ROLES)[number];
+
+export function partyRoleFor(role: StarterRole): PartyRole {
+  return role === "contractor" ? "main_contractor" : role;
+}
+
+export async function startOwnProject(
+  db: Database,
+  input: { telegramId: bigint; name: string; projectName: string; role: StarterRole; site?: string },
+) {
+  const projectName = input.projectName.trim().slice(0, 180);
+  if (!projectName) throw new Error("project name missing");
+  if (!STARTER_ROLES.includes(input.role)) throw new Error("role missing");
+  const user = await upsertTelegramUser(db, input.telegramId, input.name);
+  const owned = await db.select().from(workspaces).where(eq(workspaces.ownerUserId, user.id));
+  let workspace = owned[0];
+  if (!workspace) {
+    const [created] = await db
+      .insert(workspaces)
+      .values({ ownerUserId: user.id, name: projectName, company: input.name.slice(0, 180) })
+      .returning();
+    if (!created) throw new Error("workspace insert failed");
+    workspace = created;
+  }
+  const member = await db
+    .select()
+    .from(workspaceMembers)
+    .where(and(eq(workspaceMembers.workspaceId, workspace.id), eq(workspaceMembers.userId, user.id)));
+  if (!member[0]) {
+    await db.insert(workspaceMembers).values({ workspaceId: workspace.id, userId: user.id, role: "owner" });
+  }
+  const [project] = await db
+    .insert(projects)
+    .values({
+      workspaceId: workspace.id,
+      name: projectName,
+      siteLocation: (input.site?.trim() || "Not set yet").slice(0, 240),
+      siteLat: 0,
+      siteLng: 0,
+      geofenceRadiusM: 150,
+      status: "draft",
+      fxRateLocked: 0n,
+      fxSource: "unset",
+      spendingCapUsdc: 0n,
+      retentionBps: 0,
+      defectsPeriodDays: 0,
+      contractSumKobo: 0n,
+      contractSumUsdc: 0n,
+    })
+    .returning();
+  if (!project) throw new Error("project insert failed");
+  const [party] = await db
+    .insert(parties)
+    .values({
+      projectId: project.id,
+      workspaceId: workspace.id,
+      userId: user.id,
+      role: partyRoleFor(input.role),
+    })
+    .returning();
+  if (!party) throw new Error("party insert failed");
+  await db.insert(memberships).values({ projectId: project.id, userId: user.id, role: input.role }).onConflictDoNothing();
+  await db
+    .insert(botSessions)
+    .values({ telegramId: input.telegramId, activeProjectId: project.id })
+    .onConflictDoUpdate({
+      target: botSessions.telegramId,
+      set: { activeProjectId: project.id, updatedAt: new Date() },
+    });
+  return { projectId: project.id, workspaceId: workspace.id, userId: user.id, role: input.role, partyId: party.id };
+}
+
 export async function upsertTelegramUser(db: Database, telegramId: bigint, name: string) {
   const existing = await db.select().from(users).where(eq(users.telegramId, telegramId));
   if (existing[0]) return existing[0];

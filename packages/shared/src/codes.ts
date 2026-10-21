@@ -10,15 +10,17 @@ export function generateJoinCode(randomBytes: Uint8Array): string {
   return out;
 }
 
+const JOIN_CODE = /^[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{8}$/;
+
 export function joinDeepLink(botUsername: string, code: string): string {
   const name = botUsername.replace(/^@/, "");
-  return `https://t.me/${name}?start=join_${code}`;
+  return `https://t.me/${name}?start=${code}`;
 }
 
 export function parseStartPayload(payload: string | undefined): { kind: "join"; code: string } | { kind: "plain" } {
   if (!payload) return { kind: "plain" };
-  if (payload.startsWith("join_") && payload.length === 13) {
-    return { kind: "join", code: payload.slice(5).toUpperCase() };
-  }
-  return { kind: "plain" };
+  const raw = payload.startsWith("join_") ? payload.slice(5) : payload;
+  const code = raw.trim().toUpperCase();
+  if (!JOIN_CODE.test(code)) return { kind: "plain" };
+  return { kind: "join", code };
 }

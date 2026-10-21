@@ -10,6 +10,8 @@
     "src",
     "../../src/server/auth/rbac.ts",
     "../../src/server/auth/errors.ts",
-    "../../src/server/auth/matrix.ts"
-  ]
+    "../../src/server/auth/matrix.ts",
+    "../../src/server/projects/**/*.ts"
+  ],
+  "exclude": ["../../src/**/*.test.ts"]
 }

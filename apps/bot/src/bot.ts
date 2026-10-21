@@ -7,6 +7,8 @@ import {
   loadPrincipal,
   recordUploadedContract,
   redeemJoinCode,
+  startOwnProject,
+  type StarterRole,
   setActiveProject,
   sha256Hex,
   upsertTelegramUser,
@@ -14,7 +16,9 @@ import {
   type Database,
 } from "@certa/db";
 import { requireMember } from "../../../src/server/auth/rbac";
-import { copy, formatMoneyPair, formatNgnFromKobo, formatOfficialRate, type OfficialRate } from "@certa/shared";
+import { allows } from "../../../src/server/auth/matrix";
+import { inviteToProject, type InviteRole } from "../../../src/server/projects/selfServe";
+import { copy, formatMoneyPair, formatNgnFromKobo, formatOfficialRate, parseStartPayload, type OfficialRate } from "@certa/shared";
 import { conversations, createConversation, type ConversationFlavor } from "@grammyjs/conversations";
 import { limit } from "@grammyjs/ratelimiter";
 import { Bot, InlineKeyboard, session, type Context, type SessionFlavor } from "grammy";
@@ -120,6 +124,60 @@ export function createBot(token: string, deps: BotDeps): Bot<BotContext> {
     await joinWithCode(ctx, next.message?.text?.trim() ?? "");
   }
   bot.use(createConversation(joinConversation as Parameters<typeof createConversation>[0], "join"));
+
+  const starterRoles = new Set<StarterRole>(["client", "consultant", "contractor", "subcontractor"]);
+  const inviteRoles = new Set<InviteRole>(["contractor", "consultant", "subcontractor"]);
+
+  async function startConversation(
+    conversation: {
+      external: <T>(fn: () => Promise<T>) => Promise<T>;
+      waitFor: (filter: "message:text") => Promise<{ message?: { text?: string } }>;
+    },
+    ctx: Context,
+  ) {
+    await ctx.reply("What is the project called?");
+    const named = await conversation.waitFor("message:text");
+    const projectName = named.message?.text?.trim() ?? "";
+    if (!projectName || projectName.startsWith("/")) {
+      await ctx.reply("Send the project name.");
+      return;
+    }
+    await ctx.reply("Which role is yours? Reply client, contractor, consultant, or subcontractor.");
+    const roleMsg = await conversation.waitFor("message:text");
+    const role = (roleMsg.message?.text?.trim().toLowerCase() ?? "") as StarterRole;
+    const from = ctx.from;
+    if (!from || !starterRoles.has(role)) {
+      await ctx.reply("Reply client, contractor, consultant, or subcontractor.");
+      return;
+    }
+    const started = await conversation.external(() =>
+      startOwnProject(deps.db, {
+        telegramId: BigInt(from.id),
+        name: from.first_name || "Telegram",
+        projectName,
+        role,
+      }),
+    );
+    await ctx.reply(`You are the ${role} on ${projectName}.`);
+    if (!allows(role, "invite_settings_pause")) return;
+    await ctx.reply("Which role should the other party have? Reply contractor, consultant, or subcontractor.");
+    const inviteMsg = await conversation.waitFor("message:text");
+    const inviteRole = (inviteMsg.message?.text?.trim().toLowerCase() ?? "") as InviteRole;
+    if (!inviteRoles.has(inviteRole)) {
+      await ctx.reply("Reply contractor, consultant, or subcontractor.");
+      return;
+    }
+    const invite = await conversation.external(() =>
+      inviteToProject(deps.db, {
+        userId: started.userId,
+        projectId: started.projectId,
+        role: inviteRole,
+        botUsername: process.env.TELEGRAM_BOT_USERNAME || "CertaApp_bot",
+      }),
+    );
+    await ctx.reply(`Share this link: ${invite.link}`);
+  }
+  bot.use(createConversation(startConversation as Parameters<typeof createConversation>[0], "startProject"));
 
   async function contractConversation(
     conversation: {
@@ -265,13 +323,23 @@ export function createBot(token: string, deps: BotDeps): Bot<BotContext> {
   bot.command("start", async (ctx) => {
     if (!(await gate(ctx, false))) return;
     const payload = typeof ctx.match === "string" ? ctx.match.trim() : "";
-    if (payload.startsWith("join_")) {
-      await joinWithCode(ctx, payload.slice(5));
+    const start = parseStartPayload(payload);
+    if (start.kind === "join") {
+      await joinWithCode(ctx, start.code);
       return;
     }
-    const keyboard = new InlineKeyboard().text("Join a project", "go-join").text("Stages", "go-stages");
+    const row = ctx.from ? await active(deps.db, BigInt(ctx.from.id)) : null;
+    const keyboard = row?.project
+      ? new InlineKeyboard().text("Join a project", "go-join").text("Stages", "go-stages")
+      : new InlineKeyboard().text("Start a project", "go-start").text("I have an invite code", "go-join");
     await say(ctx, `${copy.start}\n\n${copy.startClient}`);
     await ctx.reply("Choose one.", { reply_markup: keyboard });
+  });
+
+  bot.callbackQuery("go-start", async (ctx) => {
+    if (!(await gate(ctx, false))) return;
+    await ctx.answerCallbackQuery();
+    await ctx.conversation.enter("startProject");
   });
 
   bot.callbackQuery("go-join", async (ctx) => {

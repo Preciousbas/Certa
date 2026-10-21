@@ -68,7 +68,7 @@ export async function GET(request: Request) {
   const fields = Object.fromEntries(new URL(request.url).searchParams.entries());
   const signed = await accept(fields);
   if (!signed.ok) return signed;
-  const location = `${appOrigin() || new URL(request.url).origin}/`;
+  const location = `${appOrigin() || new URL(request.url).origin}/app`;
   const redirect = new Response(null, { status: 302, headers: { location } });
   for (const cookie of signed.headers.getSetCookie()) redirect.headers.append("set-cookie", cookie);
   return redirect;

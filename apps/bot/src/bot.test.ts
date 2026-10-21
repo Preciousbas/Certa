@@ -1,5 +1,5 @@
 import { extractContract, textFromUpload } from "@certa/ai";
-import { createMemoryDatabase, documents, projects, seedDemo, stages, users, workspaces, type Database } from "@certa/db";
+import { createMemoryDatabase, documents, issueJoinCode, memberships, projects, seedDemo, stages, users, workspaces, type Database } from "@certa/db";
 import { formatOfficialRate, fxRateFromNaira, nairaToKobo, usdcFromNgnKobo } from "@certa/shared";
 import { eq } from "drizzle-orm";
 import type { Update } from "grammy/types";
@@ -82,6 +82,33 @@ describe("bot", () => {
     expect(text).toMatch(/Central Bank rate/);
     expect(text).toContain(formatOfficialRate(rate));
     expect(text).not.toMatch(/30,000\.00 USDC/);
+  });
+
+  it("joins a new user from a start link", async () => {
+    const saved = {
+      id: process.env.CDP_API_KEY_ID,
+      secret: process.env.CDP_API_KEY_SECRET,
+      wallet: process.env.CDP_WALLET_SECRET,
+    };
+    delete process.env.CDP_API_KEY_ID;
+    delete process.env.CDP_API_KEY_SECRET;
+    delete process.env.CDP_WALLET_SECRET;
+    const project = (await db.select().from(projects)).find((row) => row.name.includes("EM 22"));
+    if (!project) throw new Error("demo project missing");
+    const { code } = await issueJoinCode(db, {
+      projectId: project.id,
+      workspaceId: project.workspaceId,
+      role: "main_contractor",
+      code: "K7MX2QPA",
+    });
+    const text = await run(`/start ${code}`, 5151, 11);
+    expect(text).toMatch(/payment account/i);
+    const user = (await db.select().from(users).where(eq(users.telegramId, 5151n)))[0];
+    const roles = user ? await db.select().from(memberships).where(eq(memberships.userId, user.id)) : [];
+    expect(roles.map((row) => row.role)).toContain("contractor");
+    if (saved.id) process.env.CDP_API_KEY_ID = saved.id;
+    if (saved.secret) process.env.CDP_API_KEY_SECRET = saved.secret;
+    if (saved.wallet) process.env.CDP_WALLET_SECRET = saved.wallet;
   });
 
   it("rejects a bad join code", async () => {
