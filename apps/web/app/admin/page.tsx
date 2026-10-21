@@ -1,4 +1,5 @@
-import { basescanTx, isTxHash } from "@certa/chain";
+import { isTxHash } from "@certa/chain";
+import { BASE_SEPOLIA_CHAIN_ID, explorerTx } from "../../lib/explorer";
 import { getDatabase, payments, workspaces, x402Calls } from "@certa/db";
 import { formatUsdc } from "@certa/shared";
 import { allowanceLeft } from "../../lib/x402";
@@ -37,7 +38,7 @@ export default async function AdminPage() {
         {calls.map((row) => isTxHash(row.txHash) ? (
           <div className="row" key={row.id}>
             <span>Receipt</span>
-            <a href={basescanTx(row.txHash)}>{formatUsdc(row.costUsdc)}</a>
+            <a href={explorerTx(BASE_SEPOLIA_CHAIN_ID, row.txHash)}>{formatUsdc(row.costUsdc)}</a>
           </div>
         ) : null)}
         <div className="row">

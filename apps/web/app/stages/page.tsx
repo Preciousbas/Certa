@@ -6,6 +6,7 @@ import { MoneyAmount } from "../../components/money";
 import { ReviewActions } from "../../components/review-actions";
 import { StageRow } from "../../components/stage-row";
 import { StatusChip } from "../../components/status-chip";
+import { SEPOLIA_CHAIN_ID, explorerTx } from "../../lib/explorer";
 import { loadProject } from "../../lib/data";
 import { isLockedStage, isReviewStatus } from "../../lib/labels";
 
@@ -132,7 +133,7 @@ export default async function StagesPage() {
                 ) ? (
                   <a
                     className="faint"
-                    href={`https://sepolia.etherscan.io/tx/${data.payments.find((row) => row.stageId === stage.id)?.txHash}`}
+                    href={explorerTx(SEPOLIA_CHAIN_ID, data.payments.find((row) => row.stageId === stage.id)?.txHash ?? "")}
                   >
                     Transaction
                   </a>

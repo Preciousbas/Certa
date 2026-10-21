@@ -1,7 +1,9 @@
+import { cdpConfigured } from "@certa/chain";
 import { contractSummaries, contractVersions, recordPayment, stages } from "@certa/db";
 import { koboFromUsdc } from "@certa/shared";
 import { eq } from "drizzle-orm";
 import type { Hex } from "viem";
+import { ChainRejected, ConsultantRequired, fundAccepted } from "../../../../../../src/server/chain/flows";
 import { broadcastClientFund } from "../../../../lib/chain-fund";
 import { chainFundLines } from "../../../../lib/escrow-quote";
 import { apiError, apiJson, fundInput, fundOutput } from "../../../../lib/schemas";
@@ -38,12 +40,34 @@ export const POST = withAuth(
     let amountUsdc = priced.reduce((sum, stage) => sum + stage.usdc, 0n);
     let amountNgnKobo = rate ? koboFromUsdc(amountUsdc, rate.koboPerUsdc) : priced.reduce((sum, stage) => sum + stage.kobo, 0n);
     let sentHash: Hex | null = null;
+    let escrowFromChain = "";
+    let locked: "pending" | "confirmed" = "pending";
     const escrow = project.escrowAddress ?? "";
     const payInNaira = input.data.currency === "ngn";
-    if (!payInNaira && /^0x[a-fA-F0-9]{40}$/.test(escrow) && process.env.DEPLOYER_PRIVATE_KEY) {
+    const accepted = versions.find((row) => row.status === "accepted");
+    if (!payInNaira && accepted) {
+      if (!cdpConfigured()) return apiError(503, "The payment account is not configured.");
+      try {
+        const sent = await fundAccepted(db, {
+          projectId: project.id,
+          upToStage: input.data.upToStage,
+          idempotencyKey: input.data.idempotencyKey,
+        });
+        sentHash = (sent.tx.txHash as Hex | null) ?? null;
+        escrowFromChain = sent.escrow;
+        locked = sent.tx.status === "confirmed" ? "confirmed" : "pending";
+        amountUsdc = sent.amount;
+        if (rate) amountNgnKobo = koboFromUsdc(sent.amount, rate.koboPerUsdc);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "The fund transaction reverted.";
+        const status = error instanceof ConsultantRequired ? 409 : error instanceof ChainRejected ? 400 : 502;
+        return apiError(status, message);
+      }
+    } else if (!payInNaira && /^0x[a-fA-F0-9]{40}$/.test(escrow) && process.env.DEPLOYER_PRIVATE_KEY) {
       try {
         const sent = await broadcastClientFund(escrow as Hex, input.data.upToStage);
         sentHash = sent.hash;
+        locked = "confirmed";
         amountUsdc = sent.amount;
         if (rate) amountNgnKobo = koboFromUsdc(sent.amount, rate.koboPerUsdc);
       } catch (error) {
@@ -59,17 +83,17 @@ export const POST = withAuth(
       amountNgnKobo,
       idempotencyKey: input.data.idempotencyKey,
       txHash: sentHash ?? undefined,
-      status: sentHash ? "confirmed" : "pending",
+      status: locked,
     });
     const rawTx = payment.payment.txHash ?? "";
-    const rawEscrow = project.escrowAddress ?? "";
+    const rawEscrow = escrowFromChain || project.escrowAddress || "";
     const txHash = /^0x[a-fA-F0-9]{64}$/.test(rawTx) ? rawTx : null;
     const escrowAddress = /^0x[a-fA-F0-9]{40}$/.test(rawEscrow) ? rawEscrow : null;
     return apiJson(fundOutput, {
       ok: true,
       created: payment.created,
       paymentId: payment.payment.id,
-      status: txHash ? "confirmed" : "pending",
+      status: locked,
       rail: payment.payment.kind === "naira" ? "ngn" : "usdc",
       amountUsdc: payment.payment.amountUsdc.toString(),
       amountNgnKobo: payment.payment.amountNgnKobo.toString(),

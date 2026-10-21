@@ -81,6 +81,7 @@ export const projects = pgTable("projects", {
   contractSumUsdc: bigint("contract_sum_usdc", { mode: "bigint" }).notNull(),
   termsHash: text("terms_hash"),
   currentContractVersionId: uuid("current_contract_version_id"),
+  chainSync: text("chain_sync").notNull().default("ok"),
   ...timestamps,
 });
 
@@ -485,6 +486,54 @@ export const contractAcceptances = pgTable("contract_acceptances", {
   reason: text("reason"),
   contentHash: text("content_hash").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const wallets = pgTable("wallets", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id"),
+  projectId: uuid("project_id"),
+  purpose: text("purpose").notNull(),
+  provider: text("provider").notNull().default("cdp"),
+  providerAccountRef: text("provider_account_ref").notNull(),
+  address: text("address").notNull(),
+  chainId: integer("chain_id").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const escrows = pgTable("escrows", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  projectId: uuid("project_id").notNull().unique(),
+  contractVersionId: uuid("contract_version_id").notNull(),
+  chainId: integer("chain_id").notNull(),
+  factoryAddress: text("factory_address").notNull(),
+  address: text("address").notNull(),
+  createTxId: uuid("create_tx_id").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const chainTxs = pgTable("chain_txs", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  projectId: uuid("project_id"),
+  stageId: uuid("stage_id"),
+  kind: text("kind").notNull(),
+  idempotencyKey: text("idempotency_key").notNull().unique(),
+  chainId: integer("chain_id").notNull(),
+  fromAddress: text("from_address").notNull(),
+  toAddress: text("to_address").notNull(),
+  calldata: text("calldata"),
+  valueMicro: bigint("value_micro", { mode: "bigint" }),
+  status: text("status").notNull(),
+  txHash: text("tx_hash").unique(),
+  blockNumber: bigint("block_number", { mode: "bigint" }),
+  confirmations: integer("confirmations").notNull().default(0),
+  error: text("error"),
+  attempts: integer("attempts").notNull().default(0),
+  submittedAt: timestamp("submitted_at", { withTimezone: true }),
+  confirmedAt: timestamp("confirmed_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  nonce: bigint("nonce", { mode: "bigint" }),
+  intent: text("intent"),
+  replacedHash: text("replaced_hash"),
 });
 
 export const blobs = pgTable("blobs", {

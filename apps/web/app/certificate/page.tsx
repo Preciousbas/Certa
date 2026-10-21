@@ -1,4 +1,5 @@
 import { formatNgnFromKobo, formatUsdc } from "@certa/shared";
+import { SEPOLIA_CHAIN_ID, explorerAddress, explorerTx } from "../../lib/explorer";
 import { loadProject } from "../../lib/data";
 import { pilotEscrowAddress } from "../../lib/published-chain";
 
@@ -12,7 +13,7 @@ export default async function CertificatePage() {
       <h1>{data.project.name}</h1>
       <p className="muted">{data.moneyNote ?? "Stage amounts follow the escrow and the Central Bank rate."}</p>
       <p>
-        <a href={`https://sepolia.etherscan.io/address/${escrow}`}>Escrow {escrow}</a>
+        <a href={explorerAddress(SEPOLIA_CHAIN_ID, escrow)}>Escrow {escrow}</a>
       </p>
       <ol className="plain">
         {data.stages.map((stage) => {
@@ -23,7 +24,7 @@ export default async function CertificatePage() {
               {tx ? (
                 <>
                   {" "}
-                  <a href={`https://sepolia.etherscan.io/tx/${tx}`}>Transaction</a>
+                  <a href={explorerTx(SEPOLIA_CHAIN_ID, tx)}>Transaction</a>
                 </>
               ) : null}
             </li>

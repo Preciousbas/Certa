@@ -13,6 +13,7 @@
     "../../src/server/auth/matrix.ts",
     "../../src/server/intake/**/*.ts",
     "../../src/server/projects/**/*.ts",
+    "../../src/server/chain/**/*.ts",
     "../../src/server/ai/**/*.ts",
     "../../src/server/jobs/**/*.ts",
     "../../src/server/storage.ts",

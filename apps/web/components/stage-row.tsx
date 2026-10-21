@@ -1,3 +1,4 @@
+import { SEPOLIA_CHAIN_ID, explorerTx } from "../lib/explorer";
 import { MoneyAmount } from "./money";
 import { StatusChip } from "./status-chip";
 
@@ -26,7 +27,7 @@ export function StageRow({
         <strong>{name}</strong>
         {description ? <div className="faint">{description}</div> : null}
         {chain ? (
-          <a className="faint" href={`https://sepolia.etherscan.io/tx/${chain}`}>
+          <a className="faint" href={explorerTx(SEPOLIA_CHAIN_ID, chain)}>
             Transaction
           </a>
         ) : status === "released" ? (

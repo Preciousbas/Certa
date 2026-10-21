@@ -34,17 +34,6 @@ export async function readUsdcBalance(holder: Hex, rpcUrl?: string): Promise<big
   });
 }
 
-export function sepoliaTx(hash: string): string {
-  return `https://sepolia.etherscan.io/tx/${hash}`;
-}
-
-export function sepoliaAddress(address: string): string {
-  return `https://sepolia.etherscan.io/address/${address}`;
-}
-
-export const basescanTx = sepoliaTx;
-export const basescanAddress = sepoliaAddress;
-
 export function isTxHash(value: string | null | undefined): value is Hex {
   return typeof value === "string" && /^0x[a-fA-F0-9]{64}$/.test(value);
 }

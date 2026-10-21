@@ -5,6 +5,7 @@ import { ChangeActions } from "../../components/change-actions";
 import { Deadline } from "../../components/deadline";
 import { MoneyAmount } from "../../components/money";
 import { StatusChip } from "../../components/status-chip";
+import { SEPOLIA_CHAIN_ID, explorerTx } from "../../lib/explorer";
 import { loadProject } from "../../lib/data";
 import { changeSummary } from "../../lib/labels";
 
@@ -57,7 +58,7 @@ export default async function ChangesPage() {
               {note.success && note.data.note ? <li>Consultant decision: {note.data.note}</li> : null}
               {tx ? (
                 <li>
-                  <a href={`https://sepolia.etherscan.io/tx/${tx}`}>Release transaction</a>
+                  <a href={explorerTx(SEPOLIA_CHAIN_ID, tx)}>Release transaction</a>
                 </li>
               ) : (
                 <li>No release transaction is stored.</li>

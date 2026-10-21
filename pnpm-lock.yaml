@@ -11,6 +11,9 @@ importers:
       '@certa/ai':
         specifier: workspace:*
         version: link:packages/ai
+      '@certa/chain':
+        specifier: workspace:*
+        version: link:packages/chain
       '@certa/db':
         specifier: workspace:*
         version: link:packages/db

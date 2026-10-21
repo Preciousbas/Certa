@@ -1,4 +1,5 @@
-import { basescanTx, isTxHash } from "@certa/chain";
+import { isTxHash } from "@certa/chain";
+import { BASE_SEPOLIA_CHAIN_ID, explorerTx } from "../../lib/explorer";
 import { getDatabase, submissions, x402Calls } from "@certa/db";
 import { formatUsdc } from "@certa/shared";
 import { desc, eq } from "drizzle-orm";
@@ -32,7 +33,7 @@ export default async function ReportPage() {
             ? <>
                 {weather.responseSummary ? <span>{weather.responseSummary} </span> : null}
                 Agent paid {formatUsdc(weather.costUsdc)} for the weather check.{" "}
-                <a href={basescanTx(weather.txHash)}>Receipt</a>
+                <a href={explorerTx(BASE_SEPOLIA_CHAIN_ID, weather.txHash)}>Receipt</a>
               </>
             : "No weather check has been paid."}
         </p>

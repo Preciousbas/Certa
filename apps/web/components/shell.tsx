@@ -8,11 +8,13 @@ export function Shell({
   sample = false,
   role = "client",
   admin = false,
+  syncing = false,
 }: {
   children: React.ReactNode;
   sample?: boolean;
   role?: NavRole;
   admin?: boolean;
+  syncing?: boolean;
 }) {
   return (
     <div className="app">
@@ -24,6 +26,7 @@ export function Shell({
             {sample ? <p className="sample-badge">Demo workspace</p> : <span />}
             <MoneySwitch />
           </div>
+          {syncing ? <p className="sample-badge">Updating from the blockchain</p> : null}
           <main>{children}</main>
           <BottomNav role={role} admin={admin} />
         </MoneyProvider>

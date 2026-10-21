@@ -28,6 +28,7 @@
   },
   "dependencies": {
     "@certa/ai": "workspace:*",
+    "@certa/chain": "workspace:*",
     "@certa/db": "workspace:*",
     "@certa/shared": "workspace:*",
     "@upstash/ratelimit": "2.2.0",

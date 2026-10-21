@@ -16,3 +16,13 @@
 - Prompt 40: after escrow creation, call `acceptTerms()` with no content-hash argument. Intake only enqueues `accept_terms_deferred`. The on-chain function cannot store the version hash; `termsHash` is constructor-only.
 - Prompt 30 follow-up: render scanned PDF pages at 200 DPI. `@napi-rs/canvas` is not installed, and this job does not deskew or apply EXIF rotation. A scanned file without a transcript fails `unreadable`.
 - Prompt 30 follow-up: deliver B-EX and B-AC on Telegram, and escalate the 72-hour `contract_reply` job to the consultant. The job row is queued. The handler does not send a message.
+- Prompt 40: retention in `CertaEscrow._split` rounds down (`amount * bps / 10000`), so the dust goes to the contractor. Do not change the verified contract without approval. See `docs/spec/CONTRACT_REVIEW.md`.
+- Prompt 40: `ClientApprove` and `ResolveDispute` EIP-712 types have a deadline and no nonce. Replay is stopped by `AlreadyApproved` or by the stage leaving `Disputed`. A nonce is a later contract change.
+- Prompt 40: mobilisation is a lump `releaseMobilisation`. It is not recovered from later stages. `advance_recovery` stays off-chain.
+- Prompt 40: on-chain, only `client != contractor` is enforced. Consultant, operator, and admin may collide. Off-chain `RolesNotDistinct` covers the four product roles.
+- Prompt 40: the escrow pays `contractor` only. A subcontractor wallet is created on join for a later direct-payment change. There is no stage payee in this contract.
+- Prompt 40: `packages/chain` still aliases `USDC_BASE_SEPOLIA` and `BASE_SEPOLIA_CHAIN_ID` to the Ethereum Sepolia values. Prompt 70 owns the Base Sepolia USDC `0x036CbD53842c5426634e7929541eC2318f3dCF7e`.
+- Prompt 40: a network-fee top-up writes `usage_ledger` kind `network_fee` with `amountUsdc = 0`. Prompt 70 prices it. The UI does not say "gas".
+- Prompt 40: Vercel Hobby cron is daily (`0 0 * * *` on `/api/cron/jobs`). Reconciliation can also be triggered with `GET /api/cron/reconcile` and the `CRON_SECRET` header.
+- Prompt 40: a dropped Sepolia transaction is resent with the stored nonce and a higher fee. CDP may ignore an explicit nonce. After 3 attempts the chain row is `failed` and, when the stage edge exists, the stage is `release_failed`.
+- Prompt 40: Etherscan `getsourcecode` was not available (no API key). The verified ABI matches local source. Do not redeploy for that.

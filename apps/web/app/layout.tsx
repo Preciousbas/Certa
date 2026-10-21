@@ -28,7 +28,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
     <html lang="en">
       <body className={body.variable}>
         <Script src="https://telegram.org/js/telegram-web-app.js" strategy="beforeInteractive" />
-        <Shell sample={data?.isDemo === true} role={nav.role} admin={nav.admin}>
+        <Shell sample={data?.isDemo === true} role={nav.role} admin={nav.admin} syncing={data?.project.chainSync === "updating"}>
           {children}
         </Shell>
       </body>

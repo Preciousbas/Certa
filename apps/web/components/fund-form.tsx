@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState, type FormEvent } from "react";
+import { SEPOLIA_CHAIN_ID, explorerAddress, explorerLabel, explorerTx } from "../lib/explorer";
 import { MoneyAmount, MoneyPair } from "./money";
 import { useTelegramMainButton } from "./telegram";
 
@@ -87,18 +88,18 @@ export function FundForm({ projectId, defaultUpTo, stages, rateLabel }: Props) {
           ))}
         </ul>
         {receipt.escrowAddress ? (
-          <a href={`https://sepolia.etherscan.io/address/${receipt.escrowAddress}`}>Escrow contract</a>
+          <a href={explorerAddress(SEPOLIA_CHAIN_ID, receipt.escrowAddress)}>{explorerLabel(SEPOLIA_CHAIN_ID)}</a>
         ) : (
           <p className="muted">Escrow is not on chain yet.</p>
         )}
         <p>
           {receipt.rail === "ngn"
             ? "The naira amount is waiting. Escrow locks the matching USDC after that transfer clears."
-            : receipt.txHash
-              ? "Confirmed on chain."
-              : "Waiting on chain."}
+            : receipt.status === "confirmed"
+              ? "Locked. Proof is on the explorer."
+              : "Locking. Waiting for the network."}
         </p>
-        {receipt.txHash ? <a href={`https://sepolia.etherscan.io/tx/${receipt.txHash}`}>Transaction</a> : null}
+        {receipt.txHash ? <a href={explorerTx(SEPOLIA_CHAIN_ID, receipt.txHash)}>Transaction</a> : null}
         <p>{receipt.contractorNotified ? "Contractor notified." : "Contractor not notified yet."}</p>
         {!receipt.created ? <p className="faint">This request was already sent.</p> : null}
         <a className="btn btn-block" href="/">

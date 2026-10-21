@@ -1,5 +1,6 @@
 import { agentRouterContract, studyUpload, type ParsedContract } from "@certa/ai";
 import { createPartyWallet } from "@certa/chain";
+import { getOrCreateWallet } from "../../../src/server/chain/wallets.js";
 import {
   acceptContractSide,
   ensureWallet,
@@ -115,7 +116,16 @@ export function createBot(token: string, deps: BotDeps): Bot<BotContext> {
     }
     const joined = `You've joined ${result.projectName} as the ${sideLabel(result.role)}.`;
     try {
-      await ensureWallet(deps.db, result.partyId, () => createPartyWallet(result.partyId));
+      const party = (await deps.db.select().from(parties).where(eq(parties.id, result.partyId)))[0];
+      const purpose =
+        result.role === "client" || result.role === "consultant" || result.role === "contractor" || result.role === "subcontractor"
+          ? result.role
+          : null;
+      await ensureWallet(deps.db, result.partyId, async () => {
+        if (!party || !purpose) return createPartyWallet(result.partyId);
+        const wallet = await getOrCreateWallet(deps.db, { purpose, userId: party.userId, projectId: result.projectId });
+        return { address: wallet.address, walletId: wallet.accountRef, mock: wallet.mock };
+      });
     } catch {
       await say(ctx, `${joined} The payment account could not be created.`);
       return;

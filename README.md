@@ -81,6 +81,8 @@ A photo of a paper bill is refused until it is sent as Excel or PDF. Old `.xls` 
 
 See `docs/SECURITY.md`. Short version: no keys in the database, webhook secret on Telegram, HMAC on Mini App init data, RLS plus `authorize()`, idempotency keys on money, and an append-only hash-chained audit log.
 
+Client, consultant, contractor, and operator each have their own Coinbase server wallet. Certa holds those wallets. The split is there so a bug or a single key cannot act as every role. A client approval is a verified Telegram tap, stored in `audit_log`, and the on-chain `clientApprove` is sent from that client's wallet. Connecting a person's own wallet is a later option. The operator policy is in `docs/spec/CDP_OPERATOR_POLICY.md`.
+
 ## Limits
 
 - The escrow factory is on Ethereum Sepolia, and the source is verified on Etherscan.

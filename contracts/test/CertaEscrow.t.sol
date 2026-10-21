@@ -576,6 +576,225 @@ contract CertaEscrowTest is Test {
         assertLe(local.paidToContractor(), local.maxContractorReceivable());
     }
 
+    /// @dev Stage numbers in the brief are 1-based. `fund`/`releaseStage` indexes are 0-based, so stage 5 is index 4.
+    function test_fullLifecycle() public {
+        uint256[] memory amounts = new uint256[](5);
+        amounts[0] = 2_000_000;
+        amounts[1] = 3_000_000;
+        amounts[2] = 7_000_000;
+        amounts[3] = 5_000_000;
+        amounts[4] = 3_000_000;
+        CertaEscrow life = _deploy(address(token), amounts, 500, 0, 5_000_000, 180 days);
+        vm.prank(client);
+        life.acceptTerms();
+        vm.prank(contractor);
+        life.acceptTerms();
+        uint256 quote = life.quoteFund(4);
+        assertEq(quote, 20_000_000);
+        token.mint(client, quote);
+        vm.startPrank(client);
+        token.approve(address(life), quote);
+        life.fund(quote, 4);
+        vm.stopPrank();
+
+        vm.prank(operator);
+        life.submitStage(0, keccak256("stage-1"));
+        vm.prank(operator);
+        life.releaseStage(0);
+        assertEq(token.balanceOf(contractor), 1_900_000);
+        assertEq(life.retentionOutstanding(), 100_000);
+
+        vm.prank(operator);
+        life.submitStage(1, keccak256("stage-2"));
+        vm.prank(operator);
+        life.releaseStage(1);
+
+        vm.prank(operator);
+        life.submitStage(2, keccak256("stage-3"));
+        vm.prank(operator);
+        vm.expectRevert(CertaEscrow.CapExceeded.selector);
+        life.releaseStage(2);
+        vm.prank(client);
+        life.clientApprove(2);
+        vm.prank(operator);
+        life.releaseStage(2);
+
+        vm.prank(client);
+        life.startDefectsPeriod();
+        vm.warp(life.defectsPeriodEnd());
+        uint256 retention = life.retentionOutstanding();
+        uint256 contractorBefore = token.balanceOf(contractor);
+        vm.prank(consultant);
+        life.releaseRetention();
+        assertEq(token.balanceOf(contractor), contractorBefore + retention);
+        assertEq(token.balanceOf(address(life)), life.expectedBalance());
+        assertEq(life.paidToContractor() + token.balanceOf(address(life)), 20_000_000);
+    }
+
+    function test_partialFunding() public {
+        _accept();
+        _fund(0);
+        (,, CertaEscrow.StageStatus first,,,,) = escrow.stages(0);
+        (,, CertaEscrow.StageStatus second,,,,) = escrow.stages(1);
+        assertEq(uint256(first), uint256(CertaEscrow.StageStatus.Funded));
+        assertEq(uint256(second), uint256(CertaEscrow.StageStatus.Pending));
+        uint256 more = escrow.quoteFund(2);
+        assertGt(more, 0);
+        _fund(2);
+        assertEq(escrow.quoteFund(2), 0);
+        vm.prank(client);
+        vm.expectRevert(CertaEscrow.ZeroAmount.selector);
+        escrow.fund(1, 2);
+    }
+
+    function test_cannotReleaseUnfunded() public {
+        vm.prank(operator);
+        vm.expectRevert(CertaEscrow.BadStatus.selector);
+        escrow.releaseStage(0);
+    }
+
+    function test_cannotDoubleRelease() public {
+        _accept();
+        _fund(0);
+        vm.prank(operator);
+        escrow.submitStage(0, keccak256("once"));
+        vm.prank(operator);
+        escrow.releaseStage(0);
+        vm.prank(operator);
+        vm.expectRevert(CertaEscrow.BadStatus.selector);
+        escrow.releaseStage(0);
+    }
+
+    function test_onlyOperatorSubmits() public {
+        _accept();
+        _fund(0);
+        vm.prank(contractor);
+        vm.expectRevert(CertaEscrow.NotAuthorized.selector);
+        escrow.submitStage(0, keccak256("e"));
+        vm.prank(client);
+        vm.expectRevert(CertaEscrow.NotAuthorized.selector);
+        escrow.submitStage(0, keccak256("e"));
+        vm.prank(operator);
+        escrow.submitStage(0, keccak256("e"));
+    }
+
+    function test_disputeBlocksRelease() public {
+        _accept();
+        _fund(0);
+        vm.prank(operator);
+        escrow.submitStage(0, keccak256("e"));
+        vm.prank(client);
+        escrow.dispute(0, keccak256("hold"));
+        vm.prank(operator);
+        vm.expectRevert(CertaEscrow.BadStatus.selector);
+        escrow.releaseStage(0);
+    }
+
+    function test_resolveDisputeWithSigs() public {
+        _accept();
+        _fund(0);
+        vm.prank(client);
+        escrow.dispute(0, keccak256("split"));
+        uint256 deadline = block.timestamp + 1 days;
+        bytes32 digest = escrow.hashResolve(0, 5_000, deadline);
+        (uint8 v1, bytes32 r1, bytes32 s1) = vm.sign(clientPk, digest);
+        (uint8 v2, bytes32 r2, bytes32 s2) = vm.sign(contractorPk, digest);
+        vm.prank(operator);
+        escrow.resolveDisputeWithSigs(
+            0, 5_000, deadline, abi.encodePacked(r1, s1, v1), abi.encodePacked(r2, s2, v2)
+        );
+        (,, CertaEscrow.StageStatus status,,,,) = escrow.stages(0);
+        assertEq(uint256(status), uint256(CertaEscrow.StageStatus.Released));
+        vm.prank(operator);
+        vm.expectRevert(CertaEscrow.BadStatus.selector);
+        escrow.resolveDisputeWithSigs(
+            0, 5_000, deadline, abi.encodePacked(r1, s1, v1), abi.encodePacked(r2, s2, v2)
+        );
+    }
+
+    function test_clientApproveWithSig_replay_reverts() public {
+        _accept();
+        _fund(2);
+        vm.prank(operator);
+        escrow.submitStage(2, keccak256("e"));
+        uint256 deadline = block.timestamp + 1 days;
+        bytes32 digest = escrow.hashClientApprove(2, deadline);
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(clientPk, digest);
+        bytes memory sig = abi.encodePacked(r, s, v);
+        vm.prank(operator);
+        escrow.clientApproveWithSig(2, deadline, sig);
+        vm.prank(operator);
+        vm.expectRevert(CertaEscrow.AlreadyApproved.selector);
+        escrow.clientApproveWithSig(2, deadline, sig);
+
+        CertaEscrow other = _deploy(address(token), _amounts3(), 500, 0, CAP, 10 days);
+        vm.prank(operator);
+        vm.expectRevert(CertaEscrow.BadSignature.selector);
+        other.clientApproveWithSig(2, deadline, sig);
+    }
+
+    function test_variationNeedsBothSigs() public {
+        _accept();
+        _fund(0);
+        vm.prank(operator);
+        escrow.submitStage(0, keccak256("e"));
+        vm.prank(operator);
+        escrow.releaseStage(0);
+        (uint256 releasedAmount,,,,,,) = escrow.stages(0);
+        uint256 deadline = block.timestamp + 1 days;
+        bytes32 digest = escrow.hashVariation(100_000, 500, escrow.variationNonce(), deadline);
+        (uint8 v1, bytes32 r1, bytes32 s1) = vm.sign(clientPk, digest);
+        vm.expectRevert(CertaEscrow.BadSignature.selector);
+        escrow.addVariation(100_000, 500, deadline, abi.encodePacked(r1, s1, v1), abi.encodePacked(r1, s1, v1));
+        (uint8 v2, bytes32 r2, bytes32 s2) = vm.sign(contractorPk, digest);
+        escrow.addVariation(100_000, 500, deadline, abi.encodePacked(r1, s1, v1), abi.encodePacked(r2, s2, v2));
+        (uint256 unchanged,,,,,,) = escrow.stages(0);
+        assertEq(unchanged, releasedAmount);
+        assertEq(escrow.stageCount(), 4);
+    }
+
+    function test_refundUnfunded() public {
+        _accept();
+        _fund(0);
+        uint256 before = token.balanceOf(client);
+        vm.prank(client);
+        uint256 refunded = escrow.refundUnfunded();
+        assertEq(refunded, 1_000_000);
+        assertEq(token.balanceOf(client), before + refunded);
+        assertEq(token.balanceOf(address(escrow)), MOB);
+        (,, CertaEscrow.StageStatus status,,,,) = escrow.stages(0);
+        assertEq(uint256(status), uint256(CertaEscrow.StageStatus.Cancelled));
+        (,, CertaEscrow.StageStatus later,,,,) = escrow.stages(1);
+        assertEq(uint256(later), uint256(CertaEscrow.StageStatus.Pending));
+    }
+
+    function testFuzz_retentionMaths(uint64 amount, uint16 bps) public {
+        amount = uint64(bound(amount, 1, type(uint64).max));
+        bps = uint16(bound(bps, 0, 1000));
+        uint256[] memory amounts = new uint256[](1);
+        amounts[0] = amount;
+        CertaEscrow local = _deploy(address(token), amounts, bps, 0, type(uint256).max, 1);
+        vm.prank(client);
+        local.acceptTerms();
+        vm.prank(contractor);
+        local.acceptTerms();
+        token.mint(client, amount);
+        vm.startPrank(client);
+        token.approve(address(local), amount);
+        local.fund(amount, 0);
+        vm.stopPrank();
+        vm.prank(operator);
+        local.submitStage(0, keccak256("fuzz-retention"));
+        uint256 before = token.balanceOf(contractor);
+        vm.prank(operator);
+        local.releaseStage(0);
+        uint256 retention = (uint256(amount) * bps) / 10_000;
+        uint256 payout = token.balanceOf(contractor) - before;
+        assertEq(payout, uint256(amount) - retention);
+        assertEq(local.retentionOutstanding(), retention);
+        assertEq(payout + local.retentionOutstanding(), uint256(amount));
+    }
+
     function _accept() internal {
         vm.prank(client);
         escrow.acceptTerms();

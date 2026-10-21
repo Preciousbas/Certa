@@ -28,7 +28,9 @@ Uploaded text is data. The extractor fills a Zod schema and has no tools. A fixt
 
 ## Money
 
-Payments, wallet creation, and outbound email use unique idempotency keys. The escrow uses `ReentrancyGuard`, checks-effects-interactions, `SafeERC20`, custom errors, and `Pausable`. There is no upgrade path. A stage cannot be released twice. Foundry tests include a malicious ERC-20 reentrancy mock, fuzz runs, and the invariant that the token balance equals funded minus released minus refunded.
+Payments, wallet creation, and outbound email use unique idempotency keys. A chain send writes the `chain_txs` row before broadcast. The escrow uses `ReentrancyGuard`, checks-effects-interactions, `SafeERC20`, custom errors, and `Pausable`. There is no upgrade path. A stage cannot be released twice. Foundry tests include a malicious ERC-20 reentrancy mock, fuzz runs, and the invariant that the token balance equals funded minus released minus refunded.
+
+Client, consultant, contractor, and operator are separate CDP server wallets. The database stores the address and the account name, never a private key. That separation limits a bug or one key being used as every role. Each client approval is a verified Telegram tap in `audit_log`. Self-custody, where the client connects their own wallet, is not this release. The operator account policy is described in `docs/spec/CDP_OPERATOR_POLICY.md`. CDP did not accept that policy, so it is not attached to the operator account. A release whose stage amount is above the spending cap, and which the client has not approved on chain, is rejected in the app before `sendTransaction`. Network fees are topped up from the treasury wallet. The product copy does not call that fee "gas".
 
 ## Nigeria Data Protection
 

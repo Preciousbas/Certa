@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { SEPOLIA_CHAIN_ID, explorerAddress, explorerLabel } from "../lib/explorer";
 
 export function AccountAddress({ address }: { address: string | null }) {
   const [copied, setCopied] = useState(false);
@@ -17,8 +18,8 @@ export function AccountAddress({ address }: { address: string | null }) {
         >
           {copied ? "Copied" : "Copy"}
         </button>
-        <a className="btn" href={`https://sepolia.etherscan.io/address/${address}`}>
-          Etherscan
+        <a className="btn" href={explorerAddress(SEPOLIA_CHAIN_ID, address)}>
+          {explorerLabel(SEPOLIA_CHAIN_ID)}
         </a>
       </div>
     </div>
