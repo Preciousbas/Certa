@@ -18,6 +18,7 @@ export const ACTIONS = [
   "accept_variation_from_contractor",
   "accept_variation_from_client",
   "invite_settings_pause",
+  "invite_extra",
   "view_audit_log",
 ] as const;
 
@@ -136,6 +137,13 @@ export const MATRIX: Record<Action, Record<Role, Cell>> = {
     client: "allow",
     consultant: "deny",
     contractor: "deny",
+    subcontractor: "deny",
+    viewer: "deny",
+  },
+  invite_extra: {
+    client: "allow",
+    consultant: "deny",
+    contractor: "allow",
     subcontractor: "deny",
     viewer: "deny",
   },

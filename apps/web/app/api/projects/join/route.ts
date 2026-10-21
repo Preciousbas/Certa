@@ -1,27 +1,26 @@
 import { getDatabase, redeemJoinCode } from "@certa/db";
-import { parseStartPayload } from "@certa/shared";
+import { codeFromInvite } from "@certa/shared";
 import { z } from "zod";
 import { attachCookies } from "../../../../../../src/server/auth/authenticate";
 import { apiError } from "../../../../lib/schemas";
 import { requireUser } from "../../../../lib/with-auth";
+import { sideLabel } from "../../../../../../src/server/projects/selfServe";
 
 export const runtime = "nodejs";
 
-const joinInput = z.object({ code: z.string().trim().min(8).max(16) }).strict();
+const joinInput = z.object({ code: z.string().trim().min(8).max(200) }).strict();
 
 export async function POST(request: Request) {
   const auth = await requireUser(request);
   if (auth instanceof Response) return auth;
   const parsed = joinInput.safeParse(await request.json().catch(() => null));
-  const payload = parsed.success ? parseStartPayload(parsed.data.code) : { kind: "plain" as const };
-  if (!parsed.success || payload.kind !== "join") {
-    return attachCookies(apiError(400, "Enter the 8-character invite code."), auth.setCookies);
-  }
+  const code = parsed.success ? codeFromInvite(parsed.data.code) : null;
+  if (!code) return attachCookies(apiError(400, "Paste the invite link."), auth.setCookies);
   const db = await getDatabase();
   const result = await redeemJoinCode(db, {
     telegramId: auth.user.telegramId,
     name: auth.user.name,
-    code: payload.code,
+    code,
   });
   if (!result.ok) {
     const message =
@@ -29,8 +28,19 @@ export async function POST(request: Request) {
         ? "That code has expired. Ask for a new one."
         : result.reason === "rate_limited"
           ? "Too many tries. Wait a few minutes."
-          : "That code is not valid. Check it with the person who sent it.";
+          : result.reason === "revoked"
+            ? "That invite was revoked."
+            : result.reason === "taken"
+              ? "That side of the contract is already taken."
+              : "That code is not valid. Check it with the person who sent it.";
     return attachCookies(apiError(400, message), auth.setCookies);
   }
-  return attachCookies(Response.json({ projectId: result.projectId }), auth.setCookies);
+  return attachCookies(
+    Response.json({
+      projectId: result.projectId,
+      role: result.role,
+      message: `You've joined ${result.projectName} as the ${sideLabel(result.role)}.`,
+    }),
+    auth.setCookies,
+  );
 }

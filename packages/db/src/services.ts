@@ -31,11 +31,21 @@ export function newJoinCode(): string {
   return generateJoinCode(randomBytes(8));
 }
 
-export const STARTER_ROLES = ["client", "consultant", "contractor", "subcontractor"] as const;
-export type StarterRole = (typeof STARTER_ROLES)[number];
+export const CONTRACT_SIDES = ["client", "contractor"] as const;
+export type ContractSide = (typeof CONTRACT_SIDES)[number];
+export const STARTER_ROLES = CONTRACT_SIDES;
+export type StarterRole = ContractSide;
 
-export function partyRoleFor(role: StarterRole): PartyRole {
+export function oppositeSide(role: ContractSide): ContractSide {
+  return role === "client" ? "contractor" : "client";
+}
+
+export function partyRoleFor(role: ContractSide | "consultant" | "subcontractor"): PartyRole {
   return role === "contractor" ? "main_contractor" : role;
+}
+
+export function membershipRoleFor(partyRole: string): string {
+  return partyRole === "main_contractor" ? "contractor" : partyRole;
 }
 
 export async function startOwnProject(
@@ -101,7 +111,22 @@ export async function startOwnProject(
       target: botSessions.telegramId,
       set: { activeProjectId: project.id, updatedAt: new Date() },
     });
-  return { projectId: project.id, workspaceId: workspace.id, userId: user.id, role: input.role, partyId: party.id };
+  const other = oppositeSide(input.role);
+  const invite = await issueJoinCode(db, {
+    projectId: project.id,
+    workspaceId: workspace.id,
+    role: partyRoleFor(other),
+  });
+  return {
+    projectId: project.id,
+    workspaceId: workspace.id,
+    userId: user.id,
+    role: input.role,
+    partyId: party.id,
+    inviteCode: invite.code,
+    inviteRole: other,
+    inviteExpiresAt: invite.expiresAt,
+  };
 }
 
 export async function upsertTelegramUser(db: Database, telegramId: bigint, name: string) {
@@ -165,12 +190,12 @@ export async function issueJoinCode(
 }
 
 export type RedeemResult =
-  | { ok: true; projectId: string; partyId: string }
-  | { ok: false; reason: "invalid" | "expired" | "rate_limited" };
+  | { ok: true; projectId: string; partyId: string; role: string; projectName: string }
+  | { ok: false; reason: "invalid" | "expired" | "rate_limited" | "revoked" | "taken" };
 
 export async function redeemJoinCode(
   db: Database,
-  input: { telegramId: bigint; name: string; code: string; now?: Date },
+  input: { telegramId: bigint; name: string; code: string; now?: Date; projectId?: string },
 ): Promise<RedeemResult> {
   const now = input.now ?? new Date();
   const since = new Date(now.getTime() - JOIN_WINDOW_MS);
@@ -183,12 +208,21 @@ export async function redeemJoinCode(
   const hash = sha256Hex(input.code.trim().toUpperCase());
   const rows = await db.select().from(joinCodes).where(eq(joinCodes.codeHash, hash));
   const code = rows[0];
-  const fail = async (reason: "invalid" | "expired"): Promise<RedeemResult> => {
+  const fail = async (reason: "invalid" | "expired" | "revoked"): Promise<RedeemResult> => {
     await db.insert(joinAttempts).values({ telegramId: input.telegramId, createdAt: now });
     return { ok: false, reason };
   };
   if (!code || code.useCount >= code.maxUses) return fail("invalid");
+  if (code.revokedAt) return fail("revoked");
   if (code.expiresAt.getTime() < now.getTime()) return fail("expired");
+  if (input.projectId && input.projectId !== code.projectId) return fail("invalid");
+
+  const membershipRole = membershipRoleFor(code.role);
+  const filled = await db
+    .select()
+    .from(memberships)
+    .where(and(eq(memberships.projectId, code.projectId), eq(memberships.role, membershipRole), eq(memberships.status, "active")));
+  if (filled.length > 0) return { ok: false, reason: "taken" };
 
   const user = await upsertTelegramUser(db, input.telegramId, input.name);
   const [party] = await db
@@ -201,9 +235,9 @@ export async function redeemJoinCode(
     })
     .returning();
   if (!party) throw new Error("party insert failed");
-  const membershipRole = party.role === "main_contractor" ? "contractor" : party.role;
-  if (["client", "consultant", "contractor", "subcontractor", "viewer"].includes(membershipRole)) {
-    await db.insert(memberships).values({ projectId: code.projectId, userId: user.id, role: membershipRole }).onConflictDoNothing();
+  const joinedRole = membershipRoleFor(party.role);
+  if (["client", "consultant", "contractor", "subcontractor", "viewer"].includes(joinedRole)) {
+    await db.insert(memberships).values({ projectId: code.projectId, userId: user.id, role: joinedRole }).onConflictDoNothing();
   }
   await db
     .update(joinCodes)
@@ -216,7 +250,21 @@ export async function redeemJoinCode(
       target: botSessions.telegramId,
       set: { activeProjectId: code.projectId, updatedAt: now },
     });
-  return { ok: true, projectId: code.projectId, partyId: party.id };
+  const project = (await db.select().from(projects).where(eq(projects.id, code.projectId)))[0];
+  return { ok: true, projectId: code.projectId, partyId: party.id, role: joinedRole, projectName: project?.name ?? "" };
+}
+
+export async function revokeJoinCode(db: Database, input: { projectId: string; code: string; now?: Date }): Promise<boolean> {
+  const hash = sha256Hex(input.code.trim().toUpperCase());
+  const rows = await db.select().from(joinCodes).where(eq(joinCodes.codeHash, hash));
+  const code = rows[0];
+  if (!code || code.projectId !== input.projectId) return false;
+  if (code.revokedAt) return true;
+  await db
+    .update(joinCodes)
+    .set({ revokedAt: input.now ?? new Date(), updatedAt: input.now ?? new Date() })
+    .where(eq(joinCodes.id, code.id));
+  return true;
 }
 
 export async function setActiveProject(

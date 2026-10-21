@@ -1,5 +1,5 @@
 import { extractContract, textFromUpload } from "@certa/ai";
-import { createMemoryDatabase, documents, issueJoinCode, memberships, projects, seedDemo, stages, users, workspaces, type Database } from "@certa/db";
+import { createMemoryDatabase, documents, memberships, projects, seedDemo, stages, startOwnProject, users, workspaces, type Database } from "@certa/db";
 import { formatOfficialRate, fxRateFromNaira, nairaToKobo, usdcFromNgnKobo } from "@certa/shared";
 import { eq } from "drizzle-orm";
 import type { Update } from "grammy/types";
@@ -93,16 +93,14 @@ describe("bot", () => {
     delete process.env.CDP_API_KEY_ID;
     delete process.env.CDP_API_KEY_SECRET;
     delete process.env.CDP_WALLET_SECRET;
-    const project = (await db.select().from(projects)).find((row) => row.name.includes("EM 22"));
-    if (!project) throw new Error("demo project missing");
-    const { code } = await issueJoinCode(db, {
-      projectId: project.id,
-      workspaceId: project.workspaceId,
-      role: "main_contractor",
-      code: "K7MX2QPA",
+    const started = await startOwnProject(db, {
+      telegramId: 6161n,
+      name: "Ada",
+      projectName: "New gatehouse",
+      role: "client",
     });
-    const text = await run(`/start ${code}`, 5151, 11);
-    expect(text).toMatch(/payment account/i);
+    const text = await run(`/start ${started.inviteCode}`, 5151, 11);
+    expect(text).toMatch(/You've joined New gatehouse as the Contractor\./);
     const user = (await db.select().from(users).where(eq(users.telegramId, 5151n)))[0];
     const roles = user ? await db.select().from(memberships).where(eq(memberships.userId, user.id)) : [];
     expect(roles.map((row) => row.role)).toContain("contractor");

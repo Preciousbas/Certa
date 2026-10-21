@@ -2,6 +2,7 @@ import { getDatabase, submissions, users } from "@certa/db";
 import { formatNgnFromKobo } from "@certa/shared";
 import { eq } from "drizzle-orm";
 import { EmptyState } from "../components/empty-state";
+import { MiniHome } from "../components/mini-home";
 import { MoneyReleased } from "../components/money";
 import { NeedsYouCard } from "../components/needs-you";
 import { ProgressBar } from "../components/progress-bar";
@@ -13,10 +14,12 @@ export default async function HomePage() {
   const data = await loadProject();
   if (!data) {
     return (
-      <EmptyState
-        title="Nothing has happened on this project yet."
-        body="Upload the contract or BoQ to begin."
-      />
+      <MiniHome>
+        <EmptyState
+          title="Nothing has happened on this project yet."
+          body="Upload the contract or BoQ to begin."
+        />
+      </MiniHome>
     );
   }
   const released = data.stages.filter((stage) => stage.status === "released");
@@ -46,6 +49,7 @@ export default async function HomePage() {
       ? "This stage is in review."
       : `AI confidence ${liveNote.confidence.toFixed(2)}. ${liveNote.confidence < 0.85 ? "Below auto-release." : "Meets auto-release."} ${consultantName ? `Send to ${consultantName}.` : "Send it for review."}`;
   return (
+    <MiniHome>
     <div>
       <article className="hero">
         <p className="eyebrow">{data.project.siteLocation}</p>
@@ -87,5 +91,6 @@ export default async function HomePage() {
         ))}
       </div>
     </div>
+    </MiniHome>
   );
 }

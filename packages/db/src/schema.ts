@@ -106,6 +106,7 @@ export const joinCodes = pgTable("join_codes", {
   expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
   maxUses: integer("max_uses").notNull().default(1),
   useCount: integer("use_count").notNull().default(0),
+  revokedAt: timestamp("revoked_at", { withTimezone: true }),
   ...timestamps,
 });
 

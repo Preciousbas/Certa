@@ -17,6 +17,23 @@ export function joinDeepLink(botUsername: string, code: string): string {
   return `https://t.me/${name}?start=${code}`;
 }
 
+export function codeFromInvite(input: string): string | null {
+  const trimmed = input.trim();
+  if (!trimmed) return null;
+  try {
+    const url = new URL(trimmed);
+    const start = url.searchParams.get("start");
+    if (start) {
+      const parsed = parseStartPayload(start);
+      return parsed.kind === "join" ? parsed.code : null;
+    }
+  } catch {
+    // A bare code is not a URL.
+  }
+  const parsed = parseStartPayload(trimmed);
+  return parsed.kind === "join" ? parsed.code : null;
+}
+
 export function parseStartPayload(payload: string | undefined): { kind: "join"; code: string } | { kind: "plain" } {
   if (!payload) return { kind: "plain" };
   const raw = payload.startsWith("join_") ? payload.slice(5) : payload;
