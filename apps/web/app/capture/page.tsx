@@ -1,74 +1,91 @@
-"use client";
+import { getDatabase, submissions, users } from "@certa/db";
+import { eq } from "drizzle-orm";
+import { z } from "zod";
+import { AICheckCard } from "../../components/ai-check";
+import { Camera } from "../../components/camera";
+import { loadProject } from "../../lib/data";
+import { isReviewStatus } from "../../lib/labels";
 
-import { useState } from "react";
+const assessment = z.object({
+  observations: z.array(z.string()).optional(),
+  missingEvidence: z.array(z.string()).optional(),
+  evidence: z.array(z.object({ item: z.string(), seen: z.boolean() })).optional(),
+  verdict: z
+    .object({
+      evidence: z.array(z.object({ item: z.string(), seen: z.boolean() })).optional(),
+      concerns: z.array(z.string()).optional(),
+    })
+    .optional(),
+  concerns: z.array(z.string()).optional(),
+  model: z.string().nullable().optional(),
+  source: z.string().optional(),
+  decision: z.string().optional(),
+});
 
-export default function CapturePage() {
-  const [message, setMessage] = useState("Open the camera. Gallery uploads are refused.");
-  const [busy, setBusy] = useState(false);
-
-  async function shoot(video: HTMLVideoElement) {
-    setBusy(true);
-    setMessage("Checking the photo.");
-    try {
-      const nonceRes = await fetch("/api/mini/nonce", { method: "POST" });
-      const nonceBody = (await nonceRes.json()) as { nonce?: string; error?: string };
-      if (!nonceBody.nonce) throw new Error(nonceBody.error ?? "No capture session.");
-      const canvas = document.createElement("canvas");
-      canvas.width = video.videoWidth || 640;
-      canvas.height = video.videoHeight || 480;
-      const ctx = canvas.getContext("2d");
-      if (!ctx) throw new Error("Camera frame missing.");
-      ctx.drawImage(video, 0, 0);
-      const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.9));
-      if (!blob) throw new Error("Could not read the frame.");
-      const position = await new Promise<GeolocationPosition>((resolve, reject) => {
-        navigator.geolocation.getCurrentPosition(resolve, reject, { enableHighAccuracy: true, timeout: 8000 });
-      }).catch(() => null);
-      const body = new FormData();
-      body.set("photo", blob, "capture.jpg");
-      body.set("nonce", nonceBody.nonce);
-      body.set("capturedAt", String(Date.now()));
-      if (position) {
-        body.set("lat", String(position.coords.latitude));
-        body.set("lng", String(position.coords.longitude));
-      }
-      const response = await fetch("/api/mini/capture", { method: "POST", body });
-      const result = (await response.json()) as { accepted?: boolean; reasons?: string[] };
-      setMessage(result.accepted ? "Photo kept. A stamped copy is on the report." : (result.reasons ?? ["Rejected."]).join(" "));
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "The capture failed.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
+export default async function CapturePage() {
+  const data = await loadProject();
+  const stage =
+    data?.stages.find((row) => isReviewStatus(row.status)) ??
+    data?.stages.find((row) => row.status !== "released");
+  if (!data || !stage) return <p>No stage is open for a photo.</p>;
+  const db = await getDatabase();
+  const note = (
+    await db.select().from(submissions).where(eq(submissions.projectId, data.project.id))
+  )
+    .filter((row) => row.stageId === stage.id)
+    .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0];
+  const parsed = assessment.safeParse(note?.aiAssessmentJson);
+  const consultant = data.parties.find((party) => party.role === "consultant");
+  const consultantName = consultant
+    ? (await db.select().from(users).where(eq(users.id, consultant.userId)))[0]?.name
+    : undefined;
+  const evidence = parsed.success
+    ? (parsed.data.verdict?.evidence ?? parsed.data.evidence)
+    : undefined;
+  const seen = evidence
+    ? evidence.filter((item) => item.seen).map((item) => item.item)
+    : parsed.success
+      ? (parsed.data.observations ?? [])
+      : [];
+  const missing = evidence
+    ? evidence.filter((item) => !item.seen).map((item) => item.item)
+    : parsed.success
+      ? (parsed.data.missingEvidence ?? [])
+      : [];
+  const modelNote =
+    parsed.success && parsed.data.model
+      ? null
+      : note
+        ? "No photo model is recorded for this check."
+        : null;
+  const notice =
+    note?.decision === "recommend_release"
+      ? "The check passed the threshold. The money stays locked until someone releases it."
+      : note?.decision === "hold"
+        ? "The check is on hold. The money stays locked."
+        : note?.decision === "consultant_review"
+          ? `Sent to ${consultantName ?? "the consultant"} for review. Money stays locked until then.`
+          : null;
   return (
-    <div>
-      <p className="eyebrow">Camera</p>
-      <h1>Take it here. Do not pick one from the gallery.</h1>
-      <video
-        autoPlay
-        muted
-        playsInline
-        ref={(node) => {
-          if (!node || node.srcObject) return;
-          void navigator.mediaDevices?.getUserMedia({ video: { facingMode: "environment" }, audio: false }).then((stream) => {
-            node.srcObject = stream;
-          }).catch(() => setMessage("Camera permission was refused."));
-        }}
-      />
-      <button
-        type="button"
-        disabled={busy}
-        style={{ marginTop: 12 }}
-        onClick={(event) => {
-          const video = event.currentTarget.parentElement?.querySelector("video");
-          if (video) void shoot(video);
-        }}
-      >
-        Take photo
-      </button>
-      <p className={message.startsWith("Photo kept") ? "toast" : "muted"}>{message}</p>
-    </div>
+    <Camera
+      projectId={data.project.id}
+      stageId={stage.id}
+      stageName={stage.name}
+      stageNumber={stage.stageIndex + 1}
+      botUsername={process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME ?? ""}
+      actionLabel={note ? "Add another photo" : "Take photo"}
+    >
+      {note ? (
+        <AICheckCard
+          status={stage.status}
+          confidence={note.confidence}
+          threshold={0.85}
+          seen={seen}
+          missing={missing}
+          notice={notice}
+          modelNote={modelNote}
+        />
+      ) : null}
+    </Camera>
   );
 }
