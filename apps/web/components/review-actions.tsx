@@ -22,9 +22,9 @@ export function ReviewActions({ projectId, stageId }: { projectId: string; stage
       headers: { authorization: `tma ${initData}`, "content-type": "application/json" },
       body: JSON.stringify({ projectId, stageId, decision, reason: reason.trim() || undefined }),
     });
-    const body = (await response.json()) as { error?: string; moneyMoved?: boolean };
+    const body = (await response.json()) as { error?: string; message?: string; moneyMoved?: boolean };
     if (body.moneyMoved === false) setMessage("Recorded. The money stays locked.");
-    else setMessage(typeof body.error === "string" ? body.error : "Could not save that review.");
+    else setMessage(body.message ?? body.error ?? "Could not save that review.");
   }
 
   return (

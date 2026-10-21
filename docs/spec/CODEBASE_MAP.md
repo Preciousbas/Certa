@@ -77,6 +77,34 @@ Production pages skip `terms_hash = seeded-terms` unless `DEMO_SEED=true`, and t
 
 Vitest per package, Playwright in `apps/web/e2e`, Foundry in `contracts/test`. No `.github/workflows` directory.
 
+## Auth as found
+
+Inspected before the auth changes. Paths are the ones in this repo, not a single `src/app`.
+
+### Mini App `/api/mini/*`
+
+- `apps/web/lib/with-auth.ts:40-70` wraps every mini route. No `Authorization` header, or a failed check, returns 401 `{ "error": "Sign in from Telegram." }`.
+- `apps/web/lib/telegram-auth.ts:6-18` reads `Authorization: tma <initData>`.
+- `packages/db/src/telegramAuth.ts:19-39` does check the HMAC (`WebAppData` then HMAC-SHA256, constant-time compare) and `auth_date`. The window is 24 hours, and `auth_date` more than 60 seconds in the future is rejected. There is no 1 hour default.
+- The user row must already exist (`with-auth.ts:48-49`). Nothing writes `telegram_identities`.
+- Project and role are checked (`with-auth.ts:66-70`) from `parties` plus a workspace `admin` flag in `rolesOnProject` (`with-auth.ts:28-37`). `memberships` is not read. The browser can send `projectId`, and the role is not taken from that body, but it is also not taken from `memberships`.
+- No session cookie is set.
+
+### `/admin`
+
+- `apps/web/app/admin/page.tsx:8` renders for anyone. It calls `loadProject()` and shows spend, disputes, and failed releases. There is no layout gate, no middleware, and no `/api/admin`.
+
+### Webhook
+
+- `apps/web/app/api/telegram/route.ts:9-14` returns 503 when the token or secret is unset, and 401 `"unauthorized"` when `X-Telegram-Bot-Api-Secret-Token` is not `===` the secret. That compare is not constant-time. The body is not empty.
+- `update_id` is not stored. `telegram_updates` exists in `packages/db/migrations/0003_spec_schema.sql:219` and is unused. There is no `scripts/set-webhook.ts`.
+
+### Session
+
+- No `certa_session` cookie, no iron-session, no jose JWE, no `/login`, no `/api/auth/logout`.
+- Rate limit is an in-memory 30/minute bucket in `apps/web/lib/rate-limit.ts:10-18`, with the message "Too many requests. Wait a minute."
+- `users.platform_role` is not a column. `ADMIN_TELEGRAM_IDS` and `SESSION_SECRET` are in `src/env.ts` and `.env.example` only.
+
 ## What differed from the prompt
 
 - Not a single `src/` Next app. Supabase is Postgres via `DATABASE_URL`, not a Supabase Storage SDK.

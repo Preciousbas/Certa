@@ -24,6 +24,7 @@ export const users = pgTable("users", {
   phoneCiphertext: text("phone_ciphertext"),
   emailCiphertext: text("email_ciphertext"),
   locale: text("locale").notNull().default("en"),
+  platformRole: text("platform_role").notNull().default("user"),
   ...timestamps,
 });
 
@@ -284,6 +285,7 @@ export const auditLog = pgTable("audit_log", {
   ip: text("ip"),
   reason: text("reason"),
   requestId: text("request_id"),
+  actorKind: text("actor_kind").notNull().default("user"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
@@ -341,6 +343,24 @@ export const botSessions = pgTable("bot_sessions", {
   activeProjectId: uuid("active_project_id"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const telegramIdentities = pgTable("telegram_identities", {
+  telegramUserId: bigint("telegram_user_id", { mode: "bigint" }).primaryKey(),
+  userId: uuid("user_id").notNull(),
+  username: text("username"),
+  firstName: text("first_name"),
+  lastName: text("last_name"),
+  photoUrl: text("photo_url"),
+  languageCode: text("language_code"),
+  lastAuthAt: timestamp("last_auth_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const telegramUpdates = pgTable("telegram_updates", {
+  updateId: bigint("update_id", { mode: "bigint" }).primaryKey(),
+  receivedAt: timestamp("received_at", { withTimezone: true }).notNull().defaultNow(),
+  processedAt: timestamp("processed_at", { withTimezone: true }),
+  error: text("error"),
 });
 
 export const memberships = pgTable("memberships", {

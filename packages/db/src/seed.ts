@@ -19,6 +19,7 @@ import {
   changeRequests,
   contractSummaries,
   disputes,
+  memberships,
   parties,
   projects,
   stages,
@@ -167,6 +168,13 @@ export async function seedDemo(db: Database) {
       },
     ])
     .returning();
+  await db.insert(memberships).values(
+    partyRows.map((party) => ({
+      projectId: project.id,
+      userId: party.userId,
+      role: party.role === "main_contractor" ? "contractor" : party.role,
+    })),
+  );
   const subParty = partyRows.find((row) => row.role === "subcontractor");
   if (!subParty) throw new Error("seed party failed");
 

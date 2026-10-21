@@ -61,8 +61,8 @@ export function Camera({ projectId, stageId, stageName, stageNumber, botUsername
         headers: { authorization: `tma ${initData}`, "content-type": "application/json" },
         body: JSON.stringify({ projectId, stageId }),
       });
-      const nonceBody = (await nonceRes.json()) as { nonce?: string; error?: string };
-      if (!nonceBody.nonce) throw new Error(nonceBody.error ?? "The capture session was refused.");
+      const nonceBody = (await nonceRes.json()) as { nonce?: string; error?: string; message?: string };
+      if (!nonceBody.nonce) throw new Error(nonceBody.message ?? nonceBody.error ?? "The capture session was refused.");
       const canvas = document.createElement("canvas");
       canvas.width = video.videoWidth || 640;
       canvas.height = video.videoHeight || 480;
@@ -85,8 +85,8 @@ export function Camera({ projectId, stageId, stageName, stageNumber, botUsername
         body.set("lng", String(position.coords.longitude));
       }
       const response = await fetch("/api/mini/capture", { method: "POST", headers: { authorization: `tma ${initData}` }, body });
-      const result = (await response.json()) as { accepted?: boolean; reasons?: string[]; error?: string };
-      if (result.error) setMessage(result.error);
+      const result = (await response.json()) as { accepted?: boolean; reasons?: string[]; error?: string; message?: string };
+      if (result.message || result.error) setMessage(result.message ?? result.error ?? "The photo was refused.");
       else setMessage(result.accepted ? "Photo kept." : (result.reasons ?? ["The photo was refused."]).join(" "));
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "The capture failed.");

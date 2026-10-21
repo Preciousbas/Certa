@@ -1,38 +1,49 @@
 import { contractFromBill, sniffDocument, textFromUpload } from "@certa/ai";
 import { formatNgnFromKobo } from "@certa/shared";
+import { z } from "zod";
+import { apiError } from "../../../../lib/schemas";
+import { withUser } from "../../../../lib/with-auth";
 
 export const runtime = "nodejs";
 
 const MAX_BYTES = 8_000_000;
 
-export async function POST(request: Request) {
+const previewFile = z
+  .object({
+    name: z.string().min(1).max(240),
+    size: z.number().int().positive().max(MAX_BYTES),
+  })
+  .strict();
+
+export const POST = withUser(async (_userId, request) => {
   const form = await request.formData().catch(() => null);
-  const file = form?.get("file");
-  if (!(file instanceof File)) return Response.json({ error: "Choose a contract or a bill of quantities." }, { status: 400 });
-  if (file.size > MAX_BYTES) return Response.json({ error: "That file is too large. Send a file under 8 MB." }, { status: 400 });
+  if (!form) return apiError(400, "Choose a contract or a bill of quantities.");
+  const unknown = [...form.keys()].filter((key) => key !== "file");
+  if (unknown.length > 0) return apiError(400, "Choose a contract or a bill of quantities.");
+  const file = form.get("file");
+  if (!(file instanceof File)) return apiError(400, "Choose a contract or a bill of quantities.");
+  const parsed = previewFile.safeParse({ name: file.name, size: file.size });
+  if (!parsed.success) return apiError(400, "That file is too large. Send a file under 8 MB.");
   const bytes = new Uint8Array(await file.arrayBuffer());
   const kind = sniffDocument(file.name, bytes);
-  if (kind === "heic") return Response.json({ error: "Send a JPEG or PNG photo of the page." }, { status: 400 });
+  if (kind === "heic") return apiError(400, "Send a JPEG or PNG photo of the page.");
   if (kind === "jpeg" || kind === "png") {
-    return Response.json({ error: "Send the Excel bill or a PDF. A photo of the page is not read yet." }, { status: 400 });
+    return apiError(400, "Send the Excel bill or a PDF. A photo of the page is not read yet.");
   }
-  if (!kind) return Response.json({ error: "That file is not a PDF, Word, Excel, or CSV." }, { status: 400 });
+  if (!kind) return apiError(400, "That file is not a PDF, Word, Excel, or CSV.");
   const text = await textFromUpload(file.name, bytes).catch(() => "");
-  const parsed = contractFromBill(text, file.name);
-  if (!parsed) {
-    return Response.json(
-      { error: "No bill table was found. The sheet needs item, description, quantity, rate, and amount." },
-      { status: 422 },
-    );
+  const bill = contractFromBill(text, file.name);
+  if (!bill) {
+    return apiError(422, "No bill table was found. The sheet needs item, description, quantity, rate, and amount.");
   }
   return Response.json({
-    contractSum: formatNgnFromKobo(BigInt(parsed.summary.contractSumKobo)),
-    stages: parsed.summary.stages.map((stage, index) => ({
+    contractSum: formatNgnFromKobo(BigInt(bill.summary.contractSumKobo)),
+    stages: bill.summary.stages.map((stage, index) => ({
       number: index + 1,
       name: stage.name,
       amount: formatNgnFromKobo(BigInt(stage.amountKobo ?? "0")),
       criteria: stage.description,
     })),
-    issues: parsed.flags,
+    issues: bill.flags,
   });
-}
+});

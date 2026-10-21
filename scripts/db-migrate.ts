@@ -14,6 +14,10 @@ async function main() {
     { name: string | null }[]
   >`select to_regclass('public.contract_versions') as name`;
   if (!versions[0]?.name) await sql.unsafe(migrationNamed("0003"));
+  const platformRole = await sql<
+    { name: string | null }[]
+  >`select column_name as name from information_schema.columns where table_schema = 'public' and table_name = 'users' and column_name = 'platform_role'`;
+  if (!platformRole[0]?.name) await sql.unsafe(migrationNamed("0004"));
   await sql.end();
   process.stdout.write("migrated\n");
 }

@@ -22,8 +22,8 @@ export function ChangeActions({ projectId, changeId }: { projectId: string; chan
       headers: { authorization: `tma ${initData}`, "content-type": "application/json" },
       body: JSON.stringify({ projectId, changeId, decision, reason: reason.trim() || undefined }),
     });
-    const body = (await response.json()) as { error?: string };
-    setMessage(typeof body.error === "string" ? body.error : "Could not save that answer.");
+    const body = (await response.json()) as { error?: string; message?: string };
+    setMessage(body.message ?? body.error ?? "Could not save that answer.");
   }
 
   return (

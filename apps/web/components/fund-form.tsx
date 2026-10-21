@@ -46,9 +46,9 @@ export function FundForm({ projectId, defaultUpTo, stages, rateLabel }: Props) {
         headers: { authorization: `tma ${initData}`, "content-type": "application/json" },
         body: JSON.stringify({ projectId, upToStage: upTo, idempotencyKey: key.current, currency }),
       });
-      const body = (await response.json()) as Partial<FundReceipt> & { error?: string };
+      const body = (await response.json()) as Partial<FundReceipt> & { error?: string; message?: string };
       if (!response.ok || !body.amountNgnKobo || !body.amountUsdc || !body.stages) {
-        setMessage(typeof body.error === "string" ? body.error : "Could not lock the money. Try again.");
+        setMessage(body.message ?? body.error ?? "Could not lock the money. Try again.");
         return;
       }
       window.Telegram?.WebApp?.HapticFeedback?.notificationOccurred("success");

@@ -1,9 +1,10 @@
-import { verifyDownload } from "@certa/db";
+import { apiError, emptyQuery } from "../../../lib/schemas";
+import { requireSignedDownload } from "../../../lib/signed-download";
 
 export async function GET(request: Request) {
-  const secret = process.env.APP_ENCRYPTION_KEY ?? "certa-demo-not-for-production";
-  const url = new URL(request.url);
-  const file = verifyDownload(url.search, secret);
-  if (!file) return Response.json({ error: "That link is expired or not yours." }, { status: 401 });
+  const file = requireSignedDownload(request);
+  if (file instanceof Response) return file;
+  const extra = emptyQuery.safeParse({});
+  if (!extra.success) return apiError(400, "That link is expired or not yours.");
   return Response.json({ key: file.key, userId: file.userId, expiresAt: file.expiresAt });
 }

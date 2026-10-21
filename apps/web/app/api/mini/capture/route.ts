@@ -4,7 +4,7 @@ import { evaluatePhoto, readJpegExif } from "@certa/shared";
 import { and, eq, isNull } from "drizzle-orm";
 import type { Hex } from "viem";
 import { broadcastStageRelease } from "../../../../lib/chain-release";
-import { apiError, apiJson, captureOutput, projectIdField } from "../../../../lib/schemas";
+import { apiError, apiJson, captureFields, captureOutput, projectIdField } from "../../../../lib/schemas";
 import { saveStampedPhoto, stampPhoto } from "../../../../lib/stamp-photo";
 import { withAuth } from "../../../../lib/with-auth";
 import { recordCaptureOutcome } from "../../../../../../src/server/stages/transition";
@@ -21,6 +21,17 @@ export const POST = withAuth(
     if (!projectIdField.safeParse(stageId).success)
       return apiError(400, "Choose a stage before taking the photo.");
     if (!(file instanceof File)) return apiError(400, "Take the photo in the camera page.");
+    const fields = captureFields.safeParse({
+      projectId: String(form.get("projectId") ?? ""),
+      stageId,
+      nonce,
+      capturedAt: String(form.get("capturedAt") ?? ""),
+      ...(form.get("lat") ? { lat: String(form.get("lat")) } : {}),
+      ...(form.get("lng") ? { lng: String(form.get("lng")) } : {}),
+    });
+    if (!fields.success) return apiError(400, "Take the photo in the camera page.");
+    const unknown = [...form.keys()].filter((key) => !["photo", "projectId", "stageId", "nonce", "capturedAt", "lat", "lng"].includes(key));
+    if (unknown.length > 0) return apiError(400, "Take the photo in the camera page.");
     const stage = (
       await db
         .select()
@@ -143,5 +154,5 @@ export const POST = withAuth(
     }
     return apiJson(captureOutput, checks, checks.accepted ? 200 : 422);
   },
-  { roles: ["contractor", "subcontractor"] },
+  { roles: ["contractor", "subcontractor"], assignedStage: true, upload: true, ai: true },
 );

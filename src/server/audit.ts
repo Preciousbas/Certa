@@ -12,6 +12,8 @@ export async function audit(
     reason?: string;
     requestId?: string;
     workspaceId?: string;
+    projectId?: string;
+    actorKind?: string;
   },
 ) {
   const payload = JSON.stringify({
@@ -25,7 +27,9 @@ export async function audit(
   });
   return appendAudit(db, {
     workspaceId: input.workspaceId,
+    projectId: input.projectId,
     actorUserId: input.actor,
+    actorKind: input.actorKind,
     action: input.action,
     entity: input.entity,
     entityId: input.entityId,

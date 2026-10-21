@@ -1,5 +1,15 @@
 {
   "extends": "../../tsconfig.base.json",
-  "compilerOptions": { "outDir": "dist", "types": ["node"] },
-  "include": ["src"]
+  "compilerOptions": {
+    "outDir": "dist",
+    "types": ["node"],
+    "declaration": false,
+    "rootDir": "../.."
+  },
+  "include": [
+    "src",
+    "../../src/server/auth/rbac.ts",
+    "../../src/server/auth/errors.ts",
+    "../../src/server/auth/matrix.ts"
+  ]
 }

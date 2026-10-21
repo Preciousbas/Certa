@@ -7,5 +7,5 @@ export const POST = withAuth(
     if (!input.success) return apiError(400, "This project is missing.");
     return apiError(409, "The desk has nothing to change.");
   },
-  { roles: ["admin"] },
+  { platformAdmin: true },
 );

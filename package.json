@@ -29,7 +29,10 @@
   "dependencies": {
     "@certa/db": "workspace:*",
     "@certa/shared": "workspace:*",
+    "@upstash/ratelimit": "2.2.0",
+    "@upstash/redis": "1.39.0",
     "drizzle-orm": "0.45.4",
+    "jose": "6.2.13",
     "next": "15.5.27",
     "postgres": "3.4.9",
     "server-only": "0.0.1",

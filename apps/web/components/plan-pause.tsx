@@ -15,8 +15,8 @@ export function PlanPause({ projectId }: { projectId: string }) {
       headers: { authorization: `tma ${initData}`, "content-type": "application/json" },
       body: JSON.stringify({ projectId }),
     });
-    const body = (await response.json()) as { error?: string };
-    setMessage(typeof body.error === "string" ? body.error : "Plan updated.");
+    const body = (await response.json()) as { error?: string; message?: string };
+    setMessage(body.message ?? (response.ok ? "Plan updated." : body.error ?? "Plan updated."));
   }
   return (
     <div>

@@ -13,6 +13,7 @@ import {
   visibleProjectIds,
   type Database,
 } from "@certa/db";
+import { requireMember } from "../../../src/server/auth/rbac";
 import { copy, formatMoneyPair, formatNgnFromKobo, formatOfficialRate, type OfficialRate } from "@certa/shared";
 import { conversations, createConversation, type ConversationFlavor } from "@grammyjs/conversations";
 import { limit } from "@grammyjs/ratelimiter";
@@ -59,6 +60,22 @@ export function createBot(token: string, deps: BotDeps): Bot<BotContext> {
   bot.use(session({ initial: (): SessionData => ({}) }));
   bot.use(conversations());
   bot.use(limit({ timeFrame: 2_000, limit: 20, onLimitExceeded: async (ctx) => ctx.reply(copy.rateLimited) }));
+
+  async function gate(ctx: Context, projectScoped: boolean): Promise<boolean> {
+    const from = ctx.from;
+    if (!from) return false;
+    const user = await upsertTelegramUser(deps.db, BigInt(from.id), from.first_name || "Telegram");
+    if (!projectScoped) return true;
+    const row = await active(deps.db, BigInt(from.id));
+    if (!row?.project) return true;
+    try {
+      await requireMember(row.project.id, undefined, { db: deps.db, userId: user.id });
+      return true;
+    } catch {
+      await say(ctx, "You don't have permission to do this on this project.");
+      return false;
+    }
+  }
 
   async function header(ctx: Context, stage = "Overview"): Promise<string> {
     const from = ctx.from?.id;
@@ -232,6 +249,7 @@ export function createBot(token: string, deps: BotDeps): Bot<BotContext> {
   }
 
   bot.on("message:document", async (ctx) => {
+    if (!(await gate(ctx, false))) return;
     const document = ctx.message?.document;
     if (!document || !filenameOf(document)) {
       await say(ctx, "Send the contract as a PDF, Word, Excel, CSV, or text file.");
@@ -245,6 +263,7 @@ export function createBot(token: string, deps: BotDeps): Bot<BotContext> {
   });
 
   bot.command("start", async (ctx) => {
+    if (!(await gate(ctx, false))) return;
     const payload = typeof ctx.match === "string" ? ctx.match.trim() : "";
     if (payload.startsWith("join_")) {
       await joinWithCode(ctx, payload.slice(5));
@@ -256,11 +275,13 @@ export function createBot(token: string, deps: BotDeps): Bot<BotContext> {
   });
 
   bot.callbackQuery("go-join", async (ctx) => {
+    if (!(await gate(ctx, false))) return;
     await ctx.answerCallbackQuery();
     await ctx.conversation.enter("joinConversation");
   });
 
   bot.command("join", async (ctx) => {
+    if (!(await gate(ctx, false))) return;
     const code = typeof ctx.match === "string" ? ctx.match.trim() : "";
     if (!code) {
       await ctx.conversation.enter("joinConversation");
@@ -270,6 +291,7 @@ export function createBot(token: string, deps: BotDeps): Bot<BotContext> {
   });
 
   bot.command("accept", async (ctx) => {
+    if (!(await gate(ctx, true))) return;
     const row = ctx.from ? await active(deps.db, BigInt(ctx.from.id)) : null;
     if (!row?.project || !row.user) {
       await say(ctx, copy.noProjects);
@@ -291,10 +313,12 @@ export function createBot(token: string, deps: BotDeps): Bot<BotContext> {
   });
 
   bot.command("help", async (ctx) => {
+    if (!(await gate(ctx, false))) return;
     await say(ctx, "/project  /stages  /submit  /switch  /join  /wallet  /dispute  /changes  /report\nSend a contract file to open a project.");
   });
 
   bot.command("project", async (ctx) => {
+    if (!(await gate(ctx, true))) return;
     const row = ctx.from ? await active(deps.db, BigInt(ctx.from.id)) : null;
     if (!row?.project) {
       await say(ctx, copy.noProjects);
@@ -310,6 +334,7 @@ export function createBot(token: string, deps: BotDeps): Bot<BotContext> {
   });
 
   bot.command("stages", async (ctx) => {
+    if (!(await gate(ctx, true))) return;
     const row = ctx.from ? await active(deps.db, BigInt(ctx.from.id)) : null;
     if (!row?.project) {
       await say(ctx, copy.noProjects, "Stages");
@@ -324,6 +349,7 @@ export function createBot(token: string, deps: BotDeps): Bot<BotContext> {
   });
 
   bot.command("switch", async (ctx) => {
+    if (!(await gate(ctx, true))) return;
     const row = ctx.from ? await active(deps.db, BigInt(ctx.from.id)) : null;
     if (!row || row.visible.length === 0) {
       await say(ctx, copy.noProjects);
@@ -343,6 +369,7 @@ export function createBot(token: string, deps: BotDeps): Bot<BotContext> {
   });
 
   bot.callbackQuery(/^sw:/, async (ctx) => {
+    if (!(await gate(ctx, true))) return;
     const projectId = ctx.callbackQuery.data.slice(3);
     if (!ctx.from) return;
     const user = await upsertTelegramUser(deps.db, BigInt(ctx.from.id), ctx.from.first_name);
@@ -352,11 +379,13 @@ export function createBot(token: string, deps: BotDeps): Bot<BotContext> {
   });
 
   bot.command("submit", async (ctx) => {
+    if (!(await gate(ctx, false))) return;
     const url = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
     await say(ctx, `Take the photo in the camera page.\n${url}/capture`, "Submit");
   });
 
   bot.command("wallet", async (ctx) => {
+    if (!(await gate(ctx, true))) return;
     const keyboard = new InlineKeyboard().text("Advanced", "adv");
     const row = ctx.from ? await active(deps.db, BigInt(ctx.from.id)) : null;
     const rate = row?.project ? await moneyLine(row.project.contractSumKobo, row.project.fxRateLocked) : "";
@@ -364,6 +393,7 @@ export function createBot(token: string, deps: BotDeps): Bot<BotContext> {
   });
 
   bot.callbackQuery("adv", async (ctx) => {
+    if (!(await gate(ctx, true))) return;
     await ctx.answerCallbackQuery();
     if (!ctx.from) return;
     const row = await active(deps.db, BigInt(ctx.from.id));
@@ -382,14 +412,17 @@ export function createBot(token: string, deps: BotDeps): Bot<BotContext> {
   });
 
   bot.command("dispute", async (ctx) => {
+    if (!(await gate(ctx, true))) return;
     await say(ctx, `${copy.disputeLocked}\nTell us the stage and the reason in the app.`, "Dispute");
   });
 
   bot.command("changes", async (ctx) => {
+    if (!(await gate(ctx, true))) return;
     await say(ctx, "Open changes are in the app. A no needs a reason.", "Changes");
   });
 
   bot.command("report", async (ctx) => {
+    if (!(await gate(ctx, true))) return;
     const weather = deps.paidWeather ? await deps.paidWeather() : "Weather check was not run.";
     await say(ctx, `Today's note is ready.\n${weather}`, "Report");
   });

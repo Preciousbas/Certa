@@ -8,6 +8,8 @@ import { POST as nonce } from "../app/api/mini/nonce/route";
 process.env.DEMO_SEED = "true";
 process.env.DEMO_MODE = "1";
 process.env.TELEGRAM_BOT_TOKEN = "123:test";
+process.env.SESSION_SECRET = "test-session-secret-at-least-32-chars";
+process.env.APP_URL = "http://localhost:3000";
 
 const token = process.env.TELEGRAM_BOT_TOKEN;
 
@@ -40,7 +42,9 @@ describe("mini app auth", () => {
   it("rejects a nonce request with no initData", async () => {
     const response = await post(nonce, "nonce", { projectId, stageId });
     expect(response.status).toBe(401);
-    expect(await response.json()).toEqual({ error: "Sign in from Telegram." });
+    const body = (await response.json()) as { error: string; message: string };
+    expect(body.error).toBe("not_signed_in");
+    expect(body.message).toBe("Sign in from Telegram.");
   });
 
   it("lets a subcontractor open a nonce and blocks them from funding", async () => {

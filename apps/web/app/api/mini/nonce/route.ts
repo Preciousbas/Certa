@@ -24,5 +24,5 @@ export const POST = withAuth(
     });
     return apiJson(nonceOutput, { nonce });
   },
-  { roles: ["contractor", "subcontractor"] },
+  { roles: ["contractor", "subcontractor"], assignedStage: true },
 );

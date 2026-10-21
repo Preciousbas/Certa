@@ -7,5 +7,5 @@ export const POST = withAuth(
     if (!input.success) return apiError(400, "A dispute needs a reason.");
     return apiError(409, "That stage cannot be disputed from here yet.");
   },
-  { roles: ["client"] },
+  { roles: ["client", "contractor"] },
 );

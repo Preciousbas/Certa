@@ -21,10 +21,13 @@ export default function UploadPage() {
     try {
       const body = new FormData();
       body.set("file", file);
-      const response = await fetch("/api/contract/preview", { method: "POST", body });
-      const json = (await response.json()) as Partial<Preview> & { error?: string };
+      const initData = window.Telegram?.WebApp?.initData;
+      const headers = new Headers();
+      if (initData) headers.set("authorization", `tma ${initData}`);
+      const response = await fetch("/api/contract/preview", { method: "POST", headers, body });
+      const json = (await response.json()) as Partial<Preview> & { error?: string; message?: string };
       if (!response.ok || !json.stages || !json.contractSum) {
-        setMessage(json.error ?? "That file could not be read.");
+        setMessage(json.message ?? json.error ?? "That file could not be read.");
         return;
       }
       setPreview({ contractSum: json.contractSum, stages: json.stages, issues: json.issues ?? [] });

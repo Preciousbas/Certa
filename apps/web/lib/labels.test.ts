@@ -6,7 +6,7 @@ describe("labels", () => {
   it("does not echo database status words", () => {
     expect(stageStatusLabel("submitted")).toBe("In review");
     expect(stageStatusLabel("released")).toBe("Released");
-    expect(stageStatusLabel("funded")).toBe("Locked");
+    expect(stageStatusLabel("funded")).toBe("Not started");
     expect(stageStatusLabel("mystery")).toBe("Not started");
   });
 

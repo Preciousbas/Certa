@@ -15,6 +15,33 @@ try {
   // The repo .env is optional. Apps still run on their own environment.
 }
 
+function connectSources(): string {
+  const extra = ["https://telegram.org"];
+  for (const name of ["SUPABASE_URL", "RPC_URL", "SEPOLIA_RPC_URL", "NEXT_PUBLIC_APP_URL"]) {
+    const value = process.env[name];
+    if (!value) continue;
+    try {
+      extra.push(new URL(value).origin);
+    } catch {
+      // An unset or relative URL is left out of connect-src.
+    }
+  }
+  return ["'self'", ...new Set(extra)].join(" ");
+}
+
+function imageSources(): string {
+  const extra = ["'self'", "data:", "blob:"];
+  const supabase = process.env.SUPABASE_URL;
+  if (supabase) {
+    try {
+      extra.push(new URL(supabase).origin);
+    } catch {
+      // Storage images stay on this origin when the URL is unset.
+    }
+  }
+  return extra.join(" ");
+}
+
 const nextConfig: NextConfig = {
   outputFileTracingRoot: path.join(path.dirname(fileURLToPath(import.meta.url)), "../.."),
   allowedDevOrigins: ["127.0.0.1"],
@@ -29,16 +56,18 @@ const nextConfig: NextConfig = {
             key: "Content-Security-Policy",
             value: [
               "default-src 'self'",
-              `script-src 'self' 'unsafe-inline' https://telegram.org${process.env.NODE_ENV === "production" ? "" : " 'unsafe-eval'"}`,
+              `script-src 'self' https://telegram.org 'unsafe-inline'${process.env.NODE_ENV === "production" ? "" : " 'unsafe-eval'"}`,
               "style-src 'self' 'unsafe-inline'",
-              "img-src 'self' blob: data:",
-              "connect-src 'self' https://telegram.org",
-              "frame-ancestors https://web.telegram.org https://*.telegram.org",
+              `img-src ${imageSources()}`,
+              `connect-src ${connectSources()}`,
+              "frame-src https://telegram.org",
+              "frame-ancestors https://web.telegram.org https://*.telegram.org 'self'",
             ].join("; "),
           },
-          { key: "Referrer-Policy", value: "no-referrer" },
+          { key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains; preload" },
+          { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
           { key: "X-Content-Type-Options", value: "nosniff" },
-          { key: "Permissions-Policy", value: "camera=(self), geolocation=(self)" },
+          { key: "Permissions-Policy", value: "camera=(self), geolocation=(self), microphone=()" },
         ],
       },
     ];

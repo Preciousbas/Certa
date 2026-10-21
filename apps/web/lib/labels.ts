@@ -38,6 +38,11 @@ export function stageStatusLabel(status: string): string {
       return "Disputed";
     case "cancelled":
       return "Cancelled";
+    case "not_started":
+    case "pending":
+    case "funded":
+      // Funding is a boolean. Migration 0003 stores these statuses as not_started.
+      return "Not started";
     case "approved":
     case "releasing":
     case "release_failed":

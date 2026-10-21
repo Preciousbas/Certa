@@ -3,10 +3,13 @@ import { getDatabase } from "@certa/db";
 import { factoryAddress } from "../../../lib/published-chain";
 import { queueCounts } from "../../../../../src/server/jobs/worker";
 import { storageHealth } from "../../../../../src/server/storage";
+import { apiError, emptyQuery, queryOf } from "../../../lib/schemas";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+export async function GET(request: Request) {
+  const query = emptyQuery.safeParse(queryOf(request));
+  if (!query.success) return apiError(400, "That request is not valid.");
   const checks: Record<string, string> = {
     db: "down",
     storage: await storageHealth(),

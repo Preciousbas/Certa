@@ -128,6 +128,10 @@ export async function redeemJoinCode(
     })
     .returning();
   if (!party) throw new Error("party insert failed");
+  const membershipRole = party.role === "main_contractor" ? "contractor" : party.role;
+  if (["client", "consultant", "contractor", "subcontractor", "viewer"].includes(membershipRole)) {
+    await db.insert(memberships).values({ projectId: code.projectId, userId: user.id, role: membershipRole }).onConflictDoNothing();
+  }
   await db
     .update(joinCodes)
     .set({ useCount: code.useCount + 1, updatedAt: now })
@@ -566,6 +570,8 @@ export async function appendAudit(
     entity: string;
     entityId?: string;
     payload: string;
+    actorKind?: string;
+    projectId?: string;
   },
 ) {
   const last = await db.select().from(auditLog).orderBy(desc(auditLog.createdAt)).limit(1);
@@ -582,6 +588,8 @@ export async function appendAudit(
       prevHash: prev,
       rowHash,
       afterHash: sha256Hex(input.payload),
+      actorKind: input.actorKind ?? "user",
+      projectId: input.projectId,
     })
     .returning();
   return row;

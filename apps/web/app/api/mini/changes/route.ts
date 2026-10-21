@@ -7,5 +7,5 @@ export const POST = withAuth(
     if (!input.success) return apiError(400, input.error.issues[0]?.message ?? "A no needs a reason.");
     return apiError(409, "That change is not waiting on you.");
   },
-  { roles: ["contractor", "subcontractor"] },
+  { roles: ["client", "contractor"] },
 );
