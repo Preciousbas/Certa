@@ -16,7 +16,7 @@ try {
 }
 
 function connectSources(): string {
-  const extra = ["https://telegram.org"];
+  const extra = ["https://telegram.org", "https://oauth.telegram.org"];
   for (const name of ["SUPABASE_URL", "RPC_URL", "SEPOLIA_RPC_URL", "NEXT_PUBLIC_APP_URL"]) {
     const value = process.env[name];
     if (!value) continue;
@@ -60,7 +60,7 @@ const nextConfig: NextConfig = {
               "style-src 'self' 'unsafe-inline'",
               `img-src ${imageSources()}`,
               `connect-src ${connectSources()}`,
-              "frame-src https://telegram.org",
+              "frame-src https://telegram.org https://oauth.telegram.org",
               "frame-ancestors https://web.telegram.org https://*.telegram.org 'self'",
             ].join("; "),
           },
