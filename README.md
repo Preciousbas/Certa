@@ -33,12 +33,12 @@ flowchart TD
 
 ## Crypto integration
 
-The chain is Base Sepolia. Circle test USDC is `0x036CbD53842c5426634e7929541eC2318f3dCF7e`.
+The chain is Ethereum Sepolia. Circle test USDC is `0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238`.
 
 - One escrow clone per project. The factory and the rules are in `contracts/src`.
 - Party payment accounts are Coinbase CDP server wallets when the three CDP env vars are set. Otherwise the address is a labelled mock, created once per party.
 - Evidence for a submission is `keccak256` of the photo bundle and the assessment JSON. The contract stores that hash on `submitStage`.
-- x402: `GET /api/paid/weather` and `GET /api/paid/materials-price` answer 402 with an exact-scheme challenge on `eip155:84532`. Demo mode also accepts the header `x-payment: demo`.
+- x402: `GET /api/paid/weather` and `GET /api/paid/materials-price` answer 402 with an exact-scheme challenge on `eip155:11155111`. Demo mode also accepts the header `x-payment: demo`.
 - The 0.5% Certa fee is an off-chain ledger entry, not a cut inside `releaseStage`.
 
 No factory address is listed in `docs/DEPLOYMENTS.md` until a broadcast. Do not treat the tests as a mainnet deployment.
@@ -69,14 +69,22 @@ pnpm test                         # unit tests and forge test
 
 The bot answers `/start` on Vercel only after `TELEGRAM_BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET`, and `TELEGRAM_BOT_USERNAME` are set on the project and the webhook points at `https://<host>/api/telegram`.
 
+## Contract and bill of quantities
+
+Send an Excel, CSV, Word, or PDF to `@CertaApp_bot`, or drop the same file on `/upload`. A bill is read only when it has item, description, quantity, rate, and amount columns. The code recomputes every row: quantity times rate must equal the amount, in kobo, with no floating point. Section totals become the stages, and those stage amounts must add up to the contract sum. A row that does not reconcile is listed in plain language, for example `25 x 12,000 should be 300,000 but the document says 30,000`, and the schedule is not accepted. Instructions hidden in the file are ignored and do not change the figures.
+
+The person who uploads replies `accept`. The contractor joins with the code and sends `/accept`. Money stays locked until both of those are stored. The Lekki ₦45,000,000 sample is not shown unless `DEMO_SEED=true`.
+
+A photo of a paper bill is refused until it is sent as Excel or PDF. Old `.xls` files are read. HEIC photos are refused.
+
 ## Security model
 
 See `docs/SECURITY.md`. Short version: no keys in the database, webhook secret on Telegram, HMAC on Mini App init data, RLS plus `authorize()`, idempotency keys on money, and an append-only hash-chained audit log.
 
 ## Limits
 
-- The escrow has not been broadcast or verified on Basescan.
-- Demo funding writes a payment row. It does not send `fund`.
+- The escrow factory is on Ethereum Sepolia, and the source is verified on Etherscan.
+- The active escrow is the pilot: 1 USDC mobilisation and 1 USDC per stage. The first quote is 2 USDC. The full Lekki escrow, whose first quote is 3,900 USDC, stays deployed for later.
 - The camera page has no file picker. Sharp stamping and a real EXIF parser are not connected to the capture route yet.
 - Demo pages do not require Telegram `initData`.
 - Cash out to a bank stops at "coming soon".

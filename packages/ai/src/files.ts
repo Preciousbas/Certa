@@ -5,7 +5,7 @@ import * as XLSX from "xlsx";
 export async function textFromUpload(filename: string, bytes: Uint8Array): Promise<string> {
   const lower = filename.toLowerCase();
   if (lower.endsWith(".csv") || lower.endsWith(".txt")) return new TextDecoder().decode(bytes);
-  if (lower.endsWith(".xlsx")) {
+  if (lower.endsWith(".xlsx") || lower.endsWith(".xls")) {
     const book = XLSX.read(bytes, { type: "array" });
     const sheet = book.Sheets[book.SheetNames[0] ?? ""];
     if (!sheet) return "";

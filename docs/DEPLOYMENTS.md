@@ -1,21 +1,26 @@
 # Deployments
 
-Recorded 13 Oct 2026. Addresses below are the ones this repo actually used. Nothing has been broadcast.
+Recorded 16 Oct 2026. `scripts/broadcast-sepolia.sh` broadcast the implementation and the factory to Ethereum Sepolia. Both sources are verified on Etherscan. The script does not create a project escrow.
 
 | What | Network | Address |
 | --- | --- | --- |
-| Circle test USDC | Base Sepolia (84532) | `0x036CbD53842c5426634e7929541eC2318f3dCF7e` |
-| Escrow implementation | — | Not deployed |
-| Escrow factory | — | Not deployed |
+| Circle test USDC | Ethereum Sepolia (11155111) | `0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238` |
+| Escrow implementation | Ethereum Sepolia | `0x7740796284Bf5eA67F30F123Ee28E5FFFA8CCa1c` |
+| Escrow factory | Ethereum Sepolia | `0x4F4c6cc95465ceFe8a967E351EEdE69d40660423` |
+| Lekki full escrow | Ethereum Sepolia | `0xCbBB69f9E5373763D430D25e920B6aE4A632cf0d` |
+| Lekki pilot escrow | Ethereum Sepolia | `0x5289dcc36EdC15AdC6314F75EcBFa745e70BD44d` |
+| Project create tx | Ethereum Sepolia | [`0x2c8e92167c215994935e1baf7cf260d02a7c1c80e93969c4400e394e6c78fe58`](https://sepolia.etherscan.io/tx/0x2c8e92167c215994935e1baf7cf260d02a7c1c80e93969c4400e394e6c78fe58) |
+| Implementation tx | Ethereum Sepolia | [`0x9d252d7b1252a3cd31b9bfb717334d0f94b673e650ae0476d37636319dba8166`](https://sepolia.etherscan.io/tx/0x9d252d7b1252a3cd31b9bfb717334d0f94b673e650ae0476d37636319dba8166) |
+| Factory tx | Ethereum Sepolia | [`0x33f5c3750b9be29938c14469829d7625461e75f2f9642339ae8b177b1302f9f5`](https://sepolia.etherscan.io/tx/0x33f5c3750b9be29938c14469829d7625461e75f2f9642339ae8b177b1302f9f5) |
 | Operator wallet | — | Not created |
 | Treasury | — | Not set |
 | Vercel preview | — | https://certa-qcaa4nsi0-precious-projects-cdb8e677.vercel.app |
 
-`contracts/script/Deploy.s.sol` deploys the implementation and the factory. It does not create a project escrow. Run it only with a funded deployer key that stays out of git:
+The same addresses are in `deployments/sepolia.json`. Run another broadcast only with a funded deployer key that stays out of git:
 
 ```bash
 bash scripts/setup-contracts.sh
-forge script script/Deploy.s.sol --root contracts --rpc-url "$BASE_SEPOLIA_RPC_URL" --broadcast --verify
+bash scripts/broadcast-sepolia.sh
 ```
 
 Paste the logged implementation and factory into this file in the same commit that broadcasts. Do not invent them.

@@ -17,6 +17,8 @@ test-results
 *.log
 .vercel
 .turbo
+apps/web/var
 tsconfig.tsbuildinfo
 .DS_Store
 *.tsbuildinfo
+scripts/e2e-demo/

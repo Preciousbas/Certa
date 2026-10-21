@@ -5,8 +5,8 @@ import {Script, console2} from "forge-std/Script.sol";
 import {CertaEscrow} from "../src/CertaEscrow.sol";
 import {EscrowFactory} from "../src/EscrowFactory.sol";
 
-/// @notice Base Sepolia deploy. Records addresses in the broadcast log.
-///         forge script script/Deploy.s.sol --rpc-url $BASE_SEPOLIA_RPC_URL --broadcast --verify
+/// @notice Ethereum Sepolia deploy. Records addresses in the broadcast log.
+///         forge script script/Deploy.s.sol:DeployScript --rpc-url $SEPOLIA_RPC_URL --broadcast --slow
 contract DeployScript is Script {
     function run() external {
         uint256 pk = vm.envUint("DEPLOYER_PRIVATE_KEY");

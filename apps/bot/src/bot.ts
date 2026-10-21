@@ -1,18 +1,28 @@
+import { agentRouterContract, studyUpload, type ParsedContract } from "@certa/ai";
+import { createPartyWallet } from "@certa/chain";
 import {
+  acceptContractSide,
+  ensureWallet,
   getActiveProjectId,
   loadPrincipal,
+  recordUploadedContract,
   redeemJoinCode,
   setActiveProject,
+  sha256Hex,
   upsertTelegramUser,
   visibleProjectIds,
   type Database,
 } from "@certa/db";
-import { copy, formatMoneyPair } from "@certa/shared";
+import { copy, formatMoneyPair, formatNgnFromKobo, formatOfficialRate, type OfficialRate } from "@certa/shared";
 import { conversations, createConversation, type ConversationFlavor } from "@grammyjs/conversations";
 import { limit } from "@grammyjs/ratelimiter";
 import { Bot, InlineKeyboard, session, type Context, type SessionFlavor } from "grammy";
 import { eq } from "drizzle-orm";
 import { parties, projects, stages, users } from "@certa/db";
+import { applyGapAnswer, contractGaps, contractNote, filenameOf, MAX_CONTRACT_STAGES, readFailure, savedContractMessage } from "./intake.js";
+import { syncEscrowProject } from "./sync.js";
+
+const MAX_CONTRACT_BYTES = 8_000_000;
 
 type SessionData = { pending?: string };
 type BotContext = Context & SessionFlavor<SessionData> & ConversationFlavor<Context>;
@@ -20,6 +30,10 @@ type BotContext = Context & SessionFlavor<SessionData> & ConversationFlavor<Cont
 export type BotDeps = {
   db: Database;
   paidWeather?: () => Promise<string>;
+  officialRate?: () => Promise<OfficialRate | null>;
+  loadDocument?: (fileId: string) => Promise<Uint8Array>;
+  studyContract?: (filename: string, bytes: Uint8Array) => Promise<ParsedContract>;
+  apiFetch?: typeof fetch;
 };
 
 function shortSite(name: string, location: string): string {
@@ -41,7 +55,7 @@ async function active(db: Database, telegramId: bigint) {
 }
 
 export function createBot(token: string, deps: BotDeps): Bot<BotContext> {
-  const bot = new Bot<BotContext>(token);
+  const bot = new Bot<BotContext>(token, deps.apiFetch ? { client: { fetch: deps.apiFetch } } : undefined);
   bot.use(session({ initial: (): SessionData => ({}) }));
   bot.use(conversations());
   bot.use(limit({ timeFrame: 2_000, limit: 20, onLimitExceeded: async (ctx) => ctx.reply(copy.rateLimited) }));
@@ -67,7 +81,20 @@ export function createBot(token: string, deps: BotDeps): Bot<BotContext> {
       await say(ctx, result.reason === "rate_limited" ? copy.rateLimited : result.reason === "expired" ? copy.expiredCode : copy.invalidCode);
       return;
     }
+    try {
+      await ensureWallet(deps.db, result.partyId, () => createPartyWallet(result.partyId));
+    } catch {
+      await say(ctx, "You joined. The payment account could not be created.");
+      return;
+    }
     await say(ctx, copy.paymentAccountReady);
+  }
+
+  async function moneyLine(kobo: bigint, lockedRate: bigint): Promise<string> {
+    if (!deps.officialRate) return formatMoneyPair(kobo, lockedRate);
+    const rate = await deps.officialRate();
+    if (!rate) return `${formatNgnFromKobo(kobo)}\nThe Central Bank rate is unavailable.`;
+    return `${formatMoneyPair(kobo, rate.koboPerUsdc)}\n1 USDC is ${formatOfficialRate(rate)} at the Central Bank rate for ${rate.asOf}.`;
   }
 
   async function joinConversation(conversation: { waitFor: (filter: "message:text") => Promise<{ message?: { text?: string } }> }, ctx: Context) {
@@ -76,6 +103,146 @@ export function createBot(token: string, deps: BotDeps): Bot<BotContext> {
     await joinWithCode(ctx, next.message?.text?.trim() ?? "");
   }
   bot.use(createConversation(joinConversation as Parameters<typeof createConversation>[0], "join"));
+
+  async function contractConversation(
+    conversation: {
+      external: <T>(fn: () => Promise<T>) => Promise<T>;
+      waitFor: (filter: "message:text") => Promise<{ message?: { text?: string } }>;
+    },
+    ctx: Context,
+  ) {
+    const document = ctx.message?.document;
+    const filename = document ? filenameOf(document) : null;
+    if (!document || !filename) {
+      await ctx.reply("Send the contract as a PDF, Word, Excel, CSV, or text file.");
+      return;
+    }
+    if ((document.file_size ?? 0) > MAX_CONTRACT_BYTES) {
+      await ctx.reply("That file is too large. Send a file under 8 MB.");
+      return;
+    }
+    const loaded = await conversation.external(async () => {
+      const bytes = deps.loadDocument ? await deps.loadDocument(document.file_id) : await telegramFile(document.file_id);
+      if (bytes.byteLength > MAX_CONTRACT_BYTES) throw new Error("too large");
+      const parsed = deps.studyContract ? await deps.studyContract(filename, bytes) : await studyUpload(filename, bytes, agentRouterContract() ?? undefined);
+      const rate = deps.officialRate ? await deps.officialRate() : null;
+      return {
+        filename,
+        base64: Buffer.from(bytes).toString("base64"),
+        sha256: sha256Hex(bytes),
+        summary: parsed.summary,
+        flags: parsed.flags,
+        koboPerUsdc: rate ? rate.koboPerUsdc.toString() : "",
+        asOf: rate?.asOf ?? "",
+      };
+    }).catch((error: unknown) => {
+      const message = error instanceof Error && error.message === "too large" ? "That file is too large. Send a file under 8 MB." : readFailure(error);
+      return { error: message };
+    });
+    if ("error" in loaded) {
+      await ctx.reply(loaded.error);
+      return;
+    }
+    if (!loaded.koboPerUsdc) {
+      await ctx.reply("The Central Bank rate is unavailable, so this contract was not saved.");
+      return;
+    }
+    if (loaded.summary.stages.length > MAX_CONTRACT_STAGES) {
+      await ctx.reply(`This file has ${loaded.summary.stages.length} stages. A project can hold ${MAX_CONTRACT_STAGES}.`);
+      return;
+    }
+    const rate = { koboPerUsdc: BigInt(loaded.koboPerUsdc), asOf: loaded.asOf };
+    if (loaded.flags.length > 0) {
+      await ctx.reply(`${contractNote(loaded.summary, rate.koboPerUsdc)}\n${loaded.flags.join("\n")}\nSend the file again once those figures add up.`);
+      return;
+    }
+    await ctx.reply(contractNote(loaded.summary, rate.koboPerUsdc));
+    let summary = loaded.summary;
+    let site = "";
+    for (const question of contractGaps(summary)) {
+      let settled = false;
+      while (!settled) {
+        await ctx.reply(question.prompt);
+        const next = await conversation.waitFor("message:text");
+        const text = next.message?.text?.trim() ?? "";
+        if (text === "/cancel") {
+          await ctx.reply("The contract was not saved.");
+          return;
+        }
+        const applied = applyGapAnswer(summary, question.id, text);
+        if (!applied.ok) {
+          await ctx.reply(applied.reason);
+          continue;
+        }
+        summary = applied.summary;
+        if (applied.site) site = applied.site;
+        settled = true;
+      }
+    }
+    if (!site) {
+      await ctx.reply("The site address is missing, so this contract was not saved.");
+      return;
+    }
+    await ctx.reply("Reply accept if this schedule is right. The contractor accepts later with /accept.");
+    let accepted = false;
+    while (!accepted) {
+      const next = await conversation.waitFor("message:text");
+      const text = next.message?.text?.trim().toLowerCase() ?? "";
+      if (text === "/cancel") {
+        await ctx.reply("The contract was not saved.");
+        return;
+      }
+      if (text === "accept") {
+        accepted = true;
+        break;
+      }
+      await ctx.reply("Reply accept, or /cancel.");
+    }
+    const saved = await conversation.external(async () => {
+      const row = await recordUploadedContract(deps.db, {
+        telegramId: BigInt(ctx.from?.id ?? 0),
+        senderName: ctx.from?.first_name ?? "Client",
+        site,
+        filename: loaded.filename,
+        sha256: loaded.sha256,
+        bytesBase64: loaded.base64,
+        summary,
+        koboPerUsdc: rate.koboPerUsdc,
+        fxAsOf: rate.asOf,
+        clientAccepted: true,
+      });
+      try {
+        await ensureWallet(deps.db, row.partyId, () => createPartyWallet(row.partyId));
+      } catch {
+        return { ...row, wallet: false };
+      }
+      return { ...row, wallet: true };
+    });
+    const walletNote = saved.wallet ? "" : "\nThe payment account could not be created.";
+    await ctx.reply(`${savedContractMessage(saved.stageCount, saved.contractorCode)}${walletNote}`);
+  }
+  bot.use(createConversation(contractConversation as Parameters<typeof createConversation>[0], "contract"));
+
+  async function telegramFile(fileId: string): Promise<Uint8Array> {
+    const remote = await bot.api.getFile(fileId);
+    if (!remote.file_path) throw new Error("Telegram did not return the file.");
+    const response = await fetch(`https://api.telegram.org/file/bot${token}/${remote.file_path}`);
+    if (!response.ok) throw new Error("The file could not be downloaded.");
+    return new Uint8Array(await response.arrayBuffer());
+  }
+
+  bot.on("message:document", async (ctx) => {
+    const document = ctx.message?.document;
+    if (!document || !filenameOf(document)) {
+      await say(ctx, "Send the contract as a PDF, Word, Excel, CSV, or text file.");
+      return;
+    }
+    if ((document.file_size ?? 0) > MAX_CONTRACT_BYTES) {
+      await say(ctx, "That file is too large. Send a file under 8 MB.");
+      return;
+    }
+    await ctx.conversation.enter("contract");
+  });
 
   bot.command("start", async (ctx) => {
     const payload = typeof ctx.match === "string" ? ctx.match.trim() : "";
@@ -102,8 +269,29 @@ export function createBot(token: string, deps: BotDeps): Bot<BotContext> {
     await joinWithCode(ctx, code);
   });
 
+  bot.command("accept", async (ctx) => {
+    const row = ctx.from ? await active(deps.db, BigInt(ctx.from.id)) : null;
+    if (!row?.project || !row.user) {
+      await say(ctx, copy.noProjects);
+      return;
+    }
+    const partyRows = await deps.db.select().from(parties).where(eq(parties.userId, row.user.id));
+    const party = partyRows.find((item) => item.projectId === row.project?.id);
+    const side = party?.role === "main_contractor" ? "contractor" : party?.role === "client" ? "client" : null;
+    if (!side) {
+      await say(ctx, "You are not the client or the contractor on this project.");
+      return;
+    }
+    const result = await acceptContractSide(deps.db, { projectId: row.project.id, side });
+    if (!result.ok) {
+      await say(ctx, result.reason);
+      return;
+    }
+    await say(ctx, result.both ? "Both sides have accepted this schedule. Money can be locked from it." : "You accepted. The other side still has to accept.");
+  });
+
   bot.command("help", async (ctx) => {
-    await say(ctx, "/project  /stages  /submit  /switch  /join  /wallet  /dispute  /changes  /report");
+    await say(ctx, "/project  /stages  /submit  /switch  /join  /wallet  /dispute  /changes  /report\nSend a contract file to open a project.");
   });
 
   bot.command("project", async (ctx) => {
@@ -112,11 +300,12 @@ export function createBot(token: string, deps: BotDeps): Bot<BotContext> {
       await say(ctx, copy.noProjects);
       return;
     }
+    await syncEscrowProject(deps.db, row.project).catch(() => undefined);
     const stageRows = await deps.db.select().from(stages).where(eq(stages.projectId, row.project.id));
     const done = stageRows.filter((stage) => stage.status === "released").length;
     await say(
       ctx,
-      `${row.project.name}\n${formatMoneyPair(row.project.contractSumKobo, row.project.fxRateLocked)}\n${done} of ${stageRows.length} stages paid.`,
+      `${row.project.name}\n${await moneyLine(row.project.contractSumKobo, row.project.fxRateLocked)}\n${done} of ${stageRows.length} stages paid.`,
     );
   });
 
@@ -126,6 +315,7 @@ export function createBot(token: string, deps: BotDeps): Bot<BotContext> {
       await say(ctx, copy.noProjects, "Stages");
       return;
     }
+    await syncEscrowProject(deps.db, row.project).catch(() => undefined);
     const stageRows = await deps.db.select().from(stages).where(eq(stages.projectId, row.project.id));
     const lines = stageRows
       .sort((a, b) => a.stageIndex - b.stageIndex)
@@ -168,7 +358,9 @@ export function createBot(token: string, deps: BotDeps): Bot<BotContext> {
 
   bot.command("wallet", async (ctx) => {
     const keyboard = new InlineKeyboard().text("Advanced", "adv");
-    await say(ctx, copy.paymentAccountReady, "Payment account", keyboard);
+    const row = ctx.from ? await active(deps.db, BigInt(ctx.from.id)) : null;
+    const rate = row?.project ? await moneyLine(row.project.contractSumKobo, row.project.fxRateLocked) : "";
+    await say(ctx, [copy.paymentAccountReady, rate].filter(Boolean).join("\n"), "Payment account", keyboard);
   });
 
   bot.callbackQuery("adv", async (ctx) => {

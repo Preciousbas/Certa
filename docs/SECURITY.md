@@ -12,7 +12,7 @@ cp scripts/secret-scan.sh .git/hooks/pre-commit && chmod +x .git/hooks/pre-commi
 
 ## Telegram
 
-`POST /api/telegram` returns 503 when the bot token or webhook secret is unset, and 401 when `x-telegram-bot-api-secret-token` does not match. Mini App `initData` is checked with the WebAppData HMAC in `packages/db`, and `auth_date` older than 24 hours is rejected. The demo pages currently load the seeded Lekki project for the seeded client so a preview works before a bot token exists. Production requests must call `verifyInitData` before `loadProject`.
+`POST /api/telegram` returns 503 when the bot token or webhook secret is unset, and 401 when `x-telegram-bot-api-secret-token` does not match. Mini App `initData` is checked with the WebAppData HMAC, and `auth_date` older than 24 hours is rejected. Mutating `/api/mini/*` routes require `Authorization: tma <initData>` and a project role. Pages still render the sample project when `DEMO_SEED=true`, and they show a Sample data badge.
 
 ## Data
 

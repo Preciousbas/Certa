@@ -4,22 +4,26 @@
   "private": true,
   "scripts": {
     "dev": "next dev --port 3000",
-    "build": "next build",
+    "build": "next build && node ../../scripts/scan-client-secrets.mjs .next/static",
     "start": "next start --port 3000",
     "typecheck": "tsc --noEmit",
     "lint": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
-    "@electric-sql/pglite": "0.5.9",
     "@certa/ai": "workspace:*",
     "@certa/bot": "workspace:*",
     "@certa/chain": "workspace:*",
     "@certa/db": "workspace:*",
     "@certa/pdf": "workspace:*",
     "@certa/shared": "workspace:*",
-    "drizzle-orm": "0.45.4",
+    "@electric-sql/pglite": "0.5.9",
     "@react-email/components": "1.0.12",
+    "@x402/core": "2.28.0",
+    "@x402/evm": "2.28.0",
+    "@x402/fetch": "2.28.0",
+    "drizzle-orm": "0.45.4",
     "grammy": "1.46.0",
     "inngest": "4.23.0",
     "next": "15.5.27",
@@ -28,9 +32,12 @@
     "react-dom": "19.2.4",
     "resend": "6.32.1",
     "sharp": "0.35.5",
+    "viem": "2.57.5",
     "zod": "3.25.76"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.13.0",
+    "@playwright/test": "^1.64.0",
     "@tailwindcss/postcss": "4.3.3",
     "@types/node": "22.19.1",
     "@types/react": "19.2.2",

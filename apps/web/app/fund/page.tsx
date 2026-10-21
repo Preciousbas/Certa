@@ -1,37 +1,32 @@
-import { formatNgnFromKobo, formatUsdc } from "@certa/shared";
+import { FundForm } from "../../components/fund-form";
+import { formatNgnFromKobo } from "@certa/shared";
 import { loadProject } from "../../lib/data";
+import { chainFundLines } from "../../lib/escrow-quote";
 
 export default async function FundPage() {
   const data = await loadProject();
-  if (!data) return <p>No project is open.</p>;
-  const upTo = 4;
-  const covered = data.stages.filter((stage) => stage.stageIndex <= upTo);
-  const kobo = covered.reduce((sum, stage) => sum + stage.amountNgnKobo, 0n);
-  const usdc = covered.reduce((sum, stage) => sum + stage.amountUsdc, 0n);
+  if (!data) return <p>Nothing has happened on this project yet. Upload the contract or BoQ to begin.</p>;
+  const escrow = data.project.escrowAddress ?? "";
+  const chain = await chainFundLines(
+    escrow,
+    data.stages.map((stage) => ({ name: stage.name, stageIndex: stage.stageIndex })),
+    data.project.fxRateLocked,
+  ).catch(() => null);
+  const stages = (chain ?? data.stages.map((stage) => ({
+    name: stage.name,
+    usdc: stage.amountUsdc,
+    kobo: stage.amountNgnKobo,
+  }))).map((stage) => ({
+    name: stage.name,
+    kobo: stage.kobo.toString(),
+    usdc: stage.usdc.toString(),
+  }));
   return (
-    <div>
-      <p className="eyebrow">Lock money</p>
-      <h1>Fund the whole contract, or stop at a stage.</h1>
-      <p className="muted">Part-payment through the first floor slab covers these stages. The amount has to match the sum exactly.</p>
-      <div className="card">
-        {covered.map((stage) => (
-          <div className="row" key={stage.id}>
-            <span>{stage.name}</span>
-            <span>{formatNgnFromKobo(stage.amountNgnKobo)}</span>
-          </div>
-        ))}
-        <div className="row">
-          <strong>Up to stage {upTo + 1}</strong>
-          <strong>
-            {formatNgnFromKobo(kobo)} · {formatUsdc(usdc)}
-          </strong>
-        </div>
-      </div>
-      <p className="muted">Full contract: {data.pair}</p>
-      <form action="/api/mini/fund" method="post">
-        <input type="hidden" name="upToStage" value={String(upTo)} />
-        <button type="submit">Confirm part-payment</button>
-      </form>
-    </div>
+    <FundForm
+      projectId={data.project.id}
+      rateLabel={formatNgnFromKobo(data.project.fxRateLocked)}
+      defaultUpTo={Math.min(4, Math.max(stages.length - 1, 0))}
+      stages={stages}
+    />
   );
 }
