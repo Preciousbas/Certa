@@ -61,7 +61,8 @@ pnpm install
 bash scripts/setup-contracts.sh   # clones forge-std and OpenZeppelin into contracts/lib
 cp .env.example .env
 pnpm db:seed                      # optional; the demo also seeds an in-memory database
-pnpm dev                          # Mini App on :3000, bot polls only if TELEGRAM_BOT_TOKEN is set
+pnpm dev                          # Mini App on :3000. Does not start the Telegram poller.
+pnpm dev:bot                      # local long polling; Ctrl-C puts the live webhook back
 pnpm test                         # unit tests and forge test
 ```
 
@@ -81,9 +82,15 @@ A photo of a paper bill is refused until it is sent as Excel or PDF. Old `.xls` 
 
 A stage photo is accepted only from the in-app camera. The server checks a 10-minute nonce, a capture time within 10 minutes, a GPS fix of 50 m or better, the site radius on the project (150 m unless the project says otherwise), a new sha256, a perceptual hash more than distance 6 from earlier photos, and a frame that is large enough and not dark or blurred. EXIF is recorded and not required, because the canvas JPEG does not carry it.
 
-The vision prompt is `stage_verify.v1`. The reply must match `StageVerdict`. Pass threshold `T` is `VERIFY_PASS_THRESHOLD`, default **0.75**, and it must stay between 0.6 and 0.95. A pass at or above T, with every required criterion met and the observed stage matching the claim, moves the stage to waiting for the consultant and calls `submitStage`. It does not release the money. A confident fail stays locked. Anything unsure, low-confidence, mismatched, or flagged as fake asks for more photos. A consultant can override that with a written reason of at least 20 characters. The consultant always makes the final call.
+The vision prompt is `stage_verify.v1`. The reply must match `StageVerdict`. Pass threshold `T` is `VERIFY_PASS_THRESHOLD`, default **0.75**, and it stays between 0.6 and 0.95. A pass at or above T, with every required criterion met and the observed stage matching the claim, moves the stage to waiting for the consultant and calls `submitStage`. It does not release the money. A confident fail stays locked. Anything unsure, low-confidence, mismatched, or flagged as fake asks for more photos.
 
-Photo checks are queued and processed by a GitHub Actions worker every ~10 minutes. GitHub can delay scheduled runs. The 21 Oct 2026 run in `docs/eval/vision-2026-10-21.md` called `gpt-5.6-sol` with `stage_verify.v1` and `stage_verify.v2` on 44 labelled photos. None of the 88 replies parsed: the gateway's default group has no channel for that model. The false-pass rate was not measured. T stays **0.75** and is not proven. An earlier same-day run of `deepseek-v4-flash` is in `docs/eval/vision-2026-10-21-deepseek.md`. Five of those 88 replies parsed, and none was a predicted pass.
+On 21 Oct 2026, `gpt-6.1-sol` with `stage_verify.v2` was scored on 20 labelled photos in `docs/eval/vision-2026-10-21-gpt-6.1-sol-20.md`. Sixteen replies parsed. The model predicted no passes. Every confidence sat between 0.50 and 0.74. It named the stage correctly 2 times out of those 16. Lowering T so those replies could pass would mostly let wrong answers through, so T stays **0.75**.
+
+In the demo the model looks at the photos first, flags problems, and shows that confidence score. The consultant always makes the final call, with a written reason of at least 20 characters.
+
+Photo checks are queued and processed by a GitHub Actions worker every ~10 minutes. GitHub can delay scheduled runs.
+
+An earlier same-day call to `gpt-5.6-sol` parsed 0 of 88 replies, because the gateway had no channel for that model (`docs/eval/vision-2026-10-21-gpt-5.6-sol.md`). `deepseek-v4-flash` parsed 5 of 88, and none was a predicted pass (`docs/eval/vision-2026-10-21-deepseek.md`).
 
 ## Security model
 

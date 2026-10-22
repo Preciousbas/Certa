@@ -42,11 +42,11 @@ Also show (not fund) the **duplex BoQ** extraction from prompt 30 in the demo to
 ## Step 3 — 2-minute demo script (record with screen + phone mirror)
 | Time | Show | Say (voice-over, verbatim) |
 |---|---|---|
-| 0:00–0:12 | Landing page | "Nigerian clients pay builders in advance and hope. Certa pays each stage only when the work is done — checked by an AI site engineer, settled in a USDC escrow." |
+| 0:00–0:12 | Landing page | "Nigerian clients pay builders in advance and hope. Certa pays each stage only when the work is done, settled in a USDC escrow. An AI scores the photos. A person approves the money." |
 | 0:12–0:35 | Telegram: client uploads gatehouse BoQ PDF → B-EX-1 → Mini App review with source chips; flash the duplex BoQ with an issue caught (item 3.4) | "The client uploads the contract. Certa reads every figure, cites the page, and checks the maths itself — here it caught a ₦270,000 error in a full duplex BoQ." |
 | 0:35–0:50 | Contractor phone: B-AC-1 → Accept; B-AC-3 | "The contractor sees the identical plan and accepts. Both acceptances are fingerprinted." |
 | 0:50–1:02 | Client funds 20 USDC → B-FU-2 with Etherscan link | "The client locks the money in an escrow on Ethereum. Each role has its own wallet — the contractor never touched crypto." |
-| 1:02–1:25 | Contractor: Stage 3 photos via in-app camera (GPS + time stamp) → AI verdict pass 0.8x with reasons → submitStage tx | "On site, the contractor takes photos in Certa. Gallery or off-site photos are rejected. The AI checks each acceptance criterion and submits the evidence hash on-chain." |
+| 1:02–1:25 | Contractor: Stage 3 photos via in-app camera (GPS + time stamp) → unsure verdict, reasons, confidence under 0.75 → consultant writes a reason and sends the stage on → submitStage tx | "The AI checks the photos against the stage checklist and flags what's missing. A person always approves the money." |
 | 1:25–1:45 | Consultant certifies → client gets B-AP-2 (above cap) → Approve → B-AP-4 with Proof link → Etherscan showing release | "This stage is above the client's spending cap, so the client must approve. One tap, and the contractor is paid — here's the proof." |
 | 1:45–1:55 | Stage 2/4 "Planning to pour" → B-WX-1 → Timeline "Agent paid 0.01 USDC for a weather check" + Basescan link | "Before a concrete pour the agent buys a weather forecast itself, paying with x402." |
 | 1:55–2:00 | Timeline overview | "Every photo, verdict, approval and payment — on one record. That's Certa." |
