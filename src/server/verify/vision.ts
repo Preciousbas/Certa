@@ -1,6 +1,6 @@
-import { StageVerdict } from "../../lib/validation/stageVerdict.js";
+import { StageVerdict, StageVerdictV3 } from "../../lib/validation/stageVerdict.js";
 import { STAGE_VERIFY_SYSTEM } from "../ai/prompts/stage_verify.v1.js";
-import { resizeLongSide } from "./jpeg.js";
+import { resizeLongSide, VISION_LONG_SIDE } from "./jpeg.js";
 
 export const VISION_TIMEOUT_MS = 240_000;
 
@@ -52,14 +52,27 @@ export function visionModels(): { primary: string; fallback: string; provider: s
 }
 
 export function parseModelJson(text: string): { verdict: StageVerdict | null; error: string } {
+  const extracted = extractJson(text);
+  if (!extracted.ok) return { verdict: null, error: extracted.error };
+  const parsed = StageVerdict.safeParse(extracted.value);
+  if (parsed.success) return { verdict: parsed.data, error: "" };
+  return { verdict: null, error: parsed.error.issues.map((issue) => `${issue.path.join(".")}: ${issue.message}`).join("; ") };
+}
+
+export function parseChecklistJson(text: string): { reply: StageVerdictV3 | null; error: string } {
+  const extracted = extractJson(text);
+  if (!extracted.ok) return { reply: null, error: extracted.error };
+  const parsed = StageVerdictV3.safeParse(extracted.value);
+  if (parsed.success) return { reply: parsed.data, error: "" };
+  return { reply: null, error: parsed.error.issues.map((issue) => `${issue.path.join(".")}: ${issue.message}`).join("; ") };
+}
+
+function extractJson(text: string): { ok: true; value: unknown } | { ok: false; error: string } {
   try {
     const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/);
-    const value: unknown = JSON.parse((fenced?.[1] ?? text).trim());
-    const parsed = StageVerdict.safeParse(value);
-    if (parsed.success) return { verdict: parsed.data, error: "" };
-    return { verdict: null, error: parsed.error.issues.map((issue) => `${issue.path.join(".")}: ${issue.message}`).join("; ") };
+    return { ok: true, value: JSON.parse((fenced?.[1] ?? text).trim()) as unknown };
   } catch (error) {
-    return { verdict: null, error: error instanceof Error ? error.message : "invalid json" };
+    return { ok: false, error: error instanceof Error ? error.message : "invalid json" };
   }
 }
 
@@ -73,7 +86,7 @@ export async function defaultVisionClient(input: VisionRequest): Promise<VisionR
 
 async function postChatCompletion(base: string, key: string, input: VisionRequest): Promise<VisionReply> {
   const started = Date.now();
-  const images = await Promise.all(input.images.map((image) => resizeLongSide(image, 1568)));
+  const images = await Promise.all(input.images.map((image) => resizeLongSide(image, VISION_LONG_SIDE)));
   const content: unknown[] = [{ type: "text", text: input.user }];
   for (const image of images) {
     content.push({
@@ -122,7 +135,7 @@ function responseText(payload: ResponsePayload): string {
 
 async function postResponses(base: string, key: string, input: VisionRequest): Promise<VisionReply> {
   const started = Date.now();
-  const images = await Promise.all(input.images.map((image) => resizeLongSide(image, 1568)));
+  const images = await Promise.all(input.images.map((image) => resizeLongSide(image, VISION_LONG_SIDE)));
   const content: unknown[] = [{ type: "input_text", text: input.user }];
   for (const image of images) {
     content.push({
@@ -239,4 +252,49 @@ export async function askVerdict(input: {
     if (attempt === 2) return { verdict: null, raw, model, latencyMs: latency, error: parsed.error };
   }
   return { verdict: null, raw, model, latencyMs: latency, error: hint };
+}
+
+export async function askChecklist(input: {
+  system: string;
+  user: string;
+  images: Uint8Array[];
+  model: string;
+  client?: VisionClient;
+  timeoutMs?: number;
+}): Promise<{ reply: StageVerdictV3 | null; raw: string; latencyMs: number; error: string }> {
+  const client = input.client ?? defaultVisionClient;
+  const budget = input.timeoutMs ?? VISION_TIMEOUT_MS;
+  const startedAt = Date.now();
+  let hint = "";
+  let raw = "";
+  let latency = 0;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const remaining = budget - (Date.now() - startedAt);
+    if (remaining <= 0) return { reply: null, raw, latencyMs: latency, error: "timed out" };
+    const user = hint ? `${input.user}\nThe previous JSON failed validation: ${hint}\nReturn only the checklist JSON.` : input.user;
+    try {
+      const reply = await client({
+        model: input.model,
+        system: input.system,
+        user,
+        images: input.images,
+        timeoutMs: remaining,
+      });
+      raw = reply.text;
+      latency += reply.latencyMs;
+    } catch (error) {
+      if (isTimeout(error) || budget - (Date.now() - startedAt) <= 0) {
+        return { reply: null, raw: "", latencyMs: latency, error: "timed out" };
+      }
+      if (error instanceof VisionUnavailable || error instanceof VisionRejected) {
+        return { reply: null, raw: "", latencyMs: latency, error: error.message };
+      }
+      hint = "The model did not return JSON.";
+      continue;
+    }
+    const parsed = parseChecklistJson(raw);
+    if (parsed.reply) return { reply: parsed.reply, raw, latencyMs: latency, error: "" };
+    hint = parsed.error;
+  }
+  return { reply: null, raw, latencyMs: latency, error: hint || "invalid json" };
 }

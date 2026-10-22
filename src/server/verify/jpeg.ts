@@ -38,7 +38,9 @@ export async function inspectJpeg(bytes: Uint8Array): Promise<JpegFacts> {
   };
 }
 
-export async function resizeLongSide(bytes: Uint8Array, max = 1568): Promise<Uint8Array> {
+export const VISION_LONG_SIDE = 1024;
+
+export async function resizeLongSide(bytes: Uint8Array, max = VISION_LONG_SIDE): Promise<Uint8Array> {
   const image = sharp(Buffer.from(bytes)).rotate();
   const meta = await image.metadata();
   const long = Math.max(meta.width ?? 0, meta.height ?? 0);

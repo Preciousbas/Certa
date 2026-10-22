@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { StageVerdict } from "./stageVerdict.js";
+import { StageVerdict, StageVerdictV3 } from "./stageVerdict.js";
 
 const valid = {
   schema_version: "1" as const,
@@ -24,5 +24,24 @@ describe("StageVerdict", () => {
     expect(StageVerdict.safeParse({ ...valid, note: "extra" }).success).toBe(false);
     expect(StageVerdict.safeParse({ ...valid, confidence: 1.2 }).success).toBe(false);
     expect(StageVerdict.safeParse({ ...valid, criteria: [] }).success).toBe(false);
+  });
+});
+
+const checklist = {
+  schema_version: "3" as const,
+  stage_number_claimed: 2,
+  items: [
+    { id: "s2-trench", answer: "yes" as const, reason: "The footing trench is open." },
+    { id: "s2-concrete", answer: "no" as const, reason: "No concrete base is in the trench." },
+    { id: "s2-rebar", answer: "cannot_see" as const, reason: "The bars are outside the frame." },
+  ],
+};
+
+describe("StageVerdictV3", () => {
+  it("accepts yes, no, and cannot_see and rejects a stage name or a confidence", () => {
+    expect(StageVerdictV3.parse(checklist).items).toHaveLength(3);
+    expect(StageVerdictV3.safeParse({ ...checklist, stage_name_observed: "Foundation" }).success).toBe(false);
+    expect(StageVerdictV3.safeParse({ ...checklist, confidence: 0.8 }).success).toBe(false);
+    expect(StageVerdictV3.safeParse({ ...checklist, items: [{ id: "s2-trench", answer: "maybe", reason: "Unclear." }] }).success).toBe(false);
   });
 });
