@@ -9,7 +9,7 @@ export function missingPage(): string {
   :root { --text:#1e293b; --muted:#64748b; --border:#e2e8f0; --bg:#f8fafc; --card:#ffffff; --action:#f97316; --action-ink:#1e293b; --focus:#c2410c; }
   * { box-sizing: border-box; }
   body { margin:0; min-height:100%; background:var(--bg); color:var(--text); font-family:Inter, sans-serif; font-size:14px; line-height:1.45; }
-  main { max-width:720px; margin:0 auto; padding:1.4rem 1rem 3rem; }
+  main { width:100%; max-width:1120px; margin:0 auto; padding:16px 24px 32px; box-sizing:border-box; }
   .wordmark { font-weight:800; letter-spacing:-0.03em; margin:0 0 1rem; }
   .card { background:var(--card); border:1px solid var(--border); border-radius:16px; padding:0.9rem 1rem 1rem; }
   .eyebrow { font-size:11px; font-weight:600; letter-spacing:0.14em; text-transform:uppercase; color:var(--muted); margin:0 0 0.45rem; }
@@ -22,7 +22,7 @@ export function missingPage(): string {
 </style>
 </head>
 <body>
-<main>
+<main data-page-container>
   <p class="wordmark">Certa.</p>
   <article class="card">
     <p class="eyebrow">404</p>

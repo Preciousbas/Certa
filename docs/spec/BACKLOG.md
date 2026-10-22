@@ -1,5 +1,14 @@
 # Backlog
 
+- Prompt 80: Settings shows latitude, longitude and a radius slider. A map pin needs a map provider, which is not in the app.
+- Prompt 80: web variation form does not store attachments. `change_requests` has no file column, and a signed upload needs a Telegram or session user. The form sends title, description, type, amount and stage.
+- Prompt 80: currency choice is stored in the `certa-money-unit` cookie and localStorage. `users` has no display-currency column.
+- Prompt 80: document upload and the S4 drop-zone copy both say 20 MB, which is the check in the route.
+- Prompt 80: there is no demo video URL yet (prompt 99). The landing page shows the embed only when `DEMO_VIDEO_URL` is set.
+- Prompt 80: S18 admin stays the existing desk. The support console is prompt 90.
+- Prompt 80: plan display is ₦25,000/month and ₦250,000/year. The release-fee helper is display-only and is not wired into escrow or card charging.
+- Prompt 80: People lists name, role and a blocked flag. There is no remove-member API, so Remove is hidden. Joined date is not on the row the page reads. Invite on the web is consultant or subcontractor only, and it needs a signed-in session.
+
 - Prompt 00–02 spec files are not in the repo. When they arrive, reconcile `0002_foundation.sql` with their table list before adding more migrations.
 - Supabase Storage buckets and `supabase gen types` (this prompt's `src/server/db/types.ts`).
 - Call `assertServerEnv` on every production boot (`ENFORCE_ENV=1`) after the new variables are set on Vercel. Doing it now would 503 `/api/health` and `/api/mini/fund`.

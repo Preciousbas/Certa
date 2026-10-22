@@ -1,6 +1,7 @@
 "use client";
 
 import { usePathname } from "next/navigation";
+import Script from "next/script";
 import { useEffect, useRef } from "react";
 
 type TelegramButton = {
@@ -42,54 +43,86 @@ function applyTheme(webApp: TelegramWebApp) {
   root.dataset.theme = webApp.colorScheme === "dark" ? "dark" : "light";
   const params = webApp.themeParams;
   if (!params) return;
-  if (params.bg_color) root.style.setProperty("--bg", params.bg_color);
-  if (params.secondary_bg_color) root.style.setProperty("--card", params.secondary_bg_color);
-  if (params.text_color) root.style.setProperty("--text", params.text_color);
-  if (params.hint_color) root.style.setProperty("--muted", params.hint_color);
+  if (params.bg_color) {
+    root.style.setProperty("--bg", params.bg_color);
+    root.style.setProperty("--c-bg", params.bg_color);
+  }
+}
+
+function bootTelegram(path: string) {
+  const webApp = window.Telegram?.WebApp;
+  if (!webApp?.ready) return;
+  webApp.ready();
+  webApp.expand?.();
+  applyTheme(webApp);
+  const onTheme = () => applyTheme(webApp);
+  webApp.onEvent?.("themeChanged", onTheme);
+  const goBack = () => {
+    if (window.history.length > 1) window.history.back();
+    else window.location.href = "/";
+  };
+  if (path !== "/") {
+    webApp.BackButton?.show();
+    webApp.BackButton?.onClick(goBack);
+  } else {
+    webApp.BackButton?.hide();
+  }
+  return () => {
+    webApp.offEvent?.("themeChanged", onTheme);
+    webApp.BackButton?.offClick(goBack);
+    webApp.BackButton?.hide();
+  };
 }
 
 export function TelegramChrome() {
   const path = usePathname();
   useEffect(() => {
-    const webApp = window.Telegram?.WebApp;
-    if (!webApp?.ready) return;
-    webApp.ready();
-    webApp.expand?.();
-    applyTheme(webApp);
-    const onTheme = () => applyTheme(webApp);
-    webApp.onEvent?.("themeChanged", onTheme);
-    const goBack = () => {
-      if (window.history.length > 1) window.history.back();
-      else window.location.href = "/";
+    let cleanup = bootTelegram(path) ?? (() => {});
+    const onReady = () => {
+      cleanup();
+      cleanup = bootTelegram(path) ?? (() => {});
     };
-    if (path !== "/") {
-      webApp.BackButton?.show();
-      webApp.BackButton?.onClick(goBack);
-    } else {
-      webApp.BackButton?.hide();
-    }
+    window.addEventListener("certa-telegram-ready", onReady);
     return () => {
-      webApp.offEvent?.("themeChanged", onTheme);
-      webApp.BackButton?.offClick(goBack);
-      webApp.BackButton?.hide();
+      window.removeEventListener("certa-telegram-ready", onReady);
+      cleanup();
     };
   }, [path]);
-  return null;
+  return (
+    <Script
+      src="https://telegram.org/js/telegram-web-app.js"
+      strategy="afterInteractive"
+      onLoad={() => window.dispatchEvent(new Event("certa-telegram-ready"))}
+    />
+  );
 }
 
 export function useTelegramMainButton(text: string, onPress: () => void, enabled: boolean) {
   const press = useRef(onPress);
   press.current = onPress;
   useEffect(() => {
-    const button = window.Telegram?.WebApp?.MainButton;
-    if (!button?.setText || !enabled) return;
-    const run = () => press.current();
-    button.setText(text);
-    button.show();
-    button.onClick(run);
+    let cleanup = () => {};
+    const attach = () => {
+      cleanup();
+      const button = window.Telegram?.WebApp?.MainButton;
+      if (!button?.setText || !enabled) {
+        cleanup = () => {};
+        return;
+      }
+      const run = () => press.current();
+      button.setText(text);
+      button.show();
+      button.onClick(run);
+      cleanup = () => {
+        button.offClick(run);
+        button.hide();
+      };
+    };
+    attach();
+    window.addEventListener("certa-telegram-ready", attach);
     return () => {
-      button.offClick(run);
-      button.hide();
+      window.removeEventListener("certa-telegram-ready", attach);
+      cleanup();
     };
   }, [text, enabled]);
 }

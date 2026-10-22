@@ -1,15 +1,14 @@
-export default function MiniContractPage() {
+import { MiniGo } from "../../../components/mini-go";
+import { loadProject } from "../../../lib/data";
+
+export default async function MiniContractPage() {
+  const data = await loadProject();
   return (
     <div>
       <p className="eyebrow">Agreement</p>
       <h1>Review plan</h1>
       <p>By accepting, you agree that these stages and amounts are the payment plan. Any later change needs both of you to accept again.</p>
-      <button type="button">Accept plan</button>
-      <button type="button">Cancel</button>
-      <details>
-        <summary>Show technical details</summary>
-        <p className="faint">Document fingerprints sit here, next to the FX line.</p>
-      </details>
+      {data ? <MiniGo href={`/app/p/${data.project.id}/contract`} label="Open the agreement" /> : <p>No agreement is open.</p>}
     </div>
   );
 }

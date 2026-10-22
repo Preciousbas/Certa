@@ -1,5 +1,6 @@
 import { headers } from "next/headers";
 import { LoginWidget } from "../../components/login-widget";
+import { PageContainer } from "../../components/ui/page";
 import { appOrigin } from "../../../../src/server/auth/http";
 
 export default async function LoginPage() {
@@ -9,13 +10,15 @@ export default async function LoginPage() {
   const proto = incoming.get("x-forwarded-proto") ?? "http";
   const origin = appOrigin() || (host ? `${proto}://${host}` : "");
   return (
-    <div>
+    <PageContainer>
+      <main>
       <p className="eyebrow">Account</p>
       <h1>Sign in</h1>
       <p className="muted">Sign in with Telegram to start a project or join one.</p>
       <div className="card">
         <LoginWidget username={username.replace(/^@/, "")} authUrl={origin ? `${origin}/api/auth/telegram` : ""} />
       </div>
-    </div>
+      </main>
+    </PageContainer>
   );
 }

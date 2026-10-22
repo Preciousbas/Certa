@@ -16,10 +16,12 @@ export default async function FundPage() {
     name: stage.name,
     usdc: stage.amountUsdc,
     kobo: stage.amountNgnKobo,
-  }))).map((stage) => ({
+    funded: stage.funded,
+  }))).map((stage, index) => ({
     name: stage.name,
     kobo: stage.kobo.toString(),
     usdc: stage.usdc.toString(),
+    funded: data.stages[index]?.funded === true,
   }));
   return (
     <FundForm

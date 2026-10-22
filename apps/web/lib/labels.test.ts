@@ -4,7 +4,7 @@ import { changeSummary, stageStatusLabel } from "./labels";
 
 describe("labels", () => {
   it("does not echo database status words", () => {
-    expect(stageStatusLabel("submitted")).toBe("In review");
+    expect(stageStatusLabel("submitted")).toBe("Checking photos");
     expect(stageStatusLabel("released")).toBe("Released");
     expect(stageStatusLabel("funded")).toBe("Not started");
     expect(stageStatusLabel("mystery")).toBe("Not started");

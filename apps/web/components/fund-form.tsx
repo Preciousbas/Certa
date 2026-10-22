@@ -1,11 +1,16 @@
 "use client";
 
 import { useRef, useState, type FormEvent } from "react";
-import { SEPOLIA_CHAIN_ID, explorerAddress, explorerLabel, explorerTx } from "../lib/explorer";
-import { MoneyAmount, MoneyPair } from "./money";
+import { formatNaira } from "../../../src/lib/money/kobo";
+import { formatUsdc } from "../../../src/lib/money/usdc";
+import { SEPOLIA_CHAIN_ID, explorerAddress, explorerTx } from "../lib/explorer";
+import { MoneyAmount } from "./money";
+import { useMoneyUnit } from "./money";
 import { useTelegramMainButton } from "./telegram";
+import { ConfirmDialog } from "./ui/dialog";
+import { SegmentedToggle } from "./ui/button";
 
-type StageLine = { name: string; kobo: string; usdc: string };
+type StageLine = { name: string; kobo: string; usdc: string; funded: boolean };
 
 type FundReceipt = {
   amountNgnKobo: string;
@@ -21,19 +26,35 @@ type FundReceipt = {
 
 type Props = { projectId: string; defaultUpTo: number; stages: StageLine[]; rateLabel: string };
 
+function shortUsdc(micro: bigint): string {
+  const full = formatUsdc(micro, { dp: 2 });
+  const [num, unit] = full.split(" ");
+  if (!num || !unit) return full;
+  return `${num.replace(/(\.\d*?)0+$/, "$1").replace(/\.$/, "")} ${unit}`;
+}
+
 export function FundForm({ projectId, defaultUpTo, stages, rateLabel }: Props) {
+  const money = useMoneyUnit();
   const [message, setMessage] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const [confirm, setConfirm] = useState(false);
   const [receipt, setReceipt] = useState<FundReceipt | null>(null);
+  const [mode, setMode] = useState<"full" | "part">("part");
   const [upTo, setUpTo] = useState(defaultUpTo);
-  const [currency, setCurrency] = useState<"ngn" | "usdc">("ngn");
   const key = useRef<string | null>(null);
-  const covered = stages.slice(0, upTo + 1);
-  const kobo = covered.reduce((sum, stage) => sum + BigInt(stage.kobo), 0n).toString();
-  const usdc = covered.reduce((sum, stage) => sum + BigInt(stage.usdc), 0n).toString();
+  const open = stages.filter((stage) => !stage.funded);
+  const limit = mode === "full" ? stages.length - 1 : upTo;
+  const covered = stages.slice(0, limit + 1).filter((stage) => !stage.funded);
+  const lines = covered.length > 0 ? covered : open;
+  const kobo = lines.reduce((sum, stage) => sum + BigInt(stage.kobo), 0n);
+  const usdc = lines.reduce((sum, stage) => sum + BigInt(stage.usdc), 0n);
+  const nairaLabel = formatNaira(kobo);
+  const usdcLabel = shortUsdc(usdc);
+  const stageSpan = lines.length === 0 ? "none" : `stages 1–${limit + 1}`;
 
   async function onSubmit(event?: FormEvent) {
     event?.preventDefault();
+    setConfirm(false);
     const initData = window.Telegram?.WebApp?.initData;
     if (!initData) {
       setMessage("Open Certa in Telegram to lock this money.");
@@ -41,18 +62,26 @@ export function FundForm({ projectId, defaultUpTo, stages, rateLabel }: Props) {
     }
     key.current ??= crypto.randomUUID();
     setPending(true);
+    setMessage("Locking… waiting for the network (usually under 30 seconds).");
     try {
       const response = await fetch("/api/mini/fund", {
         method: "POST",
         headers: { authorization: `tma ${initData}`, "content-type": "application/json" },
-        body: JSON.stringify({ projectId, upToStage: upTo, idempotencyKey: key.current, currency }),
+        body: JSON.stringify({
+          projectId,
+          upToStage: limit,
+          idempotencyKey: key.current,
+          currency: money.unit,
+        }),
       });
       const body = (await response.json()) as Partial<FundReceipt> & { error?: string; message?: string };
       if (!response.ok || !body.amountNgnKobo || !body.amountUsdc || !body.stages) {
-        setMessage(body.message ?? body.error ?? "Could not lock the money. Try again.");
+        window.Telegram?.WebApp?.HapticFeedback?.notificationOccurred("error");
+        setMessage(`The payment didn't go through: ${body.message ?? body.error ?? "the network did not confirm it"}. No money was moved.`);
         return;
       }
       window.Telegram?.WebApp?.HapticFeedback?.notificationOccurred("success");
+      setMessage(null);
       setReceipt({
         amountNgnKobo: body.amountNgnKobo,
         amountUsdc: body.amountUsdc,
@@ -65,96 +94,80 @@ export function FundForm({ projectId, defaultUpTo, stages, rateLabel }: Props) {
         created: Boolean(body.created),
       });
     } catch {
-      setMessage("Could not lock the money. Try again.");
+      setMessage("The payment didn't go through: the connection dropped. No money was moved.");
     } finally {
       setPending(false);
     }
   }
 
-  useTelegramMainButton(currency === "ngn" ? "Pay in naira" : "Lock USDC", () => void onSubmit(), !receipt);
+  useTelegramMainButton(`Lock ${nairaLabel} in escrow`, () => setConfirm(true), !receipt && !pending);
 
   if (receipt) {
+    const proof = receipt.txHash ? explorerTx(SEPOLIA_CHAIN_ID, receipt.txHash) : receipt.escrowAddress ? explorerAddress(SEPOLIA_CHAIN_ID, receipt.escrowAddress) : "";
     return (
       <section className="card confirm">
-        <p className="eyebrow">{receipt.rail === "ngn" ? "Naira recorded" : "Locked"}</p>
-        <MoneyPair kobo={receipt.amountNgnKobo} usdc={receipt.amountUsdc} suffix={receipt.rail === "ngn" ? " to pay" : " locked"} />
-        <p className="muted">{receipt.stages.length} stages covered</p>
-        <ul className="plain">
-          {receipt.stages.map((stage) => (
-            <li className="row" key={stage.name}>
-              <span>{stage.name}</span>
-              <MoneyAmount kobo={stage.amountNgnKobo} usdc={stage.amountUsdc} />
-            </li>
-          ))}
-        </ul>
-        {receipt.escrowAddress ? (
-          <a href={explorerAddress(SEPOLIA_CHAIN_ID, receipt.escrowAddress)}>{explorerLabel(SEPOLIA_CHAIN_ID)}</a>
-        ) : (
-          <p className="muted">Escrow is not on chain yet.</p>
-        )}
-        <p>
-          {receipt.rail === "ngn"
-            ? "The naira amount is waiting. Escrow locks the matching USDC after that transfer clears."
-            : receipt.status === "confirmed"
-              ? "Locked. Proof is on the explorer."
-              : "Locking. Waiting for the network."}
-        </p>
-        {receipt.txHash ? <a href={explorerTx(SEPOLIA_CHAIN_ID, receipt.txHash)}>Transaction</a> : null}
-        <p>{receipt.contractorNotified ? "Contractor notified." : "Contractor not notified yet."}</p>
-        {!receipt.created ? <p className="faint">This request was already sent.</p> : null}
-        <a className="btn btn-block" href="/">
-          Back to timeline
-        </a>
-        <button className="ghost btn-block" type="button" disabled>
-          Download certificate
-        </button>
-        <p className="faint">The certificate is not ready.</p>
+        <h1>{receipt.status === "confirmed" ? "Locked." : "Locking… waiting for the network (usually under 30 seconds)."}</h1>
+        <MoneyAmount kobo={receipt.amountNgnKobo} usdc={receipt.amountUsdc} big />
+        {proof ? <p><a href={proof}>Locked. Proof on Etherscan ↗</a></p> : <p>Locked. The proof link appears when the network confirms it.</p>}
       </section>
     );
   }
 
   return (
-    <form onSubmit={onSubmit}>
-      <p className="eyebrow">Lock money</p>
-      <h1>Fund the contract</h1>
-      <p className="muted">Money stays locked, then pays out stage by stage. Naira follows the rate locked for this contract, {rateLabel} per USDC.</p>
-      <div className="segmented" role="group" aria-label="What the client pays">
-        <button type="button" data-active={currency === "ngn" ? "true" : "false"} onClick={() => setCurrency("ngn")}>
-          Naira
-        </button>
-        <button type="button" data-active={currency === "usdc" ? "true" : "false"} onClick={() => setCurrency("usdc")}>
-          USDC
-        </button>
-      </div>
-      <div className="segmented" role="group" aria-label="How far to fund">
-        <button type="button" data-active={upTo === stages.length - 1 ? "true" : "false"} onClick={() => setUpTo(stages.length - 1)}>
-          Full
-        </button>
-        <button type="button" data-active={upTo === defaultUpTo ? "true" : "false"} onClick={() => setUpTo(defaultUpTo)}>
-          Part-payment
-        </button>
-      </div>
-      <p className="faint">Fund up to stage {upTo + 1}. {covered[covered.length - 1]?.name}</p>
+    <form onSubmit={(event) => { event.preventDefault(); setConfirm(true); }}>
+      <p className="eyebrow">Fund</p>
+      <h1>Lock the stage payments</h1>
+      <p className="muted">Money stays locked until a stage is approved. The rate on this contract is {rateLabel} per USDC.</p>
+      <SegmentedToggle
+        label="How much to lock"
+        value={mode}
+        options={[{ value: "full", label: "Full contract sum" }, { value: "part", label: "Part-payment" }]}
+        onChange={(value) => setMode(value === "full" ? "full" : "part")}
+      />
+      {mode === "part" ? (
+        <label>
+          Cover up to stage
+          <select value={upTo} onChange={(event) => setUpTo(Number(event.target.value))}>
+            {stages.map((stage, index) => (
+              <option key={stage.name} value={index}>{index + 1}. {stage.name}</option>
+            ))}
+          </select>
+        </label>
+      ) : null}
+      <SegmentedToggle
+        label="Show in"
+        value={money.unit}
+        options={[{ value: "ngn", label: "Naira" }, { value: "usdc", label: "USDC" }]}
+        onChange={(value) => money.setUnit(value === "usdc" ? "usdc" : "ngn")}
+      />
       <div className="card">
-        {covered.map((stage, index) => (
+        {lines.map((stage, index) => (
           <div className="row" key={stage.name}>
-            <span>
-              {index + 1}. {stage.name}
-            </span>
-            <MoneyAmount kobo={stage.kobo} usdc={stage.usdc} unit={currency} />
+            <span>{index + 1}. {stage.name}</span>
+            <MoneyAmount kobo={stage.kobo} usdc={stage.usdc} />
           </div>
         ))}
         <div className="row">
-          <strong>{currency === "ngn" ? "Total to pay in naira" : "Total to lock"}</strong>
-          <strong>
-            <MoneyAmount kobo={kobo} usdc={usdc} unit={currency} />
+          <strong>Total to lock</strong>
+          <strong data-total>
+            <MoneyAmount kobo={kobo.toString()} usdc={usdc.toString()} />
           </strong>
         </div>
+        <p className="muted">Total to lock: {nairaLabel} ({usdcLabel})</p>
       </div>
-      <button className="btn-block" type="submit" disabled={pending}>
-        {pending ? "Sending" : currency === "ngn" ? "Pay in naira" : "Lock USDC"}
+      <button className={`ui-btn ${confirm ? "ui-btn-secondary" : "ui-btn-primary"} btn-block`} type="submit" disabled={pending || lines.length === 0}>
+        {pending ? "Working…" : `Lock ${money.unit === "usdc" ? usdcLabel : nairaLabel} in escrow`}
       </button>
-      {message ? <p className="toast">{message}</p> : null}
+      {lines.length === 0 ? <p className="muted">Every stage in this range is already funded.</p> : null}
+      {message ? <p className="toast" role="status">{message}</p> : null}
+      <ConfirmDialog
+        open={confirm}
+        title="Lock money"
+        body={`You're about to lock ${usdcLabel} (${nairaLabel}) for ${stageSpan}. Only approved stages can be paid from it. Continue?`}
+        confirmLabel="Lock money"
+        onConfirm={() => void onSubmit()}
+        onClose={() => setConfirm(false)}
+      />
     </form>
   );
 }

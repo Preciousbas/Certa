@@ -54,7 +54,7 @@ test.describe("mobile routes", () => {
   });
 
   test("the money toggle changes the amounts", async ({ page }) => {
-    await page.goto("/");
+    await page.goto("/fund");
     const amount = page.locator("[data-money]").first();
     const before = await amount.innerText();
     const toggle = page.getByRole("button", { name: "Show USDC" });

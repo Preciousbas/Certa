@@ -1,6 +1,6 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { captureNonces, photos, sha256Hex, stages, submissions, type Database } from "@certa/db";
+import { captureNonces, photos, projects, sha256Hex, stages, submissions, type Database } from "@certa/db";
 import { hammingHex, readJpegExif } from "@certa/shared";
 import { and, eq, isNull } from "drizzle-orm";
 import { audit } from "../audit.js";
@@ -10,6 +10,7 @@ import { transitionStage } from "../stages/transition.js";
 import { PHASH_DUP_DISTANCE, checkCapture, stageOpenForCapture } from "./checks.js";
 import { evidenceHash } from "./evidence.js";
 import { inspectJpeg, stampJpeg } from "./jpeg.js";
+import { PAUSED_MESSAGE } from "../projects/pause.js";
 import { C6, C9, STAGE_NOT_OPEN, formatWat } from "./messages.js";
 
 function coord(value: number): string {
@@ -192,6 +193,8 @@ export async function sendCaptureSet(
   db: Database,
   input: { projectId: string; workspaceId: string; userId: string; stageId: string; nonce: string },
 ): Promise<{ ok: true; message: string; submissionId: string } | { ok: false; message: string }> {
+  const project = (await db.select().from(projects).where(eq(projects.id, input.projectId)))[0];
+  if (project?.status === "paused") return { ok: false, message: PAUSED_MESSAGE };
   const stage = (await db.select().from(stages).where(and(eq(stages.id, input.stageId), eq(stages.projectId, input.projectId))))[0];
   if (!stage || !stageOpenForCapture(stage.status, stage.funded)) return { ok: false, message: STAGE_NOT_OPEN };
   const nonceRow = (

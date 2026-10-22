@@ -693,6 +693,7 @@ export async function appendAudit(
     payload: string;
     actorKind?: string;
     projectId?: string;
+    reason?: string;
   },
 ) {
   const last = await db.select().from(auditLog).orderBy(desc(auditLog.createdAt)).limit(1);
@@ -711,6 +712,7 @@ export async function appendAudit(
       afterHash: sha256Hex(input.payload),
       actorKind: input.actorKind ?? "user",
       projectId: input.projectId,
+      reason: input.reason,
     })
     .returning();
   return row;

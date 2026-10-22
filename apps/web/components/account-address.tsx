@@ -19,7 +19,7 @@ export function AccountAddress({ address }: { address: string | null }) {
           {copied ? "Copied" : "Copy"}
         </button>
         <a className="btn" href={explorerAddress(SEPOLIA_CHAIN_ID, address)}>
-          {explorerLabel(SEPOLIA_CHAIN_ID)}
+          View on {explorerLabel(SEPOLIA_CHAIN_ID)}
         </a>
       </div>
     </div>

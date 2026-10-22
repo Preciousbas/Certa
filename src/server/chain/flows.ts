@@ -164,6 +164,7 @@ async function acceptIfNeeded(db: Database, projectId: string, escrow: Hex, vers
 export async function fundAccepted(db: Database, input: { projectId: string; upToStage: number; idempotencyKey: string }, port: ChainPort = defaultPort()) {
   const project = (await db.select().from(projects).where(eq(projects.id, input.projectId)))[0];
   if (!project) throw new Error("That project is not available.");
+  if (project.status === "paused") throw new Error("This project is paused.");
   const roles = await projectRoleWallets(db, input.projectId);
   await enqueueJob(db, { kind: "gas_topup", payload: { address: roles.client.address, projectId: input.projectId }, dedupeKey: `gas:${roles.client.address}` });
   const escrow = await ensureEscrow(db, input.projectId, port);
@@ -225,6 +226,8 @@ export async function releaseStageTx(
   input: { projectId: string; stageId: string; approvalId: string; stageIndex: number; amountMicro: bigint; capMicro: bigint },
   port: ChainPort = defaultPort(),
 ) {
+  const project = (await db.select().from(projects).where(eq(projects.id, input.projectId)))[0];
+  if (project?.status === "paused") throw new Error("This project is paused.");
   const roles = await projectRoleWallets(db, input.projectId);
   const escrow = await ensureEscrow(db, input.projectId, port);
   if (input.amountMicro > input.capMicro) {

@@ -1,15 +1,18 @@
 "use client";
 
 import { useState } from "react";
+import { useTelegramMainButton } from "./telegram";
 
 export function ReviewActions({
   projectId,
   stageId,
   needsReason = false,
+  mainButton = false,
 }: {
   projectId: string;
   stageId: string;
   needsReason?: boolean;
+  mainButton?: boolean;
 }) {
   const [reason, setReason] = useState("");
   const [rejecting, setRejecting] = useState(false);
@@ -38,6 +41,8 @@ export function ReviewActions({
     if (body.moneyMoved === false) setMessage("Recorded. The money stays locked.");
     else setMessage(body.message ?? body.error ?? "Could not save that review.");
   }
+
+  useTelegramMainButton(needsReason ? "Send this stage on" : "Approve", () => void send("approve"), mainButton);
 
   if (needsReason) {
     return (

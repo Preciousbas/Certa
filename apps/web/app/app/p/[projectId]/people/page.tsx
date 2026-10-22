@@ -2,6 +2,7 @@ import { getDatabase, memberships, projects, users } from "@certa/db";
 import { and, eq } from "drizzle-orm";
 import { cookies } from "next/headers";
 import { openSession } from "../../../../../../../src/server/auth/sessionOpen";
+import { InviteForm } from "../../../../../components/invite-form";
 
 export default async function PeoplePage({ params }: { params: Promise<{ projectId: string }> }) {
   const { projectId } = await params;
@@ -36,6 +37,7 @@ export default async function PeoplePage({ params }: { params: Promise<{ project
       <p className="eyebrow">People</p>
       <h1>{project.name}</h1>
       {rows.length === 0 ? <p className="muted">Nobody has joined this project yet.</p> : null}
+      <InviteForm projectId={projectId} />
       <ul>
         {rows.map((row) => (
           <li key={`${row.role}-${row.name}`}>

@@ -1,31 +1,13 @@
-import { changeStatusLabel, stageStatusLabel } from "../lib/labels";
+import { stageChip } from "../../../src/components/ui/status";
+import { changeStatusLabel } from "../lib/labels";
 
-function toneForStage(status: string): string {
-  if (status === "released") return "released";
-  if (
-    status === "submitted" ||
-    status === "ai_review" ||
-    status.startsWith("awaiting") ||
-    status === "needs_more_evidence"
-  )
-    return "review";
-  if (status === "disputed") return "disputed";
-  if (
-    status === "not_started" ||
-    status === "in_progress" ||
-    status === "approved" ||
-    status === "releasing"
-  )
-    return "locked";
-  return "waiting";
-}
-
-function toneForChange(status: string): string {
-  if (status === "accepted") return "released";
-  if (status === "rejected") return "disputed";
-  if (status === "escalated") return "review";
-  return "waiting";
-}
+const TONE = {
+  neutral: "waiting",
+  info: "locked",
+  warning: "review",
+  danger: "disputed",
+  success: "released",
+} as const;
 
 export function StatusChip({
   status,
@@ -34,12 +16,20 @@ export function StatusChip({
   status: string;
   kind?: "stage" | "change";
 }) {
-  const label = kind === "change" ? changeStatusLabel(status) : stageStatusLabel(status);
-  const tone = kind === "change" ? toneForChange(status) : toneForStage(status);
+  if (kind === "change") {
+    const tone = status === "accepted" ? "released" : status === "rejected" || status === "declined" ? "disputed" : "review";
+    return (
+      <span className={`chip chip-${tone}`}>
+        <span className="chip-dot" aria-hidden="true" />
+        {changeStatusLabel(status)}
+      </span>
+    );
+  }
+  const chip = stageChip(status);
   return (
-    <span className={`chip chip-${tone}`}>
+    <span className={`chip chip-${TONE[chip.tone]}`}>
       <span className="chip-dot" aria-hidden="true" />
-      {label}
+      {chip.label}
     </span>
   );
 }
