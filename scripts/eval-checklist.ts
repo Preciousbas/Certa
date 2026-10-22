@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, appendFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, appendFileSync, writeFileSync } from "node:fs";
 import { setDefaultAutoSelectFamilyAttemptTimeout } from "node:net";
 import path from "node:path";
 import { STAGE_VERIFY_SYSTEM_V2 } from "../src/server/ai/prompts/stage_verify.v2.js";
@@ -139,6 +139,17 @@ async function main() {
   }
   const labels = (JSON.parse(readFileSync(path.join(ROOT, "labels.json"), "utf8")) as Label[]).slice(0, 6);
   if (labels.length === 0) throw new Error("No labels in tests/fixtures/stage-photos/real/labels.json");
+  const missing = labels.filter((label) => !existsSync(path.join(ROOT, label.file)));
+  const present = labels.filter((label) => existsSync(path.join(ROOT, label.file)));
+  if (missing.length > 0) {
+    process.stderr.write(
+      `Skipping ${missing.length} missing photo(s): ${missing.map((label) => label.file).join(", ")}.\nThe labels stay in tests/fixtures/stage-photos/real/labels.json. The image files stay on disk and are not committed.\n`,
+    );
+  }
+  if (present.length === 0) {
+    process.stderr.write("No local photos to score.\n");
+    return;
+  }
   const date = new Date().toISOString().slice(0, 10);
   const dir = path.join(process.cwd(), "docs/eval");
   mkdirSync(dir, { recursive: true });
@@ -158,7 +169,7 @@ async function main() {
     return writing;
   }
 
-  await mapPool(labels, 2, async (label) => {
+  await mapPool(present, 2, async (label) => {
     const bytes = Uint8Array.from(readFileSync(path.join(ROOT, label.file)));
     const v2Started = Date.now();
     const v2 = await askVerdict({
