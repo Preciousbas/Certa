@@ -7,7 +7,8 @@
     "node": ">=20.18.0"
   },
   "scripts": {
-    "dev": "pnpm --parallel --filter @certa/web --filter @certa/bot dev",
+    "dev": "pnpm --filter @certa/web dev",
+    "dev:bot": "pnpm --filter @certa/bot dev:poll",
     "test": "node scripts/vitest-args.mjs",
     "test:all": "vitest run && pnpm contracts:test",
     "typecheck": "tsc -p src/tsconfig.json && pnpm -r --if-present typecheck",
