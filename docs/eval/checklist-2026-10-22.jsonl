@@ -1,0 +1,24 @@
+{"file":"real-01.jpg","prompt":"stage_verify.v2","run":1,"claimed_stage":2,"expected":"fail","parsed":true,"predicted":"fail","confidence":0.72,"seconds":179.4,"false_pass":false,"error":""}
+{"file":"real-02.jpg","prompt":"stage_verify.v2","run":1,"claimed_stage":4,"expected":"pass","parsed":true,"predicted":"fail","confidence":0.72,"seconds":229.9,"false_pass":false,"error":""}
+{"file":"real-01.jpg","prompt":"stage_verify.v3","run":1,"claimed_stage":2,"expected":"fail","parsed":true,"predicted":"unsure","confidence":0,"seconds":62.6,"false_pass":false,"error":""}
+{"file":"real-01.jpg","prompt":"stage_verify.v3","run":2,"claimed_stage":2,"expected":"fail","parsed":true,"predicted":"unsure","confidence":0,"seconds":56.8,"false_pass":false,"error":""}
+{"file":"real-01.jpg","prompt":"stage_verify.v3","run":"pair","claimed_stage":2,"expected":"fail","parsed":true,"predicted":"unsure","confidence":0,"seconds":119.4,"false_pass":false,"error":""}
+{"file":"real-02.jpg","prompt":"stage_verify.v3","run":1,"claimed_stage":4,"expected":"pass","parsed":true,"predicted":"pass","confidence":0.75,"seconds":118.8,"false_pass":false,"error":""}
+{"file":"real-02.jpg","prompt":"stage_verify.v3","run":2,"claimed_stage":4,"expected":"pass","parsed":true,"predicted":"fail","confidence":0.75,"seconds":74.6,"false_pass":false,"error":""}
+{"file":"real-02.jpg","prompt":"stage_verify.v3","run":"pair","claimed_stage":4,"expected":"pass","parsed":true,"predicted":"fail","confidence":0.75,"seconds":193.5,"false_pass":false,"error":""}
+{"file":"real-03.jpg","prompt":"stage_verify.v2","run":1,"claimed_stage":5,"expected":"pass","parsed":true,"predicted":"fail","confidence":0.72,"seconds":224.6,"false_pass":false,"error":""}
+{"file":"real-03.jpg","prompt":"stage_verify.v3","run":1,"claimed_stage":5,"expected":"pass","parsed":true,"predicted":"pass","confidence":1,"seconds":75.4,"false_pass":false,"error":""}
+{"file":"real-04.jpg","prompt":"stage_verify.v2","run":1,"claimed_stage":5,"expected":"fail","parsed":false,"predicted":"unparsed","confidence":null,"seconds":238.6,"false_pass":false,"error":"timed out"}
+{"file":"real-03.jpg","prompt":"stage_verify.v3","run":2,"claimed_stage":5,"expected":"pass","parsed":true,"predicted":"pass","confidence":1,"seconds":91.6,"false_pass":false,"error":""}
+{"file":"real-03.jpg","prompt":"stage_verify.v3","run":"pair","claimed_stage":5,"expected":"pass","parsed":true,"predicted":"pass","confidence":1,"seconds":167,"false_pass":false,"error":""}
+{"file":"real-04.jpg","prompt":"stage_verify.v3","run":1,"claimed_stage":5,"expected":"fail","parsed":true,"predicted":"fail","confidence":0.5,"seconds":68.4,"false_pass":false,"error":""}
+{"file":"real-04.jpg","prompt":"stage_verify.v3","run":2,"claimed_stage":5,"expected":"fail","parsed":true,"predicted":"fail","confidence":0.5,"seconds":67.5,"false_pass":false,"error":""}
+{"file":"real-04.jpg","prompt":"stage_verify.v3","run":"pair","claimed_stage":5,"expected":"fail","parsed":true,"predicted":"fail","confidence":0.5,"seconds":135.9,"false_pass":false,"error":""}
+{"file":"real-05.jpg","prompt":"stage_verify.v2","run":1,"claimed_stage":6,"expected":"pass","parsed":true,"predicted":"unsure","confidence":0.72,"seconds":172.6,"false_pass":false,"error":""}
+{"file":"real-05.jpg","prompt":"stage_verify.v3","run":1,"claimed_stage":6,"expected":"pass","parsed":true,"predicted":"pass","confidence":1,"seconds":59.6,"false_pass":false,"error":""}
+{"file":"real-05.jpg","prompt":"stage_verify.v3","run":2,"claimed_stage":6,"expected":"pass","parsed":true,"predicted":"pass","confidence":1,"seconds":110.5,"false_pass":false,"error":""}
+{"file":"real-05.jpg","prompt":"stage_verify.v3","run":"pair","claimed_stage":6,"expected":"pass","parsed":true,"predicted":"pass","confidence":1,"seconds":170.1,"false_pass":false,"error":""}
+{"file":"real-06.jpg","prompt":"stage_verify.v2","run":1,"claimed_stage":7,"expected":"fail","parsed":false,"predicted":"unparsed","confidence":null,"seconds":239.4,"false_pass":false,"error":"timed out"}
+{"file":"real-06.jpg","prompt":"stage_verify.v3","run":1,"claimed_stage":7,"expected":"fail","parsed":true,"predicted":"fail","confidence":0,"seconds":59.6,"false_pass":false,"error":""}
+{"file":"real-06.jpg","prompt":"stage_verify.v3","run":2,"claimed_stage":7,"expected":"fail","parsed":true,"predicted":"fail","confidence":0,"seconds":84.1,"false_pass":false,"error":""}
+{"file":"real-06.jpg","prompt":"stage_verify.v3","run":"pair","claimed_stage":7,"expected":"fail","parsed":true,"predicted":"fail","confidence":0,"seconds":143.7,"false_pass":false,"error":""}
