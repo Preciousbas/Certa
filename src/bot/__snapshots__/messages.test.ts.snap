@@ -1,0 +1,65 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`message catalogue > matches the prompt copy 1`] = `
+{
+  "B-AC-1": "Ada has shared the payment plan for **Gatehouse**.
+Contract sum: ₦1,000.00
+1. Slab — ₦500.00
+Retention: 5% until 6 months after completion.
+Please check it carefully. Tap **Review plan** to see each figure and where it came from.",
+  "B-AC-3": "✅ Payment plan agreed by both sides on 22 Oct 2026, 12:00 WAT. Next step: Ada locks the money for the first stages.",
+  "B-AP-1": "Stage 1 — Slab is certified by Okafor.
+Pay ₦500.00 to Kemfor? (₦25.00 retention is kept until the defects period ends.)",
+  "B-AP-2": "Stage 2 — Roof is certified by Okafor.
+This payment of ₦5,000.00 is above your spending cap of ₦1,000.00, so it needs your approval.
+Pay Kemfor?",
+  "B-AP-6": "The payment for stage 1 didn't go through yet. The money is safe in the escrow. Certa is retrying and will message you.",
+  "B-DI-opened": "Dispute opened. Kemfor and Okafor have been told. If you can't agree by 29 Oct 2026, Okafor will decide.",
+  "B-EX-1": "Figures ready for Gatehouse:
+Contract sum: ₦1,000.00 (VAT 7.5% included)
+Stages: 2 · Retention: 5% · Defects period: 6 months
+1 things to check.
+Tap **Review figures** to check each one against your documents.",
+  "B-FU-2": "🔒 Locked ₦1,000.00 for stages 1–2. It can only be paid out for approved stages.
+Proof of payment: https://sepolia.etherscan.io/tx/0xabc",
+  "B-GE-1": "Only the client can do this on Gatehouse.",
+  "B-GE-3": "Here's what I can do:
+/menu — your options for this project
+/projects — switch project
+/photos — send stage photos
+/review — things waiting for you
+/wallet — your payments
+Need a person? Email support@example.com.",
+  "B-IN-2": "Share this link with your Contractor. It works once and expires on 29 Oct 2026.
+https://t.me/CertaApp_bot?start=join_K7MX2QPA",
+  "B-PH-2": "Open the camera to take 3–8 photos of **Slab**. Show:
+• level",
+  "B-ST-1": "Welcome to Certa 👷🏾
+Certa holds building money safely and pays each stage only when the work is done and checked.
+
+What would you like to do?",
+  "B-ST-2": "1. The client uploads the contract or BoQ. Certa reads the figures and both sides agree the payment stages.
+2. The client locks the money in an escrow.
+3. The contractor sends site photos from Certa. Certa's AI checks the work, the consultant certifies, and the client approves payment.
+Every step is recorded.",
+  "B-UP-1": "Got it: contract.pdf (4 pages). Send more files, or tap **Done** when you've sent everything.",
+  "B-VA-3": "Change agreed: Soakaway (₦250,000.00). The payment plan has been updated.",
+  "B-VF-1": "📋 Stage 1 — Slab on Gatehouse passed Certa's check (91% sure).
+• formwork
+Please certify or reject.",
+  "B-VF-4": "❌ Stage 1 isn't ready for payment yet. The money stays locked.
+What's missing:
+• missing soffit
+When it's done, send new photos.",
+  "B-VF-5": "I couldn't confirm stage 1 from these photos. Please send more photos showing:
+• the drain",
+  "B-WA-1": "Your payments on Gatehouse:
+Stage 1: ₦500.00 on 22 Oct 2026
+Total received: ₦500.00. Retention held: ₦25.00.
+
+Cash out to bank: coming soon. We're adding naira bank withdrawals with a licensed partner.",
+  "B-WX-1": "🌤️ Weather check for Gatehouse before the slab pour: rain chance in the next 24 hours is 10%. Good to pour. (Certa paid 0.01 USDC for this check from your plan.)",
+  "B-WX-2": "🌧️ Weather check for Gatehouse: rain chance in the next 24 hours is 70% (about 12 mm). Pouring concrete now risks weak concrete. Consider waiting or covering the work. (Certa paid 0.01 USDC for this check.)",
+  "B-WX-3": "Certa couldn't get a weather forecast for Gatehouse right now (allowance used). Please check the forecast yourself before pouring.",
+}
+`;

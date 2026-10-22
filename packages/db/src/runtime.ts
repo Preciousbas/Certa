@@ -8,13 +8,21 @@ const globalForDb = globalThis as {
   certaDb?: Promise<Database>;
   certaSql?: SqlHandle;
   certaClose?: () => Promise<void>;
+  certaMigrate?: boolean;
 };
 
 export type DatabaseOptions = { migrate?: boolean };
 
+/** The verify worker must not change the schema. scripts/db-migrate.ts owns that. */
+export function disableRuntimeMigrations(): void {
+  globalForDb.certaMigrate = false;
+}
+
 function migrationsEnabled(options?: DatabaseOptions): boolean {
   if (options?.migrate === false) return false;
-  return process.env.CERTA_SKIP_MIGRATIONS !== "1";
+  if (process.env.CERTA_SKIP_MIGRATIONS === "1") return false;
+  if (globalForDb.certaMigrate === false) return false;
+  return true;
 }
 
 function noteMigrationRunner(): void {
@@ -42,17 +50,13 @@ async function open(options?: DatabaseOptions): Promise<Database> {
     const client = postgres(process.env.DATABASE_URL, { max: 1 });
     globalForDb.certaSql = client;
     if (migrate) {
-      const found = await client<
-        { name: string | null }[]
-      >`select to_regclass('public.users') as name`;
+      const found = await client<{ name: string | null }[]>`select to_regclass('public.users') as name`;
       if (!found[0]?.name) await client.unsafe(migrationSql());
       else {
         await client.unsafe(
           "ALTER TABLE capture_nonces ADD COLUMN IF NOT EXISTS stage_id uuid REFERENCES stages(id); DELETE FROM payments WHERE id = '7786f304-faf8-45e7-9aab-6b4df6882c8e';",
         );
-        const jobsTable = await client<
-          { name: string | null }[]
-        >`select to_regclass('public.jobs') as name`;
+        const jobsTable = await client<{ name: string | null }[]>`select to_regclass('public.jobs') as name`;
         if (!jobsTable[0]?.name) await client.unsafe(migrationNamed("0002"));
         const versions = await client<
           { name: string | null }[]
@@ -74,6 +78,14 @@ async function open(options?: DatabaseOptions): Promise<Database> {
           { name: string | null }[]
         >`select column_name as name from information_schema.columns where table_schema = 'public' and table_name = 'photos' and column_name = 'stage_id'`;
         if (!photoStage[0]?.name) await client.unsafe(migrationNamed("0008"));
+        const notifyChannel = await client<
+          { name: string | null }[]
+        >`select column_name as name from information_schema.columns where table_schema = 'public' and table_name = 'memberships' and column_name = 'notify_channel'`;
+        if (!notifyChannel[0]?.name) await client.unsafe(migrationNamed("0009"));
+        const notificationStatus = await client<
+          { name: string | null }[]
+        >`select pg_get_constraintdef(oid) as name from pg_constraint where conname = 'notifications_status_check'`;
+        if (!notificationStatus[0]?.name?.includes("blocked")) await client.unsafe(migrationNamed("0010"));
       }
     }
     const db = drizzle(client, { schema }) as unknown as Database;

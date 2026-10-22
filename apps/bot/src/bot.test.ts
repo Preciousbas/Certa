@@ -62,7 +62,8 @@ async function run(text: string, fromId: number, updateId: number, officialRate?
 describe("bot", () => {
   it("answers /start", async () => {
     const text = await run("/start", 1001, 1);
-    expect(text).toMatch(/Certa/);
+    expect(text).toMatch(/Welcome back, Ada/);
+    expect(text).toMatch(/EM 22/);
     expect(text).not.toMatch(/!/);
   });
 
@@ -100,7 +101,8 @@ describe("bot", () => {
       role: "client",
     });
     const text = await run(`/start ${started.inviteCode}`, 5151, 11);
-    expect(text).toMatch(/You've joined New gatehouse as the Contractor\./);
+    expect(text).toMatch(/Payments for your work on New gatehouse/);
+    expect(text).toMatch(/Certa payment account/);
     const user = (await db.select().from(users).where(eq(users.telegramId, 5151n)))[0];
     const roles = user ? await db.select().from(memberships).where(eq(memberships.userId, user.id)) : [];
     expect(roles.map((row) => row.role)).toContain("contractor");
@@ -111,7 +113,7 @@ describe("bot", () => {
 
   it("rejects a bad join code", async () => {
     const text = await run("/join NOPE9999", 4242, 4);
-    expect(text).toMatch(/not valid/);
+    expect(text).toContain("isn't valid or has expired");
   });
 
   it("mentions the weather payment on /report", async () => {

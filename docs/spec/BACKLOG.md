@@ -32,3 +32,5 @@
 - Prompt 50: `photos.sha256` is still unique across every project, which is stricter than "not seen in this project".
 - Prompt 50: M2 certify/reject screens are not built. A consultant override is `POST /api/mini/review` when the stage is `ai_fail` or `needs_more_evidence`, with a reason of at least 20 characters. It records `ai_override` and calls `submitStage`. It does not release.
 - Prompt 99: expand the README "How the AI decides" section after the vision eval picks T.
+- Prompt 60: Telegram `setMyCommands` has no Certa-role scope. The default scope lists every command and handlers reply with B-GE-1. A planned start date is stored as audit `project.planned_start` because `projects` has no start-date column (`contract_versions.start_date` exists only after a contract version). Accepted variations update stage rows off-chain. There is no `addVariation` caller in the repo.
+- Prompt 70: send B-WX-1, B-WX-2 and B-WX-3 when the weather check runs. The catalogue functions exist. `/report` still returns the paid-weather string the bot already used.

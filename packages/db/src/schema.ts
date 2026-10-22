@@ -474,6 +474,7 @@ export const memberships = pgTable("memberships", {
   userId: uuid("user_id").notNull(),
   role: text("role").notNull(),
   status: text("status").notNull().default("active"),
+  notifyChannel: text("notify_channel").notNull().default("telegram"),
   joinedAt: timestamp("joined_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
