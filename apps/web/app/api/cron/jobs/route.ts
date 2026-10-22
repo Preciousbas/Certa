@@ -6,6 +6,7 @@ import { registerIntakeJobs } from "../../../../../../src/server/intake/register
 import { registerChainJobs } from "../../../../../../src/server/chain/register";
 import { registerVerifyJobs } from "../../../../../../src/server/verify/register";
 import { registerNotifyJobs } from "../../../../../../src/bot/notify";
+import { registerX402Jobs } from "../../../../../../src/server/x402/register";
 import { registerReleaseRetry } from "../../../../../../src/bot/releaseRetry";
 import { enqueueJob } from "../../../../../../src/server/jobs/enqueue";
 import { drainJobs } from "../../../../../../src/server/jobs/worker";
@@ -18,6 +19,7 @@ registerChainJobs();
 registerVerifyJobs();
 registerNotifyJobs();
 registerReleaseRetry();
+registerX402Jobs();
 
 setTelegramUpdateDispatch(async (update) => {
   const token = process.env.TELEGRAM_BOT_TOKEN ?? "";

@@ -3,7 +3,9 @@ import { and, desc, eq } from "drizzle-orm";
 import { explorerTx, SEPOLIA_CHAIN_ID } from "../../../../../../lib/explorer";
 import { photoThumb } from "../../../../../../lib/photo-thumb";
 import { ReviewActions } from "../../../../../../components/review-actions";
+import { PlanPour } from "../../../../../../components/plan-pour";
 import { formatWat } from "../../../../../../../../src/server/verify/messages";
+import { stageNeedsWeather } from "../../../../../../../../src/server/x402/gate";
 
 function chip(verdict: string): string {
   if (verdict === "pass") return "Pass";
@@ -33,6 +35,9 @@ export default async function StageDetailPage({ params }: { params: Promise<{ pr
       <p className="eyebrow">Stage {stage.stageIndex + 1}</p>
       <h1>{stage.name}</h1>
       <p><a href={`/mini/capture?stage=${stage.id}`}>Submit photos</a></p>
+      {stageNeedsWeather(stage) && (stage.status === "not_started" || stage.status === "in_progress") ? (
+        <PlanPour projectId={project.id} stageId={stage.id} />
+      ) : null}
       <h2>Photos</h2>
       {shots.length === 0 ? <p>No photos yet.</p> : (
         <div className="photo-grid">

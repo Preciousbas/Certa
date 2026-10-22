@@ -1,4 +1,5 @@
 import { probeBaseSepolia, sepoliaRpcUrl } from "@certa/chain";
+import { x402Health } from "../../../../../src/server/x402/health";
 import { getDatabase } from "@certa/db";
 import { factoryAddress } from "../../../lib/published-chain";
 import { queueCounts } from "../../../../../src/server/jobs/worker";
@@ -48,8 +49,7 @@ export async function GET(request: Request) {
   const aiDoc = process.env.AI_DOC_MODEL || process.env.LLM_TEXT_MODEL ? "ok" : "unconfigured";
   const aiVision =
     process.env.AI_VISION_MODEL || process.env.LLM_VISION_MODEL ? "ok" : "unconfigured";
-  const x402 =
-    process.env.X402_PAY_TO_ADDRESS || process.env.CLIENT_ADDRESS ? "ok" : "unconfigured";
+  const x402 = await x402Health();
   const requiredOk =
     checks.db === "ok" &&
     checks.rpc === "ok" &&

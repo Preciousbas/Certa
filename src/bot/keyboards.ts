@@ -120,6 +120,16 @@ export function stagePickKeyboard(stages: readonly { id: string; label: string }
   return [...stages.map((stage) => [tap(stage.label, "ph", stage.id)]), [tap("Cancel", "go", "cancel")]];
 }
 
+export function photoListKeyboard(stages: readonly { id: string; label: string; weather: boolean }[]): BotKeyboard {
+  const rows: BotKeyboard = [];
+  for (const stage of stages) {
+    rows.push([tap(stage.label, "ph", stage.id)]);
+    if (stage.weather) rows.push([tap("Planning to pour", "pp", stage.id)]);
+  }
+  rows.push([tap("Cancel", "go", "cancel")]);
+  return rows;
+}
+
 export function cameraKeyboard(appUrl: string, stageId: string): BotKeyboard {
   const base = appUrl.replace(/\/$/, "");
   return [[{ kind: "web_app", text: "Open camera", url: `${base}/mini/capture?stage=${stageId}` }]];

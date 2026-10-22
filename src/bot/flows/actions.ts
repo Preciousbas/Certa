@@ -17,6 +17,8 @@ import { parseNaira, formatNaira } from "../../lib/money/kobo.js";
 import { InvalidMoney } from "../../lib/money/kobo.js";
 import { acceptPlan, enqueueExtraction } from "../../server/intake/flow.js";
 import { transitionStage } from "../../server/stages/transition.js";
+import { enqueuePrePour } from "../../server/x402/prepour.js";
+import { stageNeedsWeather } from "../../server/x402/gate.js";
 import { enqueueReleaseRetry } from "../releaseRetry.js";
 import { formatWatDate } from "../dates.js";
 import { escapeHtml } from "../html.js";
@@ -33,7 +35,7 @@ import {
   inviteShareKeyboard,
   manualStagesKeyboard,
   retryPhotosKeyboard,
-  stagePickKeyboard,
+  photoListKeyboard,
   uploadDoneKeyboard,
   variationReplyKeyboard,
   variationSendKeyboard,
@@ -254,8 +256,23 @@ export async function photos(db: Database, actor: Actor): Promise<Outbound> {
   if (rows.length === 0) return say(bPh1());
   return say(
     bPh1(),
-    stagePickKeyboard(rows.map((stage) => ({ id: stage.id, label: `${stage.stageIndex + 1}. ${stage.name}`.slice(0, 40) }))),
+    photoListKeyboard(
+      rows.map((stage) => ({
+        id: stage.id,
+        label: `${stage.stageIndex + 1}. ${stage.name}`.slice(0, 40),
+        weather: stageNeedsWeather(stage),
+      })),
+    ),
   );
+}
+
+export async function planPour(db: Database, actor: Actor, stageId: string): Promise<Outbound> {
+  const denied = forbid(actor, ["contractor", "subcontractor"], "contractor");
+  if (denied || !actor.project) return denied ?? replace(bGe4());
+  const stage = (await db.select().from(stages).where(eq(stages.id, stageId)))[0];
+  if (!stage || stage.projectId !== actor.project.id || !stageNeedsWeather(stage)) return replace(bGe4());
+  await enqueuePrePour(db, { projectId: actor.project.id, stageId: stage.id });
+  return replace(`Certa is checking the weather before the ${stage.name} pour. You'll get the result here.`);
 }
 
 export async function photoStage(db: Database, actor: Actor, stageId: string, deps: EngineDeps): Promise<Outbound> {
@@ -754,7 +771,9 @@ export async function technical(db: Database, actor: Actor): Promise<Outbound> {
   const denied = forbid(actor, ["contractor", "subcontractor"], "contractor");
   if (denied || !actor.project) return denied ?? replace(bGe4());
   const party = (await db.select().from(parties).where(eq(parties.userId, actor.userId))).find((row) => row.projectId === actor.project?.id);
-  return replace(bWa2({ address: party?.walletAddress ?? "Not created yet." }));
+  return replace(
+    `${bWa2({ address: party?.walletAddress ?? "Not created yet." })}\nEscrow stays on Ethereum Sepolia. Weather checks are paid on Base Sepolia from the agent wallet.`,
+  );
 }
 
 export async function report(actor: Actor, deps: EngineDeps): Promise<Outbound> {

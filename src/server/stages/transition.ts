@@ -1,5 +1,7 @@
 import { appendAudit, stages, type Database } from "@certa/db";
 import { and, eq } from "drizzle-orm";
+import { stageNeedsWeather } from "../x402/gate.js";
+import { enqueuePrePour } from "../x402/prepour.js";
 
 export const STAGE_STATUSES = [
   "not_started",
@@ -82,6 +84,9 @@ async function writeStatus(
     entityId: stageId,
     payload: JSON.stringify({ stageId, from, to: status }),
   });
+  if (status === "in_progress" && stageNeedsWeather(row)) {
+    await enqueuePrePour(db, { projectId: row.projectId, stageId: row.id });
+  }
 }
 
 export async function transitionStage(

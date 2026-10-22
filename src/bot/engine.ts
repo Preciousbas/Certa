@@ -26,6 +26,7 @@ import {
   onVariationTitle,
   photoStage,
   photos,
+  planPour,
   rejectAsk,
   report,
   respondVariation,
@@ -162,6 +163,7 @@ async function onCallback(
   if (action === "jn") return joinWithCode(db, actor, id, now);
   if (action === "sw") return switchProject(db, actor, id, deps);
   if (action === "ph") return photoStage(db, actor, id, deps);
+  if (action === "pp") return planPour(db, actor, id);
   if (action === "cf") return certify(db, actor, id, deps);
   if (action === "rj") return rejectAsk(db, actor, id, now);
   if (action === "ap") return approve(db, actor, id, deps);

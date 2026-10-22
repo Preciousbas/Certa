@@ -42,6 +42,10 @@ async function main() {
     { name: string | null }[]
   >`select pg_get_constraintdef(oid) as name from pg_constraint where conname = 'notifications_status_check'`;
   if (!notificationStatus[0]?.name?.includes("blocked")) await sql.unsafe(migrationNamed("0010"));
+  const allowance = await sql<
+    { name: string | null }[]
+  >`select column_name as name from information_schema.columns where table_schema = 'public' and table_name = 'workspaces' and column_name = 'allowance_micro'`;
+  if (!allowance[0]?.name) await sql.unsafe(migrationNamed("0011"));
   await sql.end();
   process.stdout.write("migrated\n");
 }

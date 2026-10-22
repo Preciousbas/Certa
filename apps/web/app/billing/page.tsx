@@ -1,8 +1,10 @@
 import { getDatabase, plans } from "@certa/db";
 import { CERTA_FEE_BPS, usdcFromNgnKobo } from "@certa/shared";
+import { AgentSpend } from "../../components/agent-spend";
 import { MoneyAmount } from "../../components/money";
 import { PlanPause } from "../../components/plan-pause";
 import { loadProject } from "../../lib/data";
+import { presentSpend, projectSpend } from "../../../../src/server/x402/report";
 
 function feeLabel(bps: bigint): string {
   const whole = bps / 100n;
@@ -15,6 +17,7 @@ export default async function BillingPage() {
   const db = await getDatabase();
   const rows = await db.select().from(plans);
   const rate = data?.project.fxRateLocked;
+  const spend = data ? presentSpend(await projectSpend(db, data.project.id)) : null;
   return (
     <div>
       <p className="eyebrow">Plan</p>
@@ -36,6 +39,7 @@ export default async function BillingPage() {
         </div>
       </div>
       <p className="muted">Gas and the agent’s paid checks come out of the workspace allowance. People on site do not buy gas.</p>
+      {spend ? <AgentSpend heading={spend.heading} rows={spend.rows} /> : null}
       {data ? <PlanPause projectId={data.project.id} /> : <p className="muted">Open Certa in Telegram to pause.</p>}
     </div>
   );
