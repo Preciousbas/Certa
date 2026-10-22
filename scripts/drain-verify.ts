@@ -1,6 +1,7 @@
 import { getDatabase } from "@certa/db";
 import { enqueueJob } from "../src/server/jobs/enqueue.js";
 import { drainJobs, registerJobHandler } from "../src/server/jobs/worker.js";
+import { PROMPT_VERSION } from "../src/server/ai/prompts/stage_verify.v3.js";
 import { runVerifyStage } from "../src/server/verify/run.js";
 
 const BUDGET_MS = 15 * 60 * 1000;
@@ -13,6 +14,7 @@ registerJobHandler("verify_stage", async (payload) => {
   if (!submissionId) return;
   const db = await getDatabase();
   await runVerifyStage(db, submissionId, {
+    promptVersion: PROMPT_VERSION,
     submit: async (database, input) => {
       await enqueueJob(database, {
         kind: "submit_stage",

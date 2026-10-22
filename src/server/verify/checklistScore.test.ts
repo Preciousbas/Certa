@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { alignAnswers, combineChecklistRuns, scoreChecklist, type ItemAnswer } from "./checklistScore.js";
+import { alignAnswers, agreeChecklistRuns, combineChecklistRuns, scoreChecklist, type ItemAnswer } from "./checklistScore.js";
 
 function item(id: string, answer: ItemAnswer["answer"], reason: string): ItemAnswer {
   return { id, answer, reason };
@@ -57,5 +57,13 @@ describe("checklist score", () => {
     expect(combineChecklistRuns(fail, pass).next).toBe("ai_fail");
     expect(combineChecklistRuns(pass, unsure).verdict).toBe("unsure");
     expect(combineChecklistRuns(fail, unsure).verdict).toBe("fail");
+  });
+
+  it("does not pass when one of the two runs is missing", () => {
+    const pass = scoreChecklist(four(["yes", "yes", "yes", "yes"]));
+    const fail = scoreChecklist(four(["no", "no", "no", "no"], "The footing is not in frame."));
+    expect(agreeChecklistRuns(pass, null).verdict).toBe("unsure");
+    expect(agreeChecklistRuns(null, fail).verdict).toBe("fail");
+    expect(agreeChecklistRuns(null, null).next).toBe("needs_more_evidence");
   });
 });

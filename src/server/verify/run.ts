@@ -10,13 +10,14 @@ import {
 import { eq } from "drizzle-orm";
 import { audit } from "../audit.js";
 import { transitionStage } from "../stages/transition.js";
-import { STAGE_VERIFY_SYSTEM, PROMPT_VERSION } from "../ai/prompts/stage_verify.v1.js";
-import { criteriaOf, requiredMet } from "./criteria.js";
-import { decide, type VerifyDecision } from "./decide.js";
+import { PROMPT_VERSION, STAGE_VERIFY_SYSTEM_V3 } from "../ai/prompts/stage_verify.v3.js";
+import { criteriaOf } from "./criteria.js";
+import { DEFAULT_PASS_THRESHOLD, type VerifyDecision, type VerifyNext, type VerifyNotice } from "./decide.js";
 import { CHECK_UNAVAILABLE } from "./messages.js";
 import { notifyVerdict } from "./notify.js";
-import { stageVerifyUserMessage } from "./prompt.js";
-import { askVerdict, type VisionClient } from "./vision.js";
+import { agreeChecklistRuns, alignAnswers, scoreChecklist, type ChecklistScore, type ItemAnswer } from "./checklistScore.js";
+import { checklistUserMessage, findChecklist } from "./checklists.js";
+import { askChecklist, visionModels, VISION_TIMEOUT_MS, type VisionClient } from "./vision.js";
 import type { StageVerdict } from "../../lib/validation/stageVerdict.js";
 import { getObject } from "../storage.js";
 import { readFile } from "node:fs/promises";
@@ -76,8 +77,41 @@ function checksOk(value: unknown): boolean {
   return Boolean(row.nonce_ok && row.fresh && row.in_radius && row.not_duplicate && row.image_ok);
 }
 
-function similar(value: unknown): boolean {
-  return Boolean(value && typeof value === "object" && "similar_to" in value && (value as { similar_to?: unknown }).similar_to);
+function noticesFor(next: VerifyNext): VerifyNotice[] {
+  if (next === "awaiting_certification") return ["B-VF-1", "B-VF-2", "B-VF-3"];
+  if (next === "ai_fail") return ["B-VF-4", "consultant_fyi"];
+  return ["B-VF-5", "B-VF-6"];
+}
+
+function verdictFromItems(claimed: number, items: readonly ItemAnswer[], score: ChecklistScore, fallback: string): StageVerdict {
+  const mapped = items.map((item) => ({
+    id: item.id,
+    result: item.answer === "yes" ? ("met" as const) : item.answer === "no" ? ("not_met" as const) : ("not_visible" as const),
+    reason: (item.reason.trim() || fallback).slice(0, 200),
+    photo_refs: [1],
+  }));
+  const reasons = mapped.map((item) => item.reason).filter((reason) => reason.length > 0).slice(0, 6);
+  const issues = mapped.filter((item) => item.result === "not_met").map((item) => item.reason).slice(0, 8);
+  const missing = mapped.filter((item) => item.result === "not_visible").map((item) => item.reason.slice(0, 160)).slice(0, 5);
+  return {
+    schema_version: "1",
+    stage_number_claimed: claimed,
+    stage_number_observed: score.verdict === "pass" ? claimed : null,
+    stage_name_observed: null,
+    verdict: score.verdict,
+    confidence: score.confidence,
+    criteria: mapped.length > 0 ? mapped : [{ id: "c1", result: "not_visible", reason: fallback, photo_refs: [1] }],
+    reasons: reasons.length > 0 ? reasons : [fallback],
+    issues,
+    missing_shots: missing.length > 0 ? missing : score.verdict === "unsure" ? ["Take clear photos of the work in daylight."] : [],
+    safety_flags: [],
+  };
+}
+
+function nextFromStored(verdict: StageVerdict, photoOk: boolean): VerifyNext {
+  if (verdict.verdict === "pass" && verdict.confidence >= DEFAULT_PASS_THRESHOLD && photoOk) return "awaiting_certification";
+  if (verdict.verdict === "fail") return "ai_fail";
+  return "needs_more_evidence";
 }
 
 export async function defaultSubmitStage(
@@ -100,59 +134,63 @@ export async function runVerifyStage(
   const project = stage ? (await db.select().from(projects).where(eq(projects.id, stage.projectId)))[0] : undefined;
   if (!stage || !project) return null;
   const existing = (await db.select().from(aiVerdicts).where(eq(aiVerdicts.submissionId, submissionId)))[0];
-  const allStages = (await db.select().from(stages).where(eq(stages.projectId, project.id))).sort((a, b) => a.stageIndex - b.stageIndex);
   const criteria = criteriaOf(stage.acceptanceCriteria);
   const claimed = stage.stageIndex + 1;
+  const photoRows = (await db.select().from(photos).where(eq(photos.submissionId, submissionId))).sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+  const photoOk = photoRows.length >= 3 && photoRows.every((photo) => checksOk(photo.checksJson));
 
   let verdict: StageVerdict;
   let model = existing?.model ?? "unavailable";
   let raw: unknown = existing?.rawJson ?? {};
   let latency = existing?.latencyMs ?? 0;
   if (!existing) {
-    const photoRows = (await db.select().from(photos).where(eq(photos.submissionId, submissionId))).sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+    const checklist = findChecklist(claimed);
     const images: Uint8Array[] = [];
     for (const photo of photoRows) {
       const bytes = await readStored(photo.originalKey || photo.storageKey);
       if (bytes) images.push(bytes);
     }
-    const previous = allStages.find((row) => row.stageIndex === stage.stageIndex - 1);
-    const user = stageVerifyUserMessage({
-      projectName: project.name,
-      location: project.siteLocation,
-      stages: allStages.map((row) => ({ number: row.stageIndex + 1, name: row.name })),
-      claimedNumber: claimed,
-      claimedName: stage.name,
-      criteria,
-      photos: photoRows.map((photo) => ({
-        capturedAt: photo.capturedAt ?? photo.createdAt,
-        distanceM: Math.round(photo.distanceFromSiteM ?? 0),
-        similar: similar(photo.checksJson),
-      })),
-      previousStatus: previous?.status ?? null,
-    });
-    const asked = await askVerdict({
-      system: deps?.system ?? STAGE_VERIFY_SYSTEM,
-      user,
-      images,
-      client: deps?.client,
-    });
-    model = asked.model;
-    latency = asked.latencyMs;
-    if (asked.verdict) {
-      verdict = { ...asked.verdict, stage_number_claimed: claimed };
-      raw = { text: asked.raw, parsed: asked.verdict };
-    } else if (asked.error === "timed out") {
-      verdict = { ...unavailable(criteria, TIMED_OUT), stage_number_claimed: claimed };
-      raw = { text: asked.raw, error: "timed out" };
+    if (!checklist) {
+      verdict = { ...unavailable(criteria, "This stage has no photo checklist."), stage_number_claimed: claimed };
+      raw = { error: "no checklist" };
     } else {
-      verdict = { ...unavailable(criteria), stage_number_claimed: claimed };
-      raw = { text: asked.raw, error: asked.error || CHECK_UNAVAILABLE };
+      const user = checklistUserMessage(claimed);
+      const request = {
+        system: deps?.system ?? STAGE_VERIFY_SYSTEM_V3,
+        user,
+        images,
+        model: visionModels().primary,
+        client: deps?.client,
+        timeoutMs: VISION_TIMEOUT_MS,
+      };
+      const [left, right] = await Promise.all([askChecklist(request), askChecklist(request)]);
+      const leftItems = left.reply ? alignAnswers(checklist.items, left.reply.items) : null;
+      const rightItems = right.reply ? alignAnswers(checklist.items, right.reply.items) : null;
+      let score = agreeChecklistRuns(
+        leftItems ? scoreChecklist(leftItems) : null,
+        rightItems ? scoreChecklist(rightItems) : null,
+      );
+      if (score.verdict === "pass" && !photoOk) {
+        score = { ...score, verdict: "unsure", next: "needs_more_evidence" };
+      }
+      const timedOut = left.error === "timed out" || right.error === "timed out";
+      const fallback = timedOut && score.verdict === "unsure" ? TIMED_OUT : CHECK_UNAVAILABLE;
+      const items = (score.verdict === "fail" && rightItems && scoreChecklist(rightItems).verdict === "fail" ? rightItems : leftItems) ?? rightItems ?? [];
+      verdict = verdictFromItems(claimed, items, score, fallback);
+      model = visionModels().primary;
+      latency = left.latencyMs + right.latencyMs;
+      raw = {
+        runs: [
+          { text: left.raw, error: left.error, parsed: left.reply },
+          { text: right.raw, error: right.error, parsed: right.reply },
+        ],
+      };
     }
     await db.insert(aiVerdicts).values({
       submissionId,
       stageId: stage.id,
       model,
-      promptVersion: deps?.promptVersion ?? PROMPT_VERSION,
+      promptVersion: PROMPT_VERSION,
       verdict: verdict.verdict,
       confidence: verdict.confidence,
       rawJson: raw,
@@ -183,17 +221,7 @@ export async function runVerifyStage(
         };
   }
 
-  const photoRows = await db.select().from(photos).where(eq(photos.submissionId, submissionId));
-  const decision = decide({
-    verdict: verdict.verdict,
-    confidence: verdict.confidence,
-    requiredCriteriaMet: requiredMet(criteria, verdict.criteria),
-    observedStage: verdict.stage_number_observed,
-    claimedStage: claimed,
-    possibleFake: verdict.issues.includes("possible_fake_evidence"),
-    photoChecksOk: photoRows.length >= 3 && photoRows.every((photo) => checksOk(photo.checksJson)),
-    safetyFlags: verdict.safety_flags,
-  });
+  const decision = { next: nextFromStored(verdict, photoOk), notices: noticesFor(nextFromStored(verdict, photoOk)) };
 
   if (stage.status === "ai_review") await transitionStage(db, stage.id, decision.next);
   await audit(db, {
@@ -203,7 +231,7 @@ export async function runVerifyStage(
     projectId: project.id,
     workspaceId: project.workspaceId,
     actorKind: "agent",
-    after: { verdict: verdict.verdict, confidence: verdict.confidence, next: decision.next, model, prompt: deps?.promptVersion ?? PROMPT_VERSION },
+    after: { verdict: verdict.verdict, confidence: verdict.confidence, next: decision.next, model, prompt: PROMPT_VERSION },
   });
   await notifyVerdict(db, decision.notices, {
     projectId: project.id,

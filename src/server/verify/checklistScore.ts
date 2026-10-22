@@ -47,6 +47,21 @@ export function scoreChecklist(items: readonly ItemAnswer[], threshold = DEFAULT
   return { confidence, verdict: "unsure", next: "needs_more_evidence", yes, no: nos.length, cannotSee };
 }
 
+/** A pass stands only when both runs pass. One clear no fails the pair. A missing run cannot pass. */
+export function agreeChecklistRuns(first: ChecklistScore | null, second: ChecklistScore | null): ChecklistScore {
+  if (first && second) return combineChecklistRuns(first, second);
+  if (first?.verdict === "fail") return { ...first, verdict: "fail", next: "ai_fail" };
+  if (second?.verdict === "fail") return { ...second, verdict: "fail", next: "ai_fail" };
+  return {
+    confidence: first?.confidence ?? second?.confidence ?? 0,
+    verdict: "unsure",
+    next: "needs_more_evidence",
+    yes: first?.yes ?? second?.yes ?? 0,
+    no: first?.no ?? second?.no ?? 0,
+    cannotSee: first?.cannotSee ?? second?.cannotSee ?? 0,
+  };
+}
+
 /** A pass stands only when both runs pass. One clear no fails the pair. */
 export function combineChecklistRuns(first: ChecklistScore, second: ChecklistScore): ChecklistScore {
   if (first.verdict === "fail" || second.verdict === "fail") {

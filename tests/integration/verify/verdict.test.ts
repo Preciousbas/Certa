@@ -77,23 +77,24 @@ describe("verify stage job", () => {
     const opened = await createMemoryDatabase();
     const { stage, submission } = await ready(opened.db);
     const calls: string[] = [];
-    const client: VisionClient = async () => ({
-      text: JSON.stringify({
-        schema_version: "1",
-        stage_number_claimed: 1,
-        stage_number_observed: 1,
-        stage_name_observed: "Oversite",
-        verdict: "pass",
-        confidence: 0.9,
-        criteria: [{ id: "c1", result: "met", reason: "The blinding covers the hole in photo 1.", photo_refs: [1] }],
-        reasons: ["The oversite concrete is in place."],
-        issues: [],
-        missing_shots: [],
-        safety_flags: [],
-      }),
-      latencyMs: 4,
-      costMicro: null,
-    });
+    let callsToModel = 0;
+    const client: VisionClient = async () => {
+      callsToModel += 1;
+      return {
+        text: JSON.stringify({
+          schema_version: "3",
+          stage_number_claimed: 1,
+          items: [
+            { id: "s1-cleared", answer: "yes", reason: "The plot is cleared in the photos." },
+            { id: "s1-lines", answer: "yes", reason: "Setting-out lines are visible." },
+            { id: "s1-ground", answer: "yes", reason: "Bare ground is visible." },
+            { id: "s1-no-concrete", answer: "yes", reason: "No foundation concrete has been cast." },
+          ],
+        }),
+        latencyMs: 4,
+        costMicro: null,
+      };
+    };
     const decision = await runVerifyStage(opened.db, submission.id, {
       client,
       submit: async (_db, input) => {
@@ -102,6 +103,7 @@ describe("verify stage job", () => {
       },
     });
     expect(decision?.next).toBe("awaiting_certification");
+    expect(callsToModel).toBe(2);
     expect(calls).toHaveLength(1);
     const stored = (await opened.db.select().from(stages).where(eq(stages.id, stage.id)))[0];
     expect(stored?.status).toBe("awaiting_certification");

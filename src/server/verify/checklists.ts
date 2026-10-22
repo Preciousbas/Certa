@@ -111,9 +111,13 @@ export const STAGE_CHECKLISTS: readonly StageChecklist[] = [
 ];
 
 export function checklistFor(stage: number): StageChecklist {
-  const found = STAGE_CHECKLISTS.find((row) => row.stage === stage);
+  const found = findChecklist(stage);
   if (!found) throw new Error(`No checklist for stage ${stage}.`);
   return found;
+}
+
+export function findChecklist(stage: number): StageChecklist | undefined {
+  return STAGE_CHECKLISTS.find((row) => row.stage === stage);
 }
 
 export function checklistUserMessage(stage: number): string {
