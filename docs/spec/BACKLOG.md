@@ -26,3 +26,9 @@
 - Prompt 40: Vercel Hobby cron is daily (`0 0 * * *` on `/api/cron/jobs`). Reconciliation can also be triggered with `GET /api/cron/reconcile` and the `CRON_SECRET` header.
 - Prompt 40: a dropped Sepolia transaction is resent with the stored nonce and a higher fee. CDP may ignore an explicit nonce. After 3 attempts the chain row is `failed` and, when the stage edge exists, the stage is `release_failed`.
 - Prompt 40: Etherscan `getsourcecode` was not available (no API key). The verified ABI matches local source. Do not redeploy for that.
+- Prompt 50: Telegram inline buttons for B-VF-1 through B-VF-7 are not sent. The notification row stores the plain text. Prompt 60 owns the bot keyboards.
+- Prompt 50: S11 filters, pagination, and the desktop split layout are not built. The timeline page shows photos sent, the verdict, and the submit proof.
+- Prompt 50: the stored perceptual hash is the 64-bit average hash in `@certa/shared`, compared with Hamming distance 6. It is not a DCT pHash.
+- Prompt 50: `photos.sha256` is still unique across every project, which is stricter than "not seen in this project".
+- Prompt 50: M2 certify/reject screens are not built. A consultant override is `POST /api/mini/review` when the stage is `ai_fail` or `needs_more_evidence`, with a reason of at least 20 characters. It records `ai_override` and calls `submitStage`. It does not release.
+- Prompt 99: expand the README "How the AI decides" section after the vision eval picks T.

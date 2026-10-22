@@ -6,5 +6,5 @@
     "module": "ESNext",
     "moduleResolution": "bundler"
   },
-  "include": ["./**/*.ts"]
+  "include": ["./**/*.ts", "../scripts/drain-verify.ts"]
 }

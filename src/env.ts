@@ -56,7 +56,7 @@ export function assertServerEnv(source: Record<string, string | undefined>): Ser
     AI_VISION_PROVIDER: source.AI_VISION_PROVIDER || source.LLM_PROVIDER,
     AI_VISION_MODEL: source.AI_VISION_MODEL || source.LLM_VISION_MODEL,
     AI_DOC_FALLBACK_MODEL: source.AI_DOC_FALLBACK_MODEL || source.LLM_TEXT_MODEL,
-    AI_VISION_FALLBACK_MODEL: source.AI_VISION_FALLBACK_MODEL || source.LLM_VISION_MODEL,
+    AI_VISION_FALLBACK_MODEL: source.AI_VISION_FALLBACK_MODEL || source.AI_VISION_MODEL || source.LLM_VISION_MODEL,
   };
   const parsed = serverSchema.safeParse(mapped);
   if (!parsed.success) {

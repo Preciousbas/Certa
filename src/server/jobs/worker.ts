@@ -11,17 +11,27 @@ export function registerJobHandler(kind: string, handler: JobHandler): void {
   handlers.set(kind, handler);
 }
 
-export async function drainJobs(limit = 20): Promise<{ ran: number; dead: number }> {
+export async function drainJobs(
+  limit = 20,
+  options?: { kind?: string; budgetMs?: number },
+): Promise<{ ran: number; dead: number }> {
   const started = Date.now();
+  const budgetMs = options?.budgetMs ?? 200_000;
   const db = await getDatabase();
   let ran = 0;
   let dead = 0;
-  while (ran + dead < limit && Date.now() - started < 50_000) {
+  while (ran + dead < limit && Date.now() - started < budgetMs) {
     const due = (
       await db
         .select()
         .from(jobs)
-        .where(and(eq(jobs.status, "queued"), lte(jobs.runAt, new Date())))
+        .where(
+          and(
+            eq(jobs.status, "queued"),
+            lte(jobs.runAt, new Date()),
+            ...(options?.kind ? [eq(jobs.kind, options.kind)] : []),
+          ),
+        )
         .limit(1)
     )[0];
     if (!due) break;

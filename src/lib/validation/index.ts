@@ -43,7 +43,7 @@ export const fundOutput = z.object({
 });
 
 export const nonceInput = z.object({ projectId: projectIdField, stageId: projectIdField }).strict();
-export const nonceOutput = z.object({ nonce: z.string().min(16) }).strict();
+export const nonceOutput = z.object({ nonce: z.string().min(16), expiresAt: z.string().min(1) }).strict();
 
 export const captureFields = z
   .object({
@@ -51,8 +51,10 @@ export const captureFields = z
     stageId: projectIdField,
     nonce: z.string().min(16),
     capturedAt: z.string().regex(/^\d+$/),
-    lat: z.string().optional(),
-    lng: z.string().optional(),
+    lat: z.string(),
+    lng: z.string(),
+    accuracy: z.string(),
+    deviceInfo: z.string().max(300).optional(),
   })
   .strict();
 
@@ -60,7 +62,25 @@ export const captureOutput = z.object({
   accepted: z.boolean(),
   trust: z.enum(["high", "low", "rejected"]),
   reasons: z.array(z.string()),
+  message: z.string(),
+  photoId: z.string().uuid().optional(),
 });
+
+export const submissionInput = z
+  .object({
+    projectId: projectIdField,
+    stageId: projectIdField,
+    nonce: z.string().min(16),
+  })
+  .strict();
+
+export const submissionOutput = z
+  .object({
+    ok: z.literal(true),
+    message: z.string(),
+    submissionId: z.string().uuid(),
+  })
+  .strict();
 
 export const releaseInput = z
   .object({

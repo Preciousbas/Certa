@@ -4,7 +4,7 @@ import { deleteAnonymousFund } from "./services.js";
 const globalForDb = globalThis as { certaDb?: Promise<Database> };
 
 async function open(): Promise<Database> {
-  if (process.env.DATABASE_URL) {
+  if (process.env.DATABASE_URL && process.env.PLAYWRIGHT !== "1") {
     const postgres = (await import("postgres")).default;
     const { drizzle } = await import("drizzle-orm/postgres-js");
     const client = postgres(process.env.DATABASE_URL, { max: 1 });
@@ -36,6 +36,10 @@ async function open(): Promise<Database> {
         { name: string | null }[]
       >`select column_name as name from information_schema.columns where table_schema = 'public' and table_name = 'projects' and column_name = 'chain_sync'`;
       if (!chainSync[0]?.name) await client.unsafe(migrationNamed("0007"));
+      const photoStage = await client<
+        { name: string | null }[]
+      >`select column_name as name from information_schema.columns where table_schema = 'public' and table_name = 'photos' and column_name = 'stage_id'`;
+      if (!photoStage[0]?.name) await client.unsafe(migrationNamed("0008"));
     }
     const db = drizzle(client, { schema }) as unknown as Database;
     await deleteAnonymousFund(db);
@@ -43,6 +47,10 @@ async function open(): Promise<Database> {
   }
   const opened = await createMemoryDatabase();
   await deleteAnonymousFund(opened.db);
+  if (process.env.PLAYWRIGHT === "1") {
+    const { seedDemo } = await import("./seed.js");
+    await seedDemo(opened.db);
+  }
   return opened.db;
 }
 

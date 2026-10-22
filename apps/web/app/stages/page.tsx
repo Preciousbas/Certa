@@ -54,7 +54,11 @@ export default async function StagesPage() {
                 ? "No score is stored."
                 : `Score ${score.confidence.toFixed(2)}. Approving here does not pay the stage.`}
             </p>
-            <ReviewActions projectId={data.project.id} stageId={stage.id} />
+            <ReviewActions
+              needsReason={stage.status === "needs_more_evidence" || stage.status === "ai_fail"}
+              projectId={data.project.id}
+              stageId={stage.id}
+            />
           </article>
         );
       })}

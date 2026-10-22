@@ -16,6 +16,8 @@
     "../../src/server/chain/**/*.ts",
     "../../src/server/ai/**/*.ts",
     "../../src/server/jobs/**/*.ts",
+    "../../src/server/verify/**/*.ts",
+    "../../src/server/stages/**/*.ts",
     "../../src/server/storage.ts",
     "../../src/server/audit.ts",
     "../../src/lib/**/*.ts"

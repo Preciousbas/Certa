@@ -67,7 +67,20 @@ Foundry in `contracts/`. `CertaEscrow.sol`, `EscrowFactory.sol`. ABI is used fro
 
 `DATABASE_URL`, `DEMO_SEED`, `DEMO_MODE`, `APP_ENCRYPTION_KEY`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET`, `NEXT_PUBLIC_APP_URL`, `NEXT_PUBLIC_TELEGRAM_BOT_USERNAME`, `CDP_API_KEY_ID`, `CDP_API_KEY_SECRET`, `CDP_WALLET_SECRET`, `SEPOLIA_RPC_URL`, `BASE_SEPOLIA_RPC_URL`, `ESCROW_FACTORY_ADDRESS`, `ESCROW_ADDRESS`, `DEPLOYER_PRIVATE_KEY`, `EVM_PRIVATE_KEY`, `X402_FACILITATOR_URL`, `X402_PAY_TO_ADDRESS`, `CLIENT_ADDRESS`, `LLM_API_KEY`, `LLM_BASE_URL`, `LLM_VISION_MODEL`, `LLM_TEXT_MODEL`, `RESEND_API_KEY`, `EMAIL_FROM`, `BLOB_READ_WRITE_TOKEN`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `VITEST`, `NODE_ENV`, `VERCEL_GIT_COMMIT_SHA`, `CRON_SECRET`, `FX_SOURCE`, `FX_MANUAL_KOBO_PER_USDC`, `FX_MANUAL_AS_OF`, `ENFORCE_ENV`.
 
-`assertServerEnv` maps `NEXT_PUBLIC_APP_URL` → `APP_URL`, `SEPOLIA_RPC_URL` → `RPC_URL`, and `LLM_*` → `AI_DOC_*` / `AI_VISION_*`. It runs only when `ENFORCE_ENV=1`, so a missing new variable does not take down the current deploy.
+`assertServerEnv` maps `NEXT_PUBLIC_APP_URL` → `APP_URL`, `SEPOLIA_RPC_URL` → `RPC_URL`, and `LLM_*` → `AI_DOC_*` / `AI_VISION_*`. It runs only when `ENFORCE_ENV=1`, so a missing new variable does not take down the current deploy. `VERIFY_PASS_THRESHOLD` is optional and defaults to 0.75 (bounds 0.6–0.95).
+
+## Capture as found
+
+Inspected before the photo-verification work. Paths are the ones in this repo.
+
+- The camera page is `apps/web/app/capture/page.tsx`, not `/mini/capture`. It picks the first stage in review, or otherwise the first stage that is not released, and renders `apps/web/components/camera.tsx`.
+- The camera calls `getUserMedia({ video: { facingMode: "environment" } })` with no ideal width. It draws the frame to a canvas and encodes JPEG at quality 0.9. There is no `<input type="file">`. A nonce is requested on each shutter press, not when the page opens.
+- `POST /api/mini/nonce` stores a sha256 of a 16-byte nonce, expires it after 5 minutes, and returns `{ nonce }` with no `expiresAt`. It checks the contractor or assigned subcontractor. It does not check the stage state.
+- `POST /api/mini/capture` marks that nonce used on the first photo. It reads JPEG EXIF with `readJpegExif` (`packages/shared/src/exif.ts`). `evaluatePhoto` (`packages/shared/src/photos.ts`) wants an EXIF time within 30 minutes, a GPS point inside `projects.geofence_radius_m`, and rejects a sha256 already in `photos`. There is no accuracy cap, no 10-minute freshness rule, no perceptual-hash distance, and no Laplacian check. `exif_present` is required by that older function, so a canvas JPEG with the EXIF stripped is refused unless the test path is bypassed.
+- A passing photo is stamped with `sharp` (`apps/web/lib/stamp-photo.ts`) and written under `var/photos/`. The bytes are not put in the private `photos` bucket on this path. The route then calls `@certa/ai` `verifyStage`. If the decision is `recommend_release` and the project has an escrow address, it calls `broadcastStageRelease`, which sends `submitStage` and then `releaseStage`. That is the behaviour this prompt removes: the model must not release money.
+- `recordCaptureOutcome` can walk a pass all the way to `released`.
+- There is no `ai_verdicts` table. `submissions` has no `status`. `photos` has no `stage_id`, `accuracy_m`, `distance_from_site_m`, or `nonce`. The site radius column is `geofence_radius_m`, not `site_radius_m`.
+- No IndexedDB queue. No `/mini/capture` page. No `verify_stage` job. No `src/server/verify`. The seeded 0.78 confidence string is not in the capture page; a stored submission still renders `AICheckCard` with a hard-coded threshold of 0.85.
 
 ## Seed and hard-coded business data
 
@@ -129,7 +142,7 @@ Inspected before the contract and BoQ intake work. Paths are the ones in this re
 
 ### Duration and plan
 
-- No route sets `maxDuration`. `apps/web/vercel.json` crons `GET /api/cron/jobs` at `0 0 * * *`. The root `vercel.json` has install and build only. The Vercel plan is not recorded in the repo, so a function duration above the plan default was not set. `drainJobs` stops after 50 seconds.
+- The Vercel team is Hobby. Hobby function `maxDuration` tops out at 300 seconds. `GET /api/cron/jobs` sets `maxDuration` to 300. `apps/web/vercel.json` crons that route at `0 0 * * *`, which is the Hobby schedule limit of once a day. The bot process in `apps/bot/src/poll.ts` drains one queued job at a time, including `verify_stage`. Sending photos only queues that job. The worker writes `ai_verdicts` when the model returns, and the stage page reads that row. A vision call aborts after 240 seconds. A timeout is stored as unsure and the stage moves to `needs_more_evidence`, which the consultant override can send on.
 
 ## What differed from the prompt
 

@@ -4,6 +4,7 @@ import { webhookCallback } from "grammy";
 import { setTelegramUpdateDispatch } from "../../../../../../src/server/jobs/telegramUpdate";
 import { registerIntakeJobs } from "../../../../../../src/server/intake/register";
 import { registerChainJobs } from "../../../../../../src/server/chain/register";
+import { registerVerifyJobs } from "../../../../../../src/server/verify/register";
 import { enqueueJob } from "../../../../../../src/server/jobs/enqueue";
 import { drainJobs } from "../../../../../../src/server/jobs/worker";
 import { fetchCbnRate } from "../../../../lib/cbn-rate";
@@ -12,6 +13,7 @@ import { apiError, emptyQuery, queryOf } from "../../../../lib/schemas";
 
 registerIntakeJobs();
 registerChainJobs();
+registerVerifyJobs();
 
 setTelegramUpdateDispatch(async (update) => {
   const token = process.env.TELEGRAM_BOT_TOKEN ?? "";
@@ -27,6 +29,7 @@ setTelegramUpdateDispatch(async (update) => {
 });
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 300;
 
 export async function GET(request: Request) {
   const query = emptyQuery.safeParse(queryOf(request));

@@ -4,15 +4,17 @@ import { fileURLToPath } from "node:url";
 import type { NextConfig } from "next";
 
 const rootEnv = path.join(path.dirname(fileURLToPath(import.meta.url)), "../../.env");
-try {
-  for (const line of readFileSync(rootEnv, "utf8").split("\n")) {
-    if (!line || line.startsWith("#") || !line.includes("=")) continue;
-    const index = line.indexOf("=");
-    const key = line.slice(0, index);
-    if (!process.env[key]) process.env[key] = line.slice(index + 1);
+if (process.env.PLAYWRIGHT !== "1") {
+  try {
+    for (const line of readFileSync(rootEnv, "utf8").split("\n")) {
+      if (!line || line.startsWith("#") || !line.includes("=")) continue;
+      const index = line.indexOf("=");
+      const key = line.slice(0, index);
+      if (!process.env[key]) process.env[key] = line.slice(index + 1);
+    }
+  } catch {
+    // The repo .env is optional. Apps still run on their own environment.
   }
-} catch {
-  // The repo .env is optional. Apps still run on their own environment.
 }
 
 function connectSources(): string {

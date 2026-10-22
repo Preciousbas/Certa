@@ -456,3 +456,48 @@ video, canvas { width: 100%; border-radius: 16px; background: #1e293b; display: 
 
   .desk-actions { display: flex; gap: 0.6rem; justify-content: flex-end; }
 }
+
+.capture-frame {
+  position: relative;
+  background: var(--primary);
+  border-radius: 16px;
+  overflow: hidden;
+  min-height: 220px;
+}
+
+.capture-frame video { width: 100%; display: block; background: #1a2333; }
+
+.capture-guide {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  top: 12px;
+  margin: 0;
+  color: #f8fafc;
+  background: rgb(15 42 68 / 72%);
+  border-radius: 10px;
+  padding: 0.45rem 0.6rem;
+}
+
+.capture-mark {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  margin: 0;
+  color: #f8fafc;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.14em;
+  font-size: 12px;
+}
+
+.capture-send { margin-top: 0.5rem; background: var(--primary); color: #f8fafc; }
+
+.capture-send:hover { transform: scale(0.95); }
+
+.verdict-pass { color: var(--released-text); }
+.verdict-fail { color: var(--disputed-text); }
+.verdict-unsure { color: var(--pending-text); }
+
+.photo-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 0.6rem; }
+.photo-grid img { width: 100%; border-radius: 10px; background: var(--primary); }
+

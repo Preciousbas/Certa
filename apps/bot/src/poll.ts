@@ -3,6 +3,20 @@ import path from "node:path";
 import { getDatabase } from "@certa/db";
 import { fetchCbnRate } from "@certa/shared";
 import { createBot } from "./bot.js";
+import { drainJobs } from "../../../src/server/jobs/worker.js";
+import { registerVerifyJobs } from "../../../src/server/verify/register.js";
+
+async function runQueuedJobs() {
+  registerVerifyJobs();
+  for (;;) {
+    try {
+      await drainJobs(1);
+    } catch (error) {
+      console.error(JSON.stringify({ msg: "job worker", err: error instanceof Error ? error.message : "failed" }));
+    }
+    await new Promise((resolve) => setTimeout(resolve, 2_000));
+  }
+}
 
 const rootEnv = path.join(import.meta.dirname, "../../../.env");
 try {
@@ -17,6 +31,7 @@ try {
 }
 
 const token = process.env.TELEGRAM_BOT_TOKEN;
+void runQueuedJobs();
 if (!token) {
   console.log("TELEGRAM_BOT_TOKEN is not set. The Mini App can still run on port 3000.");
   await new Promise(() => undefined);

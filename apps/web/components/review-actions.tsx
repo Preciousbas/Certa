@@ -2,7 +2,15 @@
 
 import { useState } from "react";
 
-export function ReviewActions({ projectId, stageId }: { projectId: string; stageId: string }) {
+export function ReviewActions({
+  projectId,
+  stageId,
+  needsReason = false,
+}: {
+  projectId: string;
+  stageId: string;
+  needsReason?: boolean;
+}) {
   const [reason, setReason] = useState("");
   const [rejecting, setRejecting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -11,6 +19,10 @@ export function ReviewActions({ projectId, stageId }: { projectId: string; stage
     const initData = window.Telegram?.WebApp?.initData;
     if (!initData) {
       setMessage("Open Certa in Telegram to review this stage.");
+      return;
+    }
+    if (needsReason && reason.trim().length < 20) {
+      setMessage("Write at least 20 characters so the override is on the record.");
       return;
     }
     if (decision === "reject" && reason.trim().length === 0) {
@@ -25,6 +37,21 @@ export function ReviewActions({ projectId, stageId }: { projectId: string; stage
     const body = (await response.json()) as { error?: string; message?: string; moneyMoved?: boolean };
     if (body.moneyMoved === false) setMessage("Recorded. The money stays locked.");
     else setMessage(body.message ?? body.error ?? "Could not save that review.");
+  }
+
+  if (needsReason) {
+    return (
+      <div>
+        <label className="stack">
+          <span className="faint">Reason for sending this stage on</span>
+          <textarea value={reason} onChange={(event) => setReason(event.target.value)} />
+        </label>
+        <button type="button" onClick={() => void send("approve")}>
+          Send this stage on
+        </button>
+        {message ? <p className="muted">{message}</p> : null}
+      </div>
+    );
   }
 
   return (

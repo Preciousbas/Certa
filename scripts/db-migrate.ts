@@ -26,6 +26,14 @@ async function main() {
     { name: string | null }[]
   >`select column_name as name from information_schema.columns where table_schema = 'public' and table_name = 'join_codes' and column_name = 'revoked_at'`;
   if (!revokedAt[0]?.name) await sql.unsafe(migrationNamed("0006"));
+  const chainSync = await sql<
+    { name: string | null }[]
+  >`select column_name as name from information_schema.columns where table_schema = 'public' and table_name = 'projects' and column_name = 'chain_sync'`;
+  if (!chainSync[0]?.name) await sql.unsafe(migrationNamed("0007"));
+  const photoStage = await sql<
+    { name: string | null }[]
+  >`select column_name as name from information_schema.columns where table_schema = 'public' and table_name = 'photos' and column_name = 'stage_id'`;
+  if (!photoStage[0]?.name) await sql.unsafe(migrationNamed("0008"));
   await sql.end();
   process.stdout.write("migrated\n");
 }

@@ -77,6 +77,14 @@ The person who uploads replies `accept`. The contractor joins with the code and 
 
 A photo of a paper bill is refused until it is sent as Excel or PDF. Old `.xls` files are read. HEIC photos are refused.
 
+## How the AI decides
+
+A stage photo is accepted only from the in-app camera. The server checks a 10-minute nonce, a capture time within 10 minutes, a GPS fix of 50 m or better, the site radius on the project (150 m unless the project says otherwise), a new sha256, a perceptual hash more than distance 6 from earlier photos, and a frame that is large enough and not dark or blurred. EXIF is recorded and not required, because the canvas JPEG does not carry it.
+
+The vision prompt is `stage_verify.v1`. The reply must match `StageVerdict`. Pass threshold `T` is `VERIFY_PASS_THRESHOLD`, default **0.75**, and it must stay between 0.6 and 0.95. A pass at or above T, with every required criterion met and the observed stage matching the claim, moves the stage to waiting for the consultant and calls `submitStage`. It does not release the money. A confident fail stays locked. Anything unsure, low-confidence, mismatched, or flagged as fake asks for more photos. A consultant can override that with a written reason of at least 20 characters. The consultant always makes the final call.
+
+Photo checks are queued and processed by a GitHub Actions worker every ~10 minutes. GitHub can delay scheduled runs. The 21 Oct 2026 run in `docs/eval/vision-2026-10-21.md` called `gpt-5.6-sol` with `stage_verify.v1` and `stage_verify.v2` on 44 labelled photos. None of the 88 replies parsed: the gateway's default group has no channel for that model. The false-pass rate was not measured. T stays **0.75** and is not proven. An earlier same-day run of `deepseek-v4-flash` is in `docs/eval/vision-2026-10-21-deepseek.md`. Five of those 88 replies parsed, and none was a predicted pass.
+
 ## Security model
 
 See `docs/SECURITY.md`. Short version: no keys in the database, webhook secret on Telegram, HMAC on Mini App init data, RLS plus `authorize()`, idempotency keys on money, and an append-only hash-chained audit log.
@@ -87,7 +95,7 @@ Client, consultant, contractor, and operator each have their own Coinbase server
 
 - The escrow factory is on Ethereum Sepolia, and the source is verified on Etherscan.
 - The active escrow is the pilot: 1 USDC mobilisation and 1 USDC per stage. The first quote is 2 USDC. The full Lekki escrow, whose first quote is 3,900 USDC, stays deployed for later.
-- The camera page has no file picker. Sharp stamping and a real EXIF parser are not connected to the capture route yet.
+- The camera page has no file picker. A photo is stamped in the corner and the original is kept. The check can move a stage to the consultant. It cannot release the money.
 - Demo pages do not require Telegram `initData`.
 - Cash out to a bank stops at "coming soon".
 - Email verification before the first send is not built. Resend is skipped when the API key is empty.

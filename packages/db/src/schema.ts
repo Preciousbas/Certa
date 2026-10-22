@@ -227,6 +227,7 @@ export const submissions = pgTable("submissions", {
   confidence: doublePrecision("confidence"),
   decision: text("decision"),
   evidenceHash: text("evidence_hash"),
+  status: text("status"),
   ...timestamps,
 });
 
@@ -244,7 +245,36 @@ export const photos = pgTable("photos", {
   device: text("device"),
   checksJson: jsonb("checks_json").notNull(),
   stampedKey: text("stamped_key"),
+  stageId: uuid("stage_id"),
+  uploadedBy: uuid("uploaded_by"),
+  accuracyM: real("accuracy_m"),
+  distanceFromSiteM: real("distance_from_site_m"),
+  exif: jsonb("exif").notNull().default({}),
+  nonce: text("nonce"),
+  receivedAt: timestamp("received_at", { withTimezone: true }),
+  originalKey: text("original_key"),
+  widthPx: integer("width_px"),
+  heightPx: integer("height_px"),
   ...timestamps,
+});
+
+export const aiVerdicts = pgTable("ai_verdicts", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  submissionId: uuid("submission_id").notNull(),
+  stageId: uuid("stage_id").notNull(),
+  model: text("model").notNull(),
+  promptVersion: text("prompt_version").notNull(),
+  verdict: text("verdict").notNull(),
+  confidence: real("confidence").notNull(),
+  rawJson: jsonb("raw_json").notNull(),
+  criteriaResults: jsonb("criteria_results").notNull(),
+  reasons: text("reasons").array().notNull(),
+  issues: text("issues").array().notNull(),
+  safetyFlags: text("safety_flags").array().notNull().default([]),
+  missingShots: text("missing_shots").array().notNull().default([]),
+  latencyMs: integer("latency_ms"),
+  costMicro: bigint("cost_micro", { mode: "bigint" }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
 export const approvals = pgTable("approvals", {
