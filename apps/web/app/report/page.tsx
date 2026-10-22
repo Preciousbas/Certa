@@ -1,6 +1,6 @@
 import { isTxHash } from "@certa/chain";
-import { aiVerdicts, getDatabase, submissions, x402Calls } from "@certa/db";
-import { formatUsdc } from "@certa/shared";
+import { aiVerdicts, chainTxs, getDatabase, submissions, x402Spend } from "@certa/db";
+import { usdcPlain } from "../../../../src/server/x402/gate";
 import { desc, eq } from "drizzle-orm";
 import { BASE_SEPOLIA_CHAIN_ID, explorerTx } from "../../lib/explorer";
 import { loadProject } from "../../lib/data";
@@ -21,8 +21,10 @@ export default async function ReportPage() {
   const stage = latest
     ? data.stages.find((item) => item.id === latest.stageId)
     : data.stages.find((item) => item.id === notes[0]?.stageId);
-  const calls = await db.select().from(x402Calls).where(eq(x402Calls.projectId, data.project.id));
-  const weather = calls.find((row) => row.endpoint.includes("weather") && isTxHash(row.txHash));
+  const calls = await db.select().from(x402Spend).where(eq(x402Spend.projectId, data.project.id));
+  const feeTxs = await db.select().from(chainTxs).where(eq(chainTxs.projectId, data.project.id));
+  const weather = calls.find((row) => row.endpoint.includes("weather"));
+  const weatherTx = weather?.chainTxId ? feeTxs.find((row) => row.id === weather.chainTxId) : undefined;
   const label = latest?.verdict === "pass" ? "passed" : latest?.verdict === "fail" ? "needs work" : latest ? "needs more photos" : "";
   return (
     <div>
@@ -35,11 +37,11 @@ export default async function ReportPage() {
             : "No submission is waiting."}
         </p>
         <p>
-          {weather && weather.txHash ? (
+          {weather && weatherTx && isTxHash(weatherTx.txHash) ? (
             <>
-              {weather.responseSummary ? <span>{weather.responseSummary} </span> : null}
-              Agent paid {formatUsdc(weather.costUsdc)} for the weather check.{" "}
-              <a href={explorerTx(BASE_SEPOLIA_CHAIN_ID, weather.txHash)}>Receipt</a>
+              <span>{weather.resultSummary} </span>
+              Agent paid {usdcPlain(weather.amountMicro)} USDC for the weather check.{" "}
+              <a href={explorerTx(BASE_SEPOLIA_CHAIN_ID, weatherTx.txHash)}>Proof ↗</a>
             </>
           ) : (
             "No weather check has been paid."

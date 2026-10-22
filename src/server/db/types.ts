@@ -517,6 +517,7 @@ export type WorkspacesRow = {
   status: string;
   gas_allowance_usdc: string;
   x402_allowance_usdc: string;
+  allowance_micro: string;
   letterhead_file_id: string | null;
   margin_top: number;
   margin_bottom: number;

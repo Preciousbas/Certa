@@ -31,6 +31,7 @@ export default async function WalletPage() {
         <summary>Advanced</summary>
         <AccountAddress address={address} />
         {address && !mine?.walletMock ? <p className="faint">This address is the server account.</p> : null}
+        <p>Escrow stays on Ethereum Sepolia. Weather checks are paid on Base Sepolia from the agent wallet, not from yours.</p>
       </details>
     </div>
   );

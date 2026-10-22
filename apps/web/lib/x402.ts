@@ -11,7 +11,7 @@ export function paymentChallenge(payTo: string): Response {
       accepts: [
         {
           scheme: "exact",
-          network: "eip155:11155111",
+          network: "eip155:84532",
           amount: WEATHER_PRICE_USDC.toString(),
           asset: USDC_BASE_SEPOLIA,
           payTo,
@@ -39,7 +39,7 @@ export function isDemoPayment(request: Request): boolean {
 }
 
 export function paymentAccount(): `0x${string}` | null {
-  const value = process.env.X402_PAY_TO_ADDRESS || process.env.CLIENT_ADDRESS || "";
+  const value = process.env.X402_PAY_TO_ADDRESS || "";
   return /^0x[a-fA-F0-9]{40}$/.test(value) ? (value as `0x${string}`) : null;
 }
 
@@ -92,7 +92,7 @@ export function settlementReceipt(
     receipt: {
       payer: value.payer ?? "",
       payTo,
-      network: value.network ?? "eip155:11155111",
+      network: value.network ?? "eip155:84532",
       amount: costUsdc.toString(),
       responseHash: responseHash(rawBody),
     },

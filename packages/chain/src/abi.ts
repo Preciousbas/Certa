@@ -57,5 +57,6 @@ export const certaEscrowAbi = [
 
 export const USDC_SEPOLIA = "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238" as const;
 export const SEPOLIA_CHAIN_ID = 11155111;
-export const USDC_BASE_SEPOLIA = USDC_SEPOLIA;
-export const BASE_SEPOLIA_CHAIN_ID = SEPOLIA_CHAIN_ID;
+/** Circle USDC on Base Sepolia. Escrow USDC stays on Ethereum Sepolia. */
+export const USDC_BASE_SEPOLIA = "0x036CbD53842c5426634e7929541eC2318f3dCF7e" as const;
+export const BASE_SEPOLIA_CHAIN_ID = 84532;

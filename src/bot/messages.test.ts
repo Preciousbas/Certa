@@ -1,0 +1,56 @@
+import { describe, expect, it } from "vitest";
+import {
+  bAc1,
+  bAc3,
+  bAp1,
+  bAp2,
+  bAp6,
+  bDi1Opened,
+  bEx1,
+  bFu2,
+  bGe1,
+  bGe3,
+  bIn2,
+  bPh2,
+  bSt1,
+  bSt2,
+  bUp1,
+  bVa3,
+  bVf1,
+  bVf4,
+  bVf5,
+  bWa1,
+  bWx1,
+  bWx2,
+  bWx3,
+} from "./messages.js";
+
+describe("message catalogue", () => {
+  it("matches the prompt copy", () => {
+    expect({
+      "B-ST-1": bSt1(),
+      "B-ST-2": bSt2(),
+      "B-UP-1": bUp1({ fileName: "contract.pdf", pagesOrSheets: "4 pages" }),
+      "B-EX-1": bEx1({ project: "Gatehouse", sum: "₦1,000.00", vatPct: "7.5", stages: 2, retentionPct: "5", months: 6, warnings: 1 }),
+      "B-AC-1": bAc1({ clientName: "Ada", project: "Gatehouse", sum: "₦1,000.00", stageLines: "1. Slab — ₦500.00", retentionPct: "5", months: 6 }),
+      "B-AC-3": bAc3({ dateTimeWat: "22 Oct 2026, 12:00 WAT", clientName: "Ada" }),
+      "B-FU-2": bFu2({ amount: "₦1,000.00", from: 1, to: 2, explorerLink: "https://sepolia.etherscan.io/tx/0xabc" }),
+      "B-PH-2": bPh2({ stage: "Slab", criteriaBullets: "• level" }),
+      "B-VF-1": bVf1({ n: 1, stage: "Slab", project: "Gatehouse", confidence: 91, reasonsBullets: "• formwork" }),
+      "B-VF-4": bVf4({ n: 1, issuesBullets: "• missing soffit" }),
+      "B-VF-5": bVf5({ n: 1, missingShotsBullets: "• the drain" }),
+      "B-AP-1": bAp1({ n: 1, stage: "Slab", consultant: "Okafor", amount: "₦500.00", retention: "₦25.00", contractor: "Kemfor" }),
+      "B-AP-2": bAp2({ n: 2, stage: "Roof", consultant: "Okafor", amount: "₦5,000.00", cap: "₦1,000.00", contractor: "Kemfor" }),
+      "B-GE-1": bGe1({ requiredRole: "client", project: "Gatehouse" }),
+      "B-GE-3": bGe3({ supportEmail: "support@example.com" }),
+      "B-IN-2": bIn2({ roleLabel: "Contractor", date: "29 Oct 2026", link: "https://t.me/CertaApp_bot?start=join_K7MX2QPA" }),
+      "B-DI-opened": bDi1Opened({ otherParty: "Kemfor", consultant: "Okafor", decideAfterDate: "29 Oct 2026" }),
+      "B-VA-3": bVa3({ title: "Soakaway", amount: "₦250,000.00" }),
+      "B-WA-1": bWa1({ project: "Gatehouse", lines: "Stage 1: ₦500.00 on 22 Oct 2026", total: "₦500.00", retention: "₦25.00" }),
+      "B-WX-1": bWx1({ project: "Gatehouse", stage: "slab", pct: 10, usdc: "0.01" }),
+      "B-WX-2": bWx2({ project: "Gatehouse", pct: 70, mm: "12", usdc: "0.01" }),
+      "B-WX-3": bWx3({ project: "Gatehouse", plainReason: "allowance used" }),
+      "B-AP-6": bAp6({ n: 1 }),
+    }).toMatchSnapshot();
+  });
+});

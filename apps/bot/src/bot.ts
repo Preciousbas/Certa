@@ -19,6 +19,8 @@ import {
 import { requireMember } from "../../../src/server/auth/rbac";
 import { sideLabel } from "../../../src/server/projects/selfServe";
 import { copy, formatMoneyPair, formatNgnFromKobo, formatOfficialRate, joinDeepLink, parseStartPayload, type OfficialRate } from "@certa/shared";
+import { handleIncoming, toHtml, bGe2, bGe5, type BotKeyboard, type Inbound } from "../../../src/bot/index.js";
+import { randomUUID } from "node:crypto";
 import { conversations, createConversation, type ConversationFlavor } from "@grammyjs/conversations";
 import { limit } from "@grammyjs/ratelimiter";
 import { Bot, InlineKeyboard, session, type Context, type SessionFlavor } from "grammy";
@@ -63,9 +65,62 @@ async function active(db: Database, telegramId: bigint) {
 
 export function createBot(token: string, deps: BotDeps): Bot<BotContext> {
   const bot = new Bot<BotContext>(token, deps.apiFetch ? { client: { fetch: deps.apiFetch } } : undefined);
+  const requestIds = new WeakMap<Context, string>();
+  bot.use(async (ctx, next) => {
+    requestIds.set(ctx, randomUUID().slice(0, 8));
+    await next();
+  });
   bot.use(session({ initial: (): SessionData => ({}) }));
   bot.use(conversations());
   bot.use(limit({ timeFrame: 2_000, limit: 20, onLimitExceeded: async (ctx) => ctx.reply(copy.rateLimited) }));
+
+  function toMarkup(keyboard?: BotKeyboard) {
+    if (!keyboard || keyboard.length === 0) return undefined;
+    const markup = new InlineKeyboard();
+    for (const row of keyboard) {
+      for (const button of row) {
+        if (button.kind === "callback") markup.text(button.text, button.data);
+        else if (button.kind === "web_app") markup.webApp(button.text, button.url);
+        else markup.switchInline(button.text, button.query);
+      }
+      markup.row();
+    }
+    return markup;
+  }
+
+  async function speak(ctx: Context, outbound: Awaited<ReturnType<typeof handleIncoming>>) {
+    if (outbound.edit && ctx.callbackQuery) {
+      await ctx.editMessageText(toHtml(outbound.edit.text), {
+        parse_mode: "HTML",
+        reply_markup: toMarkup(outbound.edit.keyboard) ?? { inline_keyboard: [] },
+      });
+    }
+    for (const message of outbound.messages) {
+      await ctx.reply(toHtml(message.text), { parse_mode: "HTML", reply_markup: toMarkup(message.keyboard) });
+    }
+  }
+
+  function person(ctx: Context): Inbound["from"] | null {
+    if (!ctx.from) return null;
+    return { id: ctx.from.id, firstName: ctx.from.first_name || "Telegram" };
+  }
+
+  async function runEngine(ctx: Context, inbound: Inbound) {
+    const outbound = await handleIncoming(deps.db, inbound, {
+      paidWeather: deps.paidWeather,
+      release: async (input) => {
+        try {
+          const { releaseStageTx } = await import("../../../src/server/chain/flows.js");
+          const tx = await releaseStageTx(deps.db, input);
+          const hash = tx.txHash ?? "";
+          return { ok: true as const, explorerLink: hash ? `https://sepolia.etherscan.io/tx/${hash}` : "pending" };
+        } catch (error) {
+          return { ok: false as const, reason: error instanceof Error ? error.message : "The payment did not go through." };
+        }
+      },
+    });
+    await speak(ctx, outbound);
+  }
 
   async function gate(ctx: Context, projectScoped: boolean): Promise<boolean> {
     const from = ctx.from;
@@ -349,10 +404,9 @@ export function createBot(token: string, deps: BotDeps): Bot<BotContext> {
 
   bot.command("done", async (ctx) => {
     if (!(await gate(ctx, true))) return;
-    const row = ctx.from ? await active(deps.db, BigInt(ctx.from.id)) : null;
-    if (!row?.project) return;
-    await enqueueExtraction(deps.db, row.project.id);
-    await ctx.reply(READING);
+    const who = person(ctx);
+    if (!who) return;
+    await runEngine(ctx, { type: "command", command: "done", arg: "", from: who });
   });
 
   bot.callbackQuery("upload-boq", async (ctx) => {
@@ -389,18 +443,10 @@ export function createBot(token: string, deps: BotDeps): Bot<BotContext> {
 
   bot.command("start", async (ctx) => {
     if (!(await gate(ctx, false))) return;
+    const who = person(ctx);
+    if (!who) return;
     const payload = typeof ctx.match === "string" ? ctx.match.trim() : "";
-    const start = parseStartPayload(payload);
-    if (start.kind === "join") {
-      await joinWithCode(ctx, start.code);
-      return;
-    }
-    const row = ctx.from ? await active(deps.db, BigInt(ctx.from.id)) : null;
-    const keyboard = row?.project
-      ? new InlineKeyboard().text("Join a project", "go-join").text("Stages", "go-stages").row().text("Upload contract or BoQ", "upload-boq")
-      : new InlineKeyboard().text("Start a project", "go-start").text("I have an invite link", "go-join");
-    await say(ctx, `${copy.start}\n\n${copy.startClient}`);
-    await ctx.reply("Choose one.", { reply_markup: keyboard });
+    await runEngine(ctx, { type: "command", command: "start", arg: payload, from: who });
   });
 
   bot.callbackQuery("go-start", async (ctx) => {
@@ -417,12 +463,10 @@ export function createBot(token: string, deps: BotDeps): Bot<BotContext> {
 
   bot.command("join", async (ctx) => {
     if (!(await gate(ctx, false))) return;
+    const who = person(ctx);
+    if (!who) return;
     const code = typeof ctx.match === "string" ? ctx.match.trim() : "";
-    if (!code) {
-      await ctx.conversation.enter("joinConversation");
-      return;
-    }
-    await joinWithCode(ctx, code);
+    await runEngine(ctx, { type: "command", command: "join", arg: code, from: who });
   });
 
   bot.command("accept", async (ctx) => {
@@ -449,7 +493,9 @@ export function createBot(token: string, deps: BotDeps): Bot<BotContext> {
 
   bot.command("help", async (ctx) => {
     if (!(await gate(ctx, false))) return;
-    await say(ctx, "/project  /stages  /submit  /switch  /join  /wallet  /dispute  /changes  /report\nSend a contract file to open a project.");
+    const who = person(ctx);
+    if (!who) return;
+    await runEngine(ctx, { type: "command", command: "help", arg: "", from: who });
   });
 
   bot.command("project", async (ctx) => {
@@ -521,10 +567,9 @@ export function createBot(token: string, deps: BotDeps): Bot<BotContext> {
 
   bot.command("wallet", async (ctx) => {
     if (!(await gate(ctx, true))) return;
-    const keyboard = new InlineKeyboard().text("Advanced", "adv");
-    const row = ctx.from ? await active(deps.db, BigInt(ctx.from.id)) : null;
-    const rate = row?.project ? await moneyLine(row.project.contractSumKobo, row.project.fxRateLocked) : "";
-    await say(ctx, [copy.paymentAccountReady, rate].filter(Boolean).join("\n"), "Payment account", keyboard);
+    const who = person(ctx);
+    if (!who) return;
+    await runEngine(ctx, { type: "command", command: "wallet", arg: "", from: who });
   });
 
   bot.callbackQuery("adv", async (ctx) => {
@@ -562,8 +607,65 @@ export function createBot(token: string, deps: BotDeps): Bot<BotContext> {
     await say(ctx, `Today's note is ready.\n${weather}`, "Report");
   });
 
+  bot.command(["menu", "projects", "upload", "photos", "review", "fund", "cancel"], async (ctx) => {
+    if (!(await gate(ctx, false))) return;
+    const who = person(ctx);
+    if (!who) return;
+    const command = ctx.message?.text?.split(/\s|@/)[0]?.replace(/^\//, "") ?? "menu";
+    await runEngine(ctx, { type: "command", command, arg: typeof ctx.match === "string" ? ctx.match.trim() : "", from: who });
+  });
+
+  bot.on("message:text", async (ctx, next) => {
+    const who = person(ctx);
+    const text = ctx.message?.text ?? "";
+    if (!who || text.startsWith("/")) return next();
+    if (Object.keys(ctx.conversation.active()).length > 0) return next();
+    const outbound = await handleIncoming(deps.db, { type: "text", text, from: who }, { paidWeather: deps.paidWeather });
+    if (outbound.messages.length === 0 && !outbound.edit) return next();
+    await speak(ctx, outbound);
+  });
+
+  bot.on("message:location", async (ctx, next) => {
+    if (Object.keys(ctx.conversation.active()).length > 0) return next();
+    const who = person(ctx);
+    const location = ctx.message?.location;
+    if (!who || !location) return next();
+    const outbound = await handleIncoming(
+      deps.db,
+      { type: "location", latitude: location.latitude, longitude: location.longitude, from: who },
+      { paidWeather: deps.paidWeather },
+    );
+    if (outbound.messages.length === 0 && !outbound.edit) return next();
+    await speak(ctx, outbound);
+  });
+
+  bot.callbackQuery(/^v1:/, async (ctx) => {
+    const who = person(ctx);
+    if (!who) return;
+    const slow = /^v1:(ap|cf|rj|jn|dp|va|vd)/.test(ctx.callbackQuery.data);
+    if (slow) await ctx.answerCallbackQuery({ text: bGe5() });
+    else await ctx.answerCallbackQuery();
+    try {
+      const outbound = await handleIncoming(deps.db, { type: "callback", data: ctx.callbackQuery.data, from: who }, {
+        paidWeather: deps.paidWeather,
+        release: async (input) => {
+          const { releaseStageTx } = await import("../../../src/server/chain/flows.js");
+          const tx = await releaseStageTx(deps.db, input);
+          const hash = tx.txHash ?? "";
+          return { ok: true as const, explorerLink: hash ? `https://sepolia.etherscan.io/tx/${hash}` : "pending" };
+        },
+      });
+      await speak(ctx, outbound);
+    } catch (error) {
+      const requestId = requestIds.get(ctx) ?? "none";
+      console.error(JSON.stringify({ msg: "bot callback", requestId, err: error instanceof Error ? error.name : "error" }));
+      await ctx.reply(toHtml(bGe2({ requestId })), { parse_mode: "HTML" });
+    }
+  });
+
   bot.catch((error) => {
-    console.error(JSON.stringify({ msg: "bot error", err: String(error) }));
+    const requestId = requestIds.get(error.ctx) ?? "none";
+    console.error(JSON.stringify({ msg: "bot error", requestId, err: error.name }));
   });
 
   return bot;

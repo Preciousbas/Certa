@@ -37,7 +37,7 @@ Pages under `apps/web/app`: `/`, `/stages`, `/capture`, `/fund`, `/changes`, `/w
 | `/api/health`                                    | GET    | none                                      | DB ping, chain probe, factory address      |
 | `/api/telegram`                                  | POST   | webhook secret header                     | bot handlers. GET is not implemented (405) |
 | `/api/mini/*`                                    | POST   | `withAuth` → 401 "Sign in from Telegram." | DB + chain fund/release                    |
-| `/api/paid/weather`, `/api/paid/materials-price` | GET    | x402                                      | project row, not a hard-coded amount       |
+| `/api/paid/weather`, `/api/paid/materials-price` | GET    | x402 on Base Sepolia (`eip155:84532`)     | Open-Meteo forecast; materials returns 503  |
 | `/api/contract/preview`                          | POST   | none                                      | file parse, no DB write                    |
 | `/api/files`                                     | GET    | signed query                              | legacy blob table                          |
 | `/api/cron/jobs`                                 | GET    | `CRON_SECRET`                             | `jobs` table                               |
@@ -68,6 +68,8 @@ Foundry in `contracts/`. `CertaEscrow.sol`, `EscrowFactory.sol`. ABI is used fro
 `DATABASE_URL`, `DEMO_SEED`, `DEMO_MODE`, `APP_ENCRYPTION_KEY`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET`, `NEXT_PUBLIC_APP_URL`, `NEXT_PUBLIC_TELEGRAM_BOT_USERNAME`, `CDP_API_KEY_ID`, `CDP_API_KEY_SECRET`, `CDP_WALLET_SECRET`, `SEPOLIA_RPC_URL`, `BASE_SEPOLIA_RPC_URL`, `ESCROW_FACTORY_ADDRESS`, `ESCROW_ADDRESS`, `DEPLOYER_PRIVATE_KEY`, `EVM_PRIVATE_KEY`, `X402_FACILITATOR_URL`, `X402_PAY_TO_ADDRESS`, `CLIENT_ADDRESS`, `LLM_API_KEY`, `LLM_BASE_URL`, `LLM_VISION_MODEL`, `LLM_TEXT_MODEL`, `RESEND_API_KEY`, `EMAIL_FROM`, `BLOB_READ_WRITE_TOKEN`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `VITEST`, `NODE_ENV`, `VERCEL_GIT_COMMIT_SHA`, `CRON_SECRET`, `FX_SOURCE`, `FX_MANUAL_KOBO_PER_USDC`, `FX_MANUAL_AS_OF`, `ENFORCE_ENV`.
 
 `assertServerEnv` maps `NEXT_PUBLIC_APP_URL` → `APP_URL`, `SEPOLIA_RPC_URL` → `RPC_URL`, and `LLM_*` → `AI_DOC_*` / `AI_VISION_*`. It runs only when `ENFORCE_ENV=1`, so a missing new variable does not take down the current deploy. `VERIFY_PASS_THRESHOLD` is optional and defaults to 0.75 (bounds 0.6–0.95).
+
+Escrow USDC stays on Ethereum Sepolia. x402 weather fees are paid on Base Sepolia (`eip155:84532`, USDC `0x036CbD53842c5426634e7929541eC2318f3dCF7e`) from the `agent_x402` wallet only. `X402_PAY_TO_ADDRESS` is the treasury that receives the fee. `X402_FACILITATOR_URL` defaults to the CDP facilitator when unset and CDP keys exist, otherwise `https://x402.org/facilitator`. `X402_RPC_URL` is the Base Sepolia RPC used for that balance (default `https://sepolia.base.org`). `X402_MAX_PER_CALL_MICRO` defaults to 50000. `WEATHER_RAIN_THRESHOLD_PCT` defaults to 60.
 
 ## Capture as found
 

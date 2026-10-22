@@ -1,8 +1,9 @@
 import { cdpConfigured } from "@certa/chain";
-import { contractSummaries, contractVersions, recordPayment, stages } from "@certa/db";
+import { contractSummaries, contractVersions, recordPayment, stages, users } from "@certa/db";
 import { koboFromUsdc } from "@certa/shared";
 import { eq } from "drizzle-orm";
 import type { Hex } from "viem";
+import { notifyFundOutcome } from "../../../../../../src/bot/fundNotice";
 import { ChainRejected, ConsultantRequired, fundAccepted } from "../../../../../../src/server/chain/flows";
 import { broadcastClientFund } from "../../../../lib/chain-fund";
 import { chainFundLines } from "../../../../lib/escrow-quote";
@@ -10,9 +11,10 @@ import { apiError, apiJson, fundInput, fundOutput } from "../../../../lib/schema
 import { withAuth } from "../../../../lib/with-auth";
 
 export const POST = withAuth(
-  async ({ db, project, json }) => {
+  async ({ db, project, json, userId }) => {
     const input = fundInput.safeParse(json);
     if (!input.success) return apiError(400, "The amount and the idempotency key are required.");
+    const client = (await db.select().from(users).where(eq(users.id, userId)))[0];
     const rows = (await db.select().from(stages).where(eq(stages.projectId, project.id)))
       .filter((stage) => stage.stageIndex <= input.data.upToStage)
       .sort((a, b) => a.stageIndex - b.stageIndex);
@@ -61,6 +63,20 @@ export const POST = withAuth(
       } catch (error) {
         const message = error instanceof Error ? error.message : "The fund transaction reverted.";
         const status = error instanceof ConsultantRequired ? 409 : error instanceof ChainRejected ? 400 : 502;
+        await notifyFundOutcome(db, {
+          outcome: "failed",
+          projectId: project.id,
+          projectName: project.name,
+          clientUserId: userId,
+          clientName: client?.name ?? "The client",
+          amountKobo: 0n,
+          fromStage: (rows[0]?.stageIndex ?? 0) + 1,
+          toStage: (rows[rows.length - 1]?.stageIndex ?? 0) + 1,
+          explorerLink: "",
+          plainReason: message,
+          supportEmail: process.env.SUPPORT_EMAIL || "support@example.com",
+          idempotencyKey: input.data.idempotencyKey,
+        }).catch(() => undefined);
         return apiError(status, message);
       }
     } else if (!payInNaira && /^0x[a-fA-F0-9]{40}$/.test(escrow) && process.env.DEPLOYER_PRIVATE_KEY) {
@@ -72,7 +88,22 @@ export const POST = withAuth(
         if (rate) amountNgnKobo = koboFromUsdc(sent.amount, rate.koboPerUsdc);
       } catch (error) {
         const message = error instanceof Error ? error.message : "";
-        return apiError(502, message === "The client wallet does not hold enough USDC." || message === "That range has nothing left to fund." ? message : "The fund transaction reverted.");
+        const plainReason = message === "The client wallet does not hold enough USDC." || message === "That range has nothing left to fund." ? message : "The fund transaction reverted.";
+        await notifyFundOutcome(db, {
+          outcome: "failed",
+          projectId: project.id,
+          projectName: project.name,
+          clientUserId: userId,
+          clientName: client?.name ?? "The client",
+          amountKobo: 0n,
+          fromStage: (rows[0]?.stageIndex ?? 0) + 1,
+          toStage: (rows[rows.length - 1]?.stageIndex ?? 0) + 1,
+          explorerLink: "",
+          plainReason,
+          supportEmail: process.env.SUPPORT_EMAIL || "support@example.com",
+          idempotencyKey: input.data.idempotencyKey,
+        }).catch(() => undefined);
+        return apiError(502, plainReason);
       }
     }
     const payment = await recordPayment(db, {
@@ -89,6 +120,25 @@ export const POST = withAuth(
     const rawEscrow = escrowFromChain || project.escrowAddress || "";
     const txHash = /^0x[a-fA-F0-9]{64}$/.test(rawTx) ? rawTx : null;
     const escrowAddress = /^0x[a-fA-F0-9]{40}$/.test(rawEscrow) ? rawEscrow : null;
+    const fromStage = (rows[0]?.stageIndex ?? 0) + 1;
+    const toStage = (rows[rows.length - 1]?.stageIndex ?? 0) + 1;
+    const notice =
+      locked === "confirmed"
+        ? await notifyFundOutcome(db, {
+            outcome: "confirmed",
+            projectId: project.id,
+            projectName: project.name,
+            clientUserId: userId,
+            clientName: client?.name ?? "The client",
+            amountKobo: amountNgnKobo,
+            fromStage,
+            toStage,
+            explorerLink: txHash ? `https://sepolia.etherscan.io/tx/${txHash}` : "pending",
+            plainReason: "",
+            supportEmail: process.env.SUPPORT_EMAIL || "support@example.com",
+            idempotencyKey: input.data.idempotencyKey,
+          }).catch(() => ({ contractorNotified: false }))
+        : { contractorNotified: false };
     return apiJson(fundOutput, {
       ok: true,
       created: payment.created,
@@ -99,7 +149,7 @@ export const POST = withAuth(
       amountNgnKobo: payment.payment.amountNgnKobo.toString(),
       txHash,
       escrowAddress,
-      contractorNotified: false,
+      contractorNotified: notice.contractorNotified,
       stages: rows
         .sort((a, b) => a.stageIndex - b.stageIndex)
         .map((stage, index) => ({

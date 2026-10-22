@@ -237,6 +237,7 @@ export async function runVerifyStage(
     projectId: project.id,
     projectName: project.name,
     submissionId,
+    stageId: stage.id,
     stageNumber: claimed,
     stageName: stage.name,
     amountKobo: stage.amountNgnKobo,

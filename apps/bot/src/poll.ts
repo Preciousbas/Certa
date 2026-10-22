@@ -4,10 +4,16 @@ import { getDatabase } from "@certa/db";
 import { fetchCbnRate } from "@certa/shared";
 import { createBot } from "./bot.js";
 import { drainJobs } from "../../../src/server/jobs/worker.js";
+import { registerNotifyJobs } from "../../../src/bot/notify.js";
+import { registerReleaseRetry } from "../../../src/bot/releaseRetry.js";
 import { registerVerifyJobs } from "../../../src/server/verify/register.js";
+import { registerX402Jobs } from "../../../src/server/x402/register.js";
 
 async function runQueuedJobs() {
   registerVerifyJobs();
+  registerNotifyJobs();
+  registerReleaseRetry();
+  registerX402Jobs();
   for (;;) {
     try {
       await drainJobs(1);

@@ -38,6 +38,7 @@ export const workspaces = pgTable("workspaces", {
   status: text("status").notNull().default("active"),
   gasAllowanceUsdc: bigint("gas_allowance_usdc", { mode: "bigint" }).notNull().default(0n),
   x402AllowanceUsdc: bigint("x402_allowance_usdc", { mode: "bigint" }).notNull().default(0n),
+  allowanceMicro: bigint("allowance_micro", { mode: "bigint" }).notNull().default(0n),
   letterheadFileId: uuid("letterhead_file_id"),
   marginTop: integer("margin_top").notNull().default(96),
   marginBottom: integer("margin_bottom").notNull().default(72),
@@ -335,6 +336,18 @@ export const payments = pgTable("payments", {
   ...timestamps,
 });
 
+export const x402Spend = pgTable("x402_spend", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  projectId: uuid("project_id").notNull(),
+  stageId: uuid("stage_id"),
+  endpoint: text("endpoint").notNull(),
+  amountMicro: bigint("amount_micro", { mode: "bigint" }).notNull(),
+  chainTxId: uuid("chain_tx_id"),
+  paymentResponse: jsonb("payment_response").$type<Record<string, unknown>>().notNull(),
+  resultSummary: text("result_summary").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 export const x402Calls = pgTable("x402_calls", {
   id: uuid("id").primaryKey().defaultRandom(),
   projectId: uuid("project_id").notNull(),
@@ -474,6 +487,7 @@ export const memberships = pgTable("memberships", {
   userId: uuid("user_id").notNull(),
   role: text("role").notNull(),
   status: text("status").notNull().default("active"),
+  notifyChannel: text("notify_channel").notNull().default("telegram"),
   joinedAt: timestamp("joined_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

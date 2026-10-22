@@ -21,8 +21,8 @@
 - Prompt 40: mobilisation is a lump `releaseMobilisation`. It is not recovered from later stages. `advance_recovery` stays off-chain.
 - Prompt 40: on-chain, only `client != contractor` is enforced. Consultant, operator, and admin may collide. Off-chain `RolesNotDistinct` covers the four product roles.
 - Prompt 40: the escrow pays `contractor` only. A subcontractor wallet is created on join for a later direct-payment change. There is no stage payee in this contract.
-- Prompt 40: `packages/chain` still aliases `USDC_BASE_SEPOLIA` and `BASE_SEPOLIA_CHAIN_ID` to the Ethereum Sepolia values. Prompt 70 owns the Base Sepolia USDC `0x036CbD53842c5426634e7929541eC2318f3dCF7e`.
-- Prompt 40: a network-fee top-up writes `usage_ledger` kind `network_fee` with `amountUsdc = 0`. Prompt 70 prices it. The UI does not say "gas".
+- Prompt 70: `USDC_BASE_SEPOLIA` is Circle's Base Sepolia USDC `0x036CbD53842c5426634e7929541eC2318f3dCF7e`. Escrow still uses Ethereum Sepolia USDC.
+- Prompt 40: a network-fee top-up writes `usage_ledger` kind `network_fee` with `amountUsdc = 0`. The billing table calls it "Network fee". The USDC price is still 0.
 - Prompt 40: Vercel Hobby cron is daily (`0 0 * * *` on `/api/cron/jobs`). Reconciliation can also be triggered with `GET /api/cron/reconcile` and the `CRON_SECRET` header.
 - Prompt 40: a dropped Sepolia transaction is resent with the stored nonce and a higher fee. CDP may ignore an explicit nonce. After 3 attempts the chain row is `failed` and, when the stage edge exists, the stage is `release_failed`.
 - Prompt 40: Etherscan `getsourcecode` was not available (no API key). The verified ABI matches local source. Do not redeploy for that.
@@ -32,3 +32,9 @@
 - Prompt 50: `photos.sha256` is still unique across every project, which is stricter than "not seen in this project".
 - Prompt 50: M2 certify/reject screens are not built. A consultant override is `POST /api/mini/review` when the stage is `ai_fail` or `needs_more_evidence`, with a reason of at least 20 characters. It records `ai_override` and calls `submitStage`. It does not release.
 - Prompt 99: expand the README "How the AI decides" section after the vision eval picks T.
+- Prompt 60: Telegram `setMyCommands` has no Certa-role scope. The default scope lists every command and handlers reply with B-GE-1. A planned start date is stored as audit `project.planned_start` because `projects` has no start-date column (`contract_versions.start_date` exists only after a contract version). Accepted variations update stage rows off-chain. There is no `addVariation` caller in the repo.
+- Prompt 70: materials prices stay unavailable (503, no charge). Candidate sources when a real feed exists: Lagos building-materials dealers with a published rate card, or a licensed price API. Do not invent prices.
+- Prompt 70: Open-Meteo's free forecast API is for non-commercial use. A commercial Certa plan needs their paid API before this leaves the pilot.
+- Prompt 70: `chain_txs.value_micro` for `gas_topup` stores wei (`GAS_FLOOR`), not micro-USDC. The allowance subtracts `usage_ledger` rows of kind `network_fee`, which are still 0 until a USDC price is written. The billing table lists those top-ups as "Network fee" at 0.00 USDC.
+- Prompt 70: `X402_PAY_TO_ADDRESS` in this checkout is the same address as `CLIENT_ADDRESS`. Confirm it is the Base Sepolia treasury account `certa-<env>-treasury` before treating it as Certa's fee receiver.
+- Prompt 70: `BASE_SEPOLIA_RPC_URL` in `.env` still points at an Ethereum Sepolia endpoint. The x402 balance probe uses `X402_RPC_URL` (default `https://sepolia.base.org`) and does not reuse that value.

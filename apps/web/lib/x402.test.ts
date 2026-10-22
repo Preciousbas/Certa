@@ -5,8 +5,9 @@ describe("x402 gate", () => {
   it("answers 402 until a payment header arrives", async () => {
     const challenge = paymentChallenge("0xabc");
     expect(challenge.status).toBe(402);
-    const body = (await challenge.json()) as { accepts: { amount: string }[] };
+    const body = (await challenge.json()) as { accepts: { amount: string; network: string }[] };
     expect(body.accepts[0]?.amount).toBe("10000");
+    expect(body.accepts[0]?.network).toBe("eip155:84532");
     expect(hasPayment(new Request("http://local"), true)).toBe(false);
     expect(hasPayment(new Request("http://local", { headers: { "x-payment": "demo" } }), true)).toBe(true);
     expect(hasPayment(new Request("http://local", { headers: { "x-payment": "demo" } }), false)).toBe(false);
