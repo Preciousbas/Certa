@@ -19,6 +19,7 @@ import {
   changeRequests,
   contractSummaries,
   disputes,
+  memberships,
   parties,
   projects,
   stages,
@@ -28,18 +29,50 @@ import {
   workspaces,
 } from "./schema.js";
 
+function chainAddress(name: string, fallback: string): string {
+  const value = process.env[name] ?? "";
+  return /^0x[a-fA-F0-9]{40}$/.test(value) ? value : fallback;
+}
+
 export async function seedDemo(db: Database) {
-  const existing = await db.select().from(projects).where(eq(projects.name, "EM 22 — 4-Bedroom Duplex, Lekki Phase 1, Lagos"));
+  const existing = await db
+    .select()
+    .from(projects)
+    .where(eq(projects.name, "EM 22 — 4-Bedroom Duplex, Lekki Phase 1, Lagos"));
   if (existing[0]) return { projectId: existing[0].id, created: false };
 
   const rate = fxRateFromNaira(DEMO_FX_NAIRA_PER_USDC);
   const sumKobo = nairaToKobo(DEMO_CONTRACT_NAIRA);
   const sumUsdc = usdcFromNgnKobo(sumKobo, rate);
 
-  const [client] = await db.insert(users).values({ telegramId: 1001n, name: "Zanzibar Estates Ltd", emailCiphertext: encryptEmail("client@zanzibar.example") }).returning();
-  const [consultant] = await db.insert(users).values({ telegramId: 1002n, name: "Engr. A. Okafor", emailCiphertext: encryptEmail("okafor@bassey.example") }).returning();
-  const [main] = await db.insert(users).values({ telegramId: 1003n, name: "Kemfor Construction Ltd" }).returning();
-  const [sub] = await db.insert(users).values({ telegramId: 1004n, name: "Danjuma Concrete Works", emailCiphertext: encryptEmail("danjuma@concrete.example") }).returning();
+  const [client] = await db
+    .insert(users)
+    .values({
+      telegramId: 1001n,
+      name: "Zanzibar Estates Ltd",
+      emailCiphertext: encryptEmail("client@zanzibar.example"),
+    })
+    .returning();
+  const [consultant] = await db
+    .insert(users)
+    .values({
+      telegramId: 1002n,
+      name: "Engr. A. Okafor",
+      emailCiphertext: encryptEmail("okafor@bassey.example"),
+    })
+    .returning();
+  const [main] = await db
+    .insert(users)
+    .values({ telegramId: 1003n, name: "Kemfor Construction Ltd" })
+    .returning();
+  const [sub] = await db
+    .insert(users)
+    .values({
+      telegramId: 1004n,
+      name: "Danjuma Concrete Works",
+      emailCiphertext: encryptEmail("danjuma@concrete.example"),
+    })
+    .returning();
   if (!client || !consultant || !main || !sub) throw new Error("seed users failed");
 
   const [workspace] = await db
@@ -52,6 +85,7 @@ export async function seedDemo(db: Database) {
       x402AllowanceUsdc: 2_000_000n,
       marginTop: 92,
       marginBottom: 78,
+      isDemo: true,
     })
     .returning();
   if (!workspace) throw new Error("seed workspace failed");
@@ -73,6 +107,9 @@ export async function seedDemo(db: Database) {
       fxRateLocked: rate,
       fxSource: "contract acceptance",
       fxLockedAt: new Date("2026-08-01T09:00:00Z"),
+      escrowAddress: /^0x[a-fA-F0-9]{40}$/.test(process.env.ESCROW_ADDRESS ?? "")
+        ? process.env.ESCROW_ADDRESS
+        : null,
       spendingCapUsdc: usdcFromNgnKobo(nairaToKobo(DEMO_CAP_NAIRA), rate),
       retentionBps: DEMO_RETENTION_BPS,
       defectsPeriodDays: DEMO_DEFECTS_DAYS,
@@ -87,12 +124,57 @@ export async function seedDemo(db: Database) {
   const partyRows = await db
     .insert(parties)
     .values([
-      { projectId: project.id, workspaceId: workspace.id, userId: client.id, role: "client", walletAddress: "0x1111111111111111111111111111111111111111", cdpWalletId: "mock:client", walletMock: true, emailVerified: true, notificationEmails: [encryptEmail("accounts@zanzibar.example")] },
-      { projectId: project.id, workspaceId: workspace.id, userId: consultant.id, role: "consultant", emailVerified: true },
-      { projectId: project.id, workspaceId: workspace.id, userId: main.id, role: "main_contractor", canViewSubs: true, walletAddress: "0x2222222222222222222222222222222222222222", cdpWalletId: "mock:main", walletMock: true },
-      { projectId: project.id, workspaceId: workspace.id, userId: sub.id, role: "subcontractor", walletAddress: "0x3333333333333333333333333333333333333333", cdpWalletId: "mock:sub", walletMock: true, emailVerified: true, notificationEmails: [encryptEmail("danjuma@concrete.example")] },
+      {
+        projectId: project.id,
+        workspaceId: workspace.id,
+        userId: client.id,
+        role: "client",
+        walletAddress: chainAddress("CLIENT_ADDRESS", "0x1111111111111111111111111111111111111111"),
+        cdpWalletId: chainAddress("CLIENT_ADDRESS", "") ? "sepolia:client" : "mock:client",
+        walletMock: !chainAddress("CLIENT_ADDRESS", ""),
+        emailVerified: true,
+        notificationEmails: [encryptEmail("accounts@zanzibar.example")],
+      },
+      {
+        projectId: project.id,
+        workspaceId: workspace.id,
+        userId: consultant.id,
+        role: "consultant",
+        emailVerified: true,
+      },
+      {
+        projectId: project.id,
+        workspaceId: workspace.id,
+        userId: main.id,
+        role: "main_contractor",
+        canViewSubs: true,
+        walletAddress: chainAddress(
+          "CONTRACTOR_ADDRESS",
+          "0x2222222222222222222222222222222222222222",
+        ),
+        cdpWalletId: chainAddress("CONTRACTOR_ADDRESS", "") ? "sepolia:contractor" : "mock:main",
+        walletMock: !chainAddress("CONTRACTOR_ADDRESS", ""),
+      },
+      {
+        projectId: project.id,
+        workspaceId: workspace.id,
+        userId: sub.id,
+        role: "subcontractor",
+        walletAddress: "0x3333333333333333333333333333333333333333",
+        cdpWalletId: "mock:sub",
+        walletMock: true,
+        emailVerified: true,
+        notificationEmails: [encryptEmail("danjuma@concrete.example")],
+      },
     ])
     .returning();
+  await db.insert(memberships).values(
+    partyRows.map((party) => ({
+      projectId: project.id,
+      userId: party.userId,
+      role: party.role === "main_contractor" ? "contractor" : party.role,
+    })),
+  );
   const subParty = partyRows.find((row) => row.role === "subcontractor");
   if (!subParty) throw new Error("seed party failed");
 
@@ -111,7 +193,7 @@ export async function seedDemo(db: Database) {
           amountNgnKobo: amountKobo,
           amountUsdc: usdcFromNgnKobo(amountKobo, rate),
           retentionBps: DEMO_RETENTION_BPS,
-          status: released ? "released" : index === 4 ? "submitted" : "funded",
+          status: released ? "released" : index === 4 ? "submitted" : "not_started",
           funded: true,
           onChainIdx: index,
           assignedPartyId: subParty.id,
@@ -151,7 +233,10 @@ export async function seedDemo(db: Database) {
     reason: "Blinding thickness looked short on the first photos.",
     status: "resolved",
     deadlineAt: new Date("2026-09-01T00:00:00Z"),
-    resolution: { payBps: 10000, note: "Follow-up photos confirmed the blinding. Released in full." },
+    resolution: {
+      payBps: 10000,
+      note: "Follow-up photos confirmed the blinding. Released in full.",
+    },
   });
 
   await db.insert(changeRequests).values({

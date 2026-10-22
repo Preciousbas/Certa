@@ -7,20 +7,57 @@
     "node": ">=20.18.0"
   },
   "scripts": {
-    "dev": "pnpm --parallel --filter @certa/web --filter @certa/bot dev",
-    "test": "pnpm -r --if-present test && pnpm contracts:test",
-    "typecheck": "pnpm -r --if-present typecheck",
-    "lint": "pnpm -r --if-present lint",
+    "dev": "pnpm --filter @certa/web dev",
+    "dev:bot": "pnpm --filter @certa/bot dev:poll",
+    "test": "node scripts/vitest-args.mjs",
+    "test:all": "vitest run && pnpm contracts:test",
+    "typecheck": "tsc -p src/tsconfig.json && pnpm -r --if-present typecheck",
+    "lint": "eslint . && pnpm -r --if-present lint",
+    "format:check": "prettier --check src eslint-rules tests/integration scripts/seed-demo.ts scripts/verify-audit-chain.ts scripts/db-migrate.ts scripts/db-reset.ts",
+    "test:integration": "vitest run --config vitest.integration.config.ts",
+    "build": "pnpm --filter @certa/web build",
+    "db:migrate": "tsx scripts/db-migrate.ts",
+    "db:reset": "tsx scripts/db-reset.ts",
+    "seed:demo": "tsx scripts/seed-demo.ts",
+    "test:e2e": "pnpm --filter @certa/web test:e2e",
     "contracts:setup": "bash scripts/setup-contracts.sh",
     "contracts:test": "forge test --root contracts -vv",
     "contracts:coverage": "forge coverage --root contracts --report summary",
     "db:seed": "pnpm --filter @certa/db seed",
-    "db:generate": "pnpm --filter @certa/db generate"
+    "db:generate": "pnpm --filter @certa/db generate",
+    "demo:e2e": "tsx scripts/e2e-demo/run.ts"
   },
   "dependencies": {
-    "next": "15.5.27"
+    "@certa/ai": "workspace:*",
+    "@certa/chain": "workspace:*",
+    "@certa/db": "workspace:*",
+    "@certa/shared": "workspace:*",
+    "@upstash/ratelimit": "2.2.0",
+    "@upstash/redis": "1.39.0",
+    "drizzle-orm": "0.45.4",
+    "exceljs": "^4.4.0",
+    "file-type": "^19.6.0",
+    "heic-convert": "^2.1.0",
+    "jose": "6.2.13",
+    "jszip": "3.10.1",
+    "mammoth": "1.13.0",
+    "next": "15.5.27",
+    "pdfjs-dist": "^4.10.38",
+    "postgres": "3.4.9",
+    "server-only": "0.0.1",
+    "sharp": "0.35.5",
+    "xlsx": "0.18.5",
+    "zod": "3.25.76"
   },
   "devDependencies": {
-    "typescript": "5.9.3"
+    "@types/heic-convert": "^2.1.1",
+    "@types/node": "22.19.1",
+    "eslint": "9.39.1",
+    "pdf-lib": "1.17.1",
+    "prettier": "3.6.2",
+    "tsx": "4.20.6",
+    "typescript": "5.9.3",
+    "typescript-eslint": "8.46.2",
+    "vitest": "3.2.4"
   }
 }

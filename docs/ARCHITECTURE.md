@@ -21,7 +21,7 @@ flowchart LR
     PDF[packages/pdf]
     Chain[packages/chain]
   end
-  Escrow[CertaEscrow clone on Base Sepolia]
+  Escrow[CertaEscrow clone on Ethereum Sepolia]
   USDC[Circle test USDC]
 
   Bot --> Hook

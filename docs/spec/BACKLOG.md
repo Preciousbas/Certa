@@ -1,0 +1,34 @@
+# Backlog
+
+- Prompt 00–02 spec files are not in the repo. When they arrive, reconcile `0002_foundation.sql` with their table list before adding more migrations.
+- Supabase Storage buckets and `supabase gen types` (this prompt's `src/server/db/types.ts`).
+- Call `assertServerEnv` on every production boot (`ENFORCE_ENV=1`) after the new variables are set on Vercel. Doing it now would 503 `/api/health` and `/api/mini/fund`.
+- Move Inngest's dispute and change timers onto the `jobs` outbox.
+- Run every stage status write through `transitionStage`.
+- ESLint type-checked rules on `apps/` and `packages/`. They still lint with `tsc` only, because existing display code uses `toFixed` for confidence.
+- `scripts/seed-demo.ts` body (prompt 99): one `is_demo` workspace, including a stage above the cap.
+- Browser reads go through server components and `/api/*`. A Supabase user JWT is not minted.
+- Letterhead email, cash-out partner, and OCR for photographed bills.
+- BotFather `/setdomain` for `certa-two.vercel.app` before the Telegram Login Widget can sign in on the deployed site.
+- A `telegram.update` job runs on the cron worker. Slow webhook updates are dispatched there, and a processed `update_id` is not dispatched again.
+- `pnpm audit --prod` highs: `xlsx` has no patched npm release; `postcss` is pinned by Next. See `docs/SECURITY.md`.
+- Prompt 30 (BoQ intake): replace the `xlsx` package with `exceljs`. `xlsx` has unpatched high vulnerabilities (GHSA-4r6h-8v6p-xvw6, GHSA-5pgg-2g8v-p4x9) and no fixed npm release. Prompt 30 already specifies `exceljs` for `.xlsx`. `.xls` still uses SheetJS `xlsx` 0.18.5. See `docs/BACKLOG.md`.
+- Prompt 40: after escrow creation, call `acceptTerms()` with no content-hash argument. Intake only enqueues `accept_terms_deferred`. The on-chain function cannot store the version hash; `termsHash` is constructor-only.
+- Prompt 30 follow-up: render scanned PDF pages at 200 DPI. `@napi-rs/canvas` is not installed, and this job does not deskew or apply EXIF rotation. A scanned file without a transcript fails `unreadable`.
+- Prompt 30 follow-up: deliver B-EX and B-AC on Telegram, and escalate the 72-hour `contract_reply` job to the consultant. The job row is queued. The handler does not send a message.
+- Prompt 40: retention in `CertaEscrow._split` rounds down (`amount * bps / 10000`), so the dust goes to the contractor. Do not change the verified contract without approval. See `docs/spec/CONTRACT_REVIEW.md`.
+- Prompt 40: `ClientApprove` and `ResolveDispute` EIP-712 types have a deadline and no nonce. Replay is stopped by `AlreadyApproved` or by the stage leaving `Disputed`. A nonce is a later contract change.
+- Prompt 40: mobilisation is a lump `releaseMobilisation`. It is not recovered from later stages. `advance_recovery` stays off-chain.
+- Prompt 40: on-chain, only `client != contractor` is enforced. Consultant, operator, and admin may collide. Off-chain `RolesNotDistinct` covers the four product roles.
+- Prompt 40: the escrow pays `contractor` only. A subcontractor wallet is created on join for a later direct-payment change. There is no stage payee in this contract.
+- Prompt 40: `packages/chain` still aliases `USDC_BASE_SEPOLIA` and `BASE_SEPOLIA_CHAIN_ID` to the Ethereum Sepolia values. Prompt 70 owns the Base Sepolia USDC `0x036CbD53842c5426634e7929541eC2318f3dCF7e`.
+- Prompt 40: a network-fee top-up writes `usage_ledger` kind `network_fee` with `amountUsdc = 0`. Prompt 70 prices it. The UI does not say "gas".
+- Prompt 40: Vercel Hobby cron is daily (`0 0 * * *` on `/api/cron/jobs`). Reconciliation can also be triggered with `GET /api/cron/reconcile` and the `CRON_SECRET` header.
+- Prompt 40: a dropped Sepolia transaction is resent with the stored nonce and a higher fee. CDP may ignore an explicit nonce. After 3 attempts the chain row is `failed` and, when the stage edge exists, the stage is `release_failed`.
+- Prompt 40: Etherscan `getsourcecode` was not available (no API key). The verified ABI matches local source. Do not redeploy for that.
+- Prompt 50: Telegram inline buttons for B-VF-1 through B-VF-7 are not sent. The notification row stores the plain text. Prompt 60 owns the bot keyboards.
+- Prompt 50: S11 filters, pagination, and the desktop split layout are not built. The timeline page shows photos sent, the verdict, and the submit proof.
+- Prompt 50: the stored perceptual hash is the 64-bit average hash in `@certa/shared`, compared with Hamming distance 6. It is not a DCT pHash.
+- Prompt 50: `photos.sha256` is still unique across every project, which is stricter than "not seen in this project".
+- Prompt 50: M2 certify/reject screens are not built. A consultant override is `POST /api/mini/review` when the stage is `ai_fail` or `needs_more_evidence`, with a reason of at least 20 characters. It records `ai_override` and calls `submitStage`. It does not release.
+- Prompt 99: expand the README "How the AI decides" section after the vision eval picks T.

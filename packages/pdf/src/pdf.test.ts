@@ -10,7 +10,7 @@ describe("letterhead", () => {
         marginTop: 96,
         marginBottom: 72,
         title: "Interim payment certificate",
-        qrUrl: "https://sepolia.basescan.org/tx/0xabc",
+        qrUrl: "https://example.invalid/tx/0xabc",
         blocks: [
           { heading: "EM 22", lines: ["This certificate ₦1,350,000", "Net payable 1,282,500 kobo equivalent", "Tx 0xabc"] },
           { lines: changeLogLines([{ type: "new_stage", status: "pending", reason: "Extra soakaway", responseHours: null }]) },

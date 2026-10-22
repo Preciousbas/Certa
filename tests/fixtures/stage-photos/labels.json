@@ -1,0 +1,530 @@
+[
+  {
+    "file": "stage-1-01.jpg",
+    "true_stage": 1,
+    "claimed_stage": 1,
+    "criteria_met": {
+      "c1": true
+    },
+    "should_verdict": "unsure",
+    "licence": "BY 2.0",
+    "source": "https://www.flickr.com/photos/8398907@N02/3196450555",
+    "note": "City of Glass , Minneapolis, Minnesota"
+  },
+  {
+    "file": "stage-1-02.jpg",
+    "true_stage": 1,
+    "claimed_stage": 1,
+    "criteria_met": {
+      "c1": true
+    },
+    "should_verdict": "unsure",
+    "licence": "BY 2.0",
+    "source": "https://www.flickr.com/photos/37803129@N00/2436481628",
+    "note": "Cranes In The Sky."
+  },
+  {
+    "file": "stage-1-03.jpg",
+    "true_stage": 1,
+    "claimed_stage": 1,
+    "criteria_met": {
+      "c1": true
+    },
+    "should_verdict": "unsure",
+    "licence": "CC0 1.0",
+    "source": "https://www.flickr.com/photos/104736837@N03/11296447486",
+    "note": "2007.08 - 'Deep into the construction site underground', with a clear sight on the concrete tunnel-body under the center of Amsterdam city, location Vijzelgracht / Wetering-circuit; Dutch urban photo + geotag, Fons Heijnsbroek, The Netherlands"
+  },
+  {
+    "file": "stage-1-04.jpg",
+    "true_stage": 2,
+    "claimed_stage": 1,
+    "criteria_met": {
+      "c1": false
+    },
+    "should_verdict": "fail",
+    "licence": "BY 2.0",
+    "source": "https://www.flickr.com/photos/33235425@N00/536245891",
+    "note": "Digger - FGS Plant Hire"
+  },
+  {
+    "file": "stage-1-05.jpg",
+    "true_stage": 1,
+    "claimed_stage": 2,
+    "criteria_met": {
+      "c1": false
+    },
+    "should_verdict": "fail",
+    "licence": "BY-SA 2.0",
+    "source": "https://www.flickr.com/photos/80140240@N04/14849382361",
+    "note": "New Complex & Date Palms Torquay"
+  },
+  {
+    "file": "stage-2-06.jpg",
+    "true_stage": 2,
+    "claimed_stage": 2,
+    "criteria_met": {
+      "c1": true
+    },
+    "should_verdict": "unsure",
+    "licence": "CC0 1.0",
+    "source": "https://www.flickr.com/photos/104736837@N03/26050621201",
+    "note": "2015.01 - Amsterdam photo of a rusty Still-life - construction-site for building with concrete pilings in the waterlogged soil of my city; a geotagged free urban picture, in public domain / Commons CCO; city photography by Fons Heijnsbroek, Netherlands"
+  },
+  {
+    "file": "stage-2-07.jpg",
+    "true_stage": 2,
+    "claimed_stage": 2,
+    "criteria_met": {
+      "c1": true
+    },
+    "should_verdict": "unsure",
+    "licence": "BY-SA 2.0",
+    "source": "https://www.flickr.com/photos/70591690@N00/2656285963",
+    "note": "Excavator"
+  },
+  {
+    "file": "stage-2-08.jpg",
+    "true_stage": 2,
+    "claimed_stage": 2,
+    "criteria_met": {
+      "c1": true
+    },
+    "should_verdict": "pass",
+    "licence": "BY 2.0",
+    "source": "https://www.flickr.com/photos/51096110@N00/382038320",
+    "note": "1926: Digging Foundation for a New Home"
+  },
+  {
+    "file": "stage-2-09.jpg",
+    "true_stage": 2,
+    "claimed_stage": 2,
+    "criteria_met": {
+      "c1": true
+    },
+    "should_verdict": "unsure",
+    "licence": "BY 2.0",
+    "source": "https://www.flickr.com/photos/52949402@N03/5080302508",
+    "note": "Downtown Dallas, 10-12-10"
+  },
+  {
+    "file": "stage-2-10.jpg",
+    "true_stage": 2,
+    "claimed_stage": 3,
+    "criteria_met": {
+      "c1": false
+    },
+    "should_verdict": "fail",
+    "licence": "BY 2.0",
+    "source": "https://www.flickr.com/photos/52949402@N03/5095175631",
+    "note": "Downtown Dallas at night, 06-26-10"
+  },
+  {
+    "file": "stage-3-12.jpg",
+    "true_stage": 3,
+    "claimed_stage": 3,
+    "criteria_met": {
+      "c1": true
+    },
+    "should_verdict": "pass",
+    "licence": "BY 2.0",
+    "source": "https://www.flickr.com/photos/51035786238@N01/7019775623",
+    "note": "Foundation"
+  },
+  {
+    "file": "stage-3-13.jpg",
+    "true_stage": 3,
+    "claimed_stage": 3,
+    "criteria_met": {
+      "c1": true
+    },
+    "should_verdict": "unsure",
+    "licence": "BY 2.0",
+    "source": "https://www.flickr.com/photos/34728058@N08/4034232031",
+    "note": "Construction makes headway on energy-efficient 'Passivhauser' project"
+  },
+  {
+    "file": "stage-3-14.jpg",
+    "true_stage": 3,
+    "claimed_stage": 3,
+    "criteria_met": {
+      "c1": true
+    },
+    "should_verdict": "unsure",
+    "licence": "BY 2.0",
+    "source": "https://www.flickr.com/photos/53133240@N00/7209298584",
+    "note": "brick wall"
+  },
+  {
+    "file": "stage-3-15.jpg",
+    "true_stage": 3,
+    "claimed_stage": 3,
+    "criteria_met": {
+      "c1": true
+    },
+    "should_verdict": "unsure",
+    "licence": "BY 2.0",
+    "source": "https://www.flickr.com/photos/34728058@N08/4034209261",
+    "note": "Construction makes headway on energy-efficient 'Passivhauser' project"
+  },
+  {
+    "file": "stage-3-16.jpg",
+    "true_stage": 3,
+    "claimed_stage": 4,
+    "criteria_met": {
+      "c1": false
+    },
+    "should_verdict": "fail",
+    "licence": "BY 2.0",
+    "source": "https://www.flickr.com/photos/34728058@N08/4034982260",
+    "note": "Construction makes headway on energy-efficient 'Passivhauser' project"
+  },
+  {
+    "file": "stage-4-17.jpg",
+    "true_stage": 4,
+    "claimed_stage": 4,
+    "criteria_met": {
+      "c1": true
+    },
+    "should_verdict": "unsure",
+    "licence": "BY 2.0",
+    "source": "https://www.flickr.com/photos/56087830@N00/8793016394",
+    "note": "Bricks #brick #wall #construction #serranegra"
+  },
+  {
+    "file": "stage-4-18.jpg",
+    "true_stage": 4,
+    "claimed_stage": 4,
+    "criteria_met": {
+      "c1": true
+    },
+    "should_verdict": "unsure",
+    "licence": "BY 2.0",
+    "source": "https://www.flickr.com/photos/26344495@N05/50554480796",
+    "note": "Shovel, wheelbarrow and wooden planks leaning on a brick wall. Construction concept"
+  },
+  {
+    "file": "stage-4-20.jpg",
+    "true_stage": 4,
+    "claimed_stage": 4,
+    "criteria_met": {
+      "c1": true
+    },
+    "should_verdict": "unsure",
+    "licence": "BY 2.0",
+    "source": "https://www.flickr.com/photos/61132483@N00/4333694657",
+    "note": "Brick wall"
+  },
+  {
+    "file": "stage-4-21.jpg",
+    "true_stage": 4,
+    "claimed_stage": 4,
+    "criteria_met": {
+      "c1": true
+    },
+    "should_verdict": "unsure",
+    "licence": "BY 2.0",
+    "source": "https://www.flickr.com/photos/61132483@N00/44380431",
+    "note": "Brick wall"
+  },
+  {
+    "file": "stage-4-22.jpg",
+    "true_stage": 4,
+    "claimed_stage": 5,
+    "criteria_met": {
+      "c1": false
+    },
+    "should_verdict": "fail",
+    "licence": "BY 2.0",
+    "source": "https://www.flickr.com/photos/82365211@N00/2240679140",
+    "note": "brick wall"
+  },
+  {
+    "file": "stage-5-23.jpg",
+    "true_stage": 5,
+    "claimed_stage": 5,
+    "criteria_met": {
+      "c1": true
+    },
+    "should_verdict": "unsure",
+    "licence": "BY-SA 2.0",
+    "source": "https://www.flickr.com/photos/70020260@N04/29539037876",
+    "note": "88d106: Pouring top floor of Witherspoon Street garage"
+  },
+  {
+    "file": "stage-5-24.jpg",
+    "true_stage": 5,
+    "claimed_stage": 5,
+    "criteria_met": {
+      "c1": true
+    },
+    "should_verdict": "unsure",
+    "licence": "BY-SA 2.0",
+    "source": "https://www.flickr.com/photos/70020260@N04/28949709823",
+    "note": "88d109: Pouring top floor of Witherspoon Street garage"
+  },
+  {
+    "file": "stage-5-25.jpg",
+    "true_stage": 5,
+    "claimed_stage": 5,
+    "criteria_met": {
+      "c1": true
+    },
+    "should_verdict": "unsure",
+    "licence": "PDM 1.0",
+    "source": "https://www.flickr.com/photos/60455048@N02/27679857693",
+    "note": "Care to walk the plank?"
+  },
+  {
+    "file": "stage-5-26.jpg",
+    "true_stage": 5,
+    "claimed_stage": 5,
+    "criteria_met": {
+      "c1": true
+    },
+    "should_verdict": "unsure",
+    "licence": "BY 2.0",
+    "source": "https://www.flickr.com/photos/61135621@N03/6185385714",
+    "note": "IMG_7759"
+  },
+  {
+    "file": "stage-5-28.jpg",
+    "true_stage": 5,
+    "claimed_stage": 6,
+    "criteria_met": {
+      "c1": false
+    },
+    "should_verdict": "fail",
+    "licence": "BY 2.0",
+    "source": "https://www.flickr.com/photos/59595815@N03/37101224161",
+    "note": "Rebar and formwork for concrete structural slabs and beams at the planned 48th Street Entrance to the future LIRR Concourse. (CM014B, 9-13-2017)"
+  },
+  {
+    "file": "stage-6-29.jpg",
+    "true_stage": 6,
+    "claimed_stage": 6,
+    "criteria_met": {
+      "c1": true
+    },
+    "should_verdict": "pass",
+    "licence": "BY 2.0",
+    "source": "https://www.flickr.com/photos/66526224@N02/7706518320",
+    "note": "New Home Under Construction"
+  },
+  {
+    "file": "stage-6-30.jpg",
+    "true_stage": 6,
+    "claimed_stage": 6,
+    "criteria_met": {
+      "c1": true
+    },
+    "should_verdict": "unsure",
+    "licence": "BY-SA 2.0",
+    "source": "https://www.flickr.com/photos/23165290@N00/6623015313",
+    "note": "Mellon Bay 01 - South Nave Bay H - National Cathedral - DC"
+  },
+  {
+    "file": "stage-6-31.jpg",
+    "true_stage": 6,
+    "claimed_stage": 6,
+    "criteria_met": {
+      "c1": true
+    },
+    "should_verdict": "unsure",
+    "licence": "BY-SA 2.0",
+    "source": "https://www.flickr.com/photos/75683070@N00/5214948614",
+    "note": "Salt Lake Tabernacle, Salt Lake City, Utah"
+  },
+  {
+    "file": "stage-6-32.jpg",
+    "true_stage": 6,
+    "claimed_stage": 6,
+    "criteria_met": {
+      "c1": true
+    },
+    "should_verdict": "unsure",
+    "licence": "BY 2.0",
+    "source": "https://www.flickr.com/photos/11897392@N04/11300347336",
+    "note": "Northern Liberty Market"
+  },
+  {
+    "file": "stage-6-33.jpg",
+    "true_stage": 6,
+    "claimed_stage": 7,
+    "criteria_met": {
+      "c1": false
+    },
+    "should_verdict": "fail",
+    "licence": "BY 2.0",
+    "source": "https://www.flickr.com/photos/94502827@N00/269610905",
+    "note": "Harrisburg Covered Bridge, Sevierville, TN"
+  },
+  {
+    "file": "stage-7-34.jpg",
+    "true_stage": 7,
+    "claimed_stage": 7,
+    "criteria_met": {
+      "c1": true
+    },
+    "should_verdict": "pass",
+    "licence": "BY 2.0",
+    "source": "https://www.flickr.com/photos/71646105@N03/7710470936",
+    "note": "A Start On Interior Plastering - Strawbale House Build in Redmond Western Australia"
+  },
+  {
+    "file": "stage-7-35.jpg",
+    "true_stage": 7,
+    "claimed_stage": 7,
+    "criteria_met": {
+      "c1": true
+    },
+    "should_verdict": "unsure",
+    "licence": "BY 2.0",
+    "source": "https://www.flickr.com/photos/7122929@N07/2749468510",
+    "note": "Room for living"
+  },
+  {
+    "file": "stage-7-36.jpg",
+    "true_stage": 7,
+    "claimed_stage": 7,
+    "criteria_met": {
+      "c1": true
+    },
+    "should_verdict": "unsure",
+    "licence": "BY 2.0",
+    "source": "https://www.flickr.com/photos/42769910@N00/186632599",
+    "note": "Office After 4b"
+  },
+  {
+    "file": "stage-7-37.jpg",
+    "true_stage": 7,
+    "claimed_stage": 7,
+    "criteria_met": {
+      "c1": false
+    },
+    "should_verdict": "fail",
+    "licence": "BY-SA 2.0",
+    "source": "https://www.flickr.com/photos/73282154@N08/6626972287",
+    "note": "Designing Christmas Decoration in Minecraft"
+  },
+  {
+    "file": "stage-7-38.jpg",
+    "true_stage": 7,
+    "claimed_stage": 8,
+    "criteria_met": {
+      "c1": false
+    },
+    "should_verdict": "fail",
+    "licence": "PDM 1.0",
+    "source": "https://www.flickr.com/photos/7156765@N05/51619765831",
+    "note": "Chicago Illinois - Cadillac Palace Theatre -- Atmospheric Theatre"
+  },
+  {
+    "file": "stage-8-39.jpg",
+    "true_stage": 8,
+    "claimed_stage": 8,
+    "criteria_met": {
+      "c1": true
+    },
+    "should_verdict": "unsure",
+    "licence": "BY 2.0",
+    "source": "https://www.flickr.com/photos/79721788@N00/8527951359",
+    "note": "City Administration Building"
+  },
+  {
+    "file": "stage-8-40.jpg",
+    "true_stage": 8,
+    "claimed_stage": 8,
+    "criteria_met": {
+      "c1": true
+    },
+    "should_verdict": "unsure",
+    "licence": "BY 2.0",
+    "source": "https://www.flickr.com/photos/12771303@N00/6424956",
+    "note": "office building"
+  },
+  {
+    "file": "stage-8-41.jpg",
+    "true_stage": 8,
+    "claimed_stage": 8,
+    "criteria_met": {
+      "c1": true
+    },
+    "should_verdict": "unsure",
+    "licence": "BY 2.0",
+    "source": "https://www.flickr.com/photos/79721788@N00/14121542417",
+    "note": "Derelict Buildings"
+  },
+  {
+    "file": "stage-8-42.jpg",
+    "true_stage": 8,
+    "claimed_stage": 8,
+    "criteria_met": {
+      "c1": true
+    },
+    "should_verdict": "unsure",
+    "licence": "BY 2.0",
+    "source": "https://www.flickr.com/photos/65193799@N00/215422409",
+    "note": "J. Carter Brown / Kitty Kelley"
+  },
+  {
+    "file": "stage-8-43.jpg",
+    "true_stage": 8,
+    "claimed_stage": 1,
+    "criteria_met": {
+      "c1": false
+    },
+    "should_verdict": "fail",
+    "licence": "BY 2.0",
+    "source": "https://www.flickr.com/photos/8726888@N08/2377843417",
+    "note": "House"
+  },
+  {
+    "file": "dark.jpg",
+    "true_stage": 1,
+    "claimed_stage": 1,
+    "criteria_met": {
+      "c1": false
+    },
+    "should_verdict": "unsure",
+    "licence": "BY 2.0",
+    "source": "https://www.flickr.com/photos/8398907@N02/3196450555",
+    "note": "Derivative of the first fixture, darkened. Same licence."
+  },
+  {
+    "file": "blur.jpg",
+    "true_stage": 1,
+    "claimed_stage": 1,
+    "criteria_met": {
+      "c1": false
+    },
+    "should_verdict": "unsure",
+    "licence": "BY 2.0",
+    "source": "https://www.flickr.com/photos/8398907@N02/3196450555",
+    "note": "Derivative of the first fixture, blurred. Same licence."
+  },
+  {
+    "file": "duplicate.jpg",
+    "true_stage": 1,
+    "claimed_stage": 1,
+    "criteria_met": {
+      "c1": false
+    },
+    "should_verdict": "fail",
+    "licence": "BY 2.0",
+    "source": "https://www.flickr.com/photos/8398907@N02/3196450555",
+    "note": "Copy of the first fixture, for the reused-photo case. Same licence."
+  },
+  {
+    "file": "screen.jpg",
+    "true_stage": 1,
+    "claimed_stage": 1,
+    "criteria_met": {
+      "c1": false
+    },
+    "should_verdict": "fail",
+    "licence": "BY 2.0",
+    "source": "https://www.flickr.com/photos/8398907@N02/3196450555",
+    "note": "The first fixture placed inside a screen bezel. Same licence."
+  }
+]

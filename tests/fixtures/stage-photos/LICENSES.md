@@ -1,0 +1,48 @@
+# Stage photo fixtures
+
+Each file is an openly licensed photograph found through Openverse, or a derivative of one. Derivatives stay under the source licence. NC and ND works were not used.
+
+- `stage-1-01.jpg` — BY 2.0. City of Glass , Minneapolis, Minnesota. https://www.flickr.com/photos/8398907@N02/3196450555
+- `stage-1-02.jpg` — BY 2.0. Cranes In The Sky.. https://www.flickr.com/photos/37803129@N00/2436481628
+- `stage-1-03.jpg` — CC0 1.0. 2007.08 - 'Deep into the construction site underground', with a clear sight on the concrete tunnel-body under the center of Amsterdam city, location Vijzelgracht / Wetering-circuit; Dutch urban photo + geotag, Fons Heijnsbroek, The Netherlands. https://www.flickr.com/photos/104736837@N03/11296447486
+- `stage-1-04.jpg` — BY 2.0. Digger - FGS Plant Hire. https://www.flickr.com/photos/33235425@N00/536245891
+- `stage-1-05.jpg` — BY-SA 2.0. New Complex & Date Palms Torquay. https://www.flickr.com/photos/80140240@N04/14849382361
+- `stage-2-06.jpg` — CC0 1.0. 2015.01 - Amsterdam photo of a rusty Still-life - construction-site for building with concrete pilings in the waterlogged soil of my city; a geotagged free urban picture, in public domain / Commons CCO; city photography by Fons Heijnsbroek, Netherlands. https://www.flickr.com/photos/104736837@N03/26050621201
+- `stage-2-07.jpg` — BY-SA 2.0. Excavator. https://www.flickr.com/photos/70591690@N00/2656285963
+- `stage-2-08.jpg` — BY 2.0. 1926: Digging Foundation for a New Home. https://www.flickr.com/photos/51096110@N00/382038320
+- `stage-2-09.jpg` — BY 2.0. Downtown Dallas, 10-12-10. https://www.flickr.com/photos/52949402@N03/5080302508
+- `stage-2-10.jpg` — BY 2.0. Downtown Dallas at night, 06-26-10. https://www.flickr.com/photos/52949402@N03/5095175631
+- `stage-3-12.jpg` — BY 2.0. Foundation. https://www.flickr.com/photos/51035786238@N01/7019775623
+- `stage-3-13.jpg` — BY 2.0. Construction makes headway on energy-efficient 'Passivhauser' project. https://www.flickr.com/photos/34728058@N08/4034232031
+- `stage-3-14.jpg` — BY 2.0. brick wall. https://www.flickr.com/photos/53133240@N00/7209298584
+- `stage-3-15.jpg` — BY 2.0. Construction makes headway on energy-efficient 'Passivhauser' project. https://www.flickr.com/photos/34728058@N08/4034209261
+- `stage-3-16.jpg` — BY 2.0. Construction makes headway on energy-efficient 'Passivhauser' project. https://www.flickr.com/photos/34728058@N08/4034982260
+- `stage-4-17.jpg` — BY 2.0. Bricks #brick #wall #construction #serranegra. https://www.flickr.com/photos/56087830@N00/8793016394
+- `stage-4-18.jpg` — BY 2.0. Shovel, wheelbarrow and wooden planks leaning on a brick wall. Construction concept. https://www.flickr.com/photos/26344495@N05/50554480796
+- `stage-4-20.jpg` — BY 2.0. Brick wall. https://www.flickr.com/photos/61132483@N00/4333694657
+- `stage-4-21.jpg` — BY 2.0. Brick wall. https://www.flickr.com/photos/61132483@N00/44380431
+- `stage-4-22.jpg` — BY 2.0. brick wall. https://www.flickr.com/photos/82365211@N00/2240679140
+- `stage-5-23.jpg` — BY-SA 2.0. 88d106: Pouring top floor of Witherspoon Street garage. https://www.flickr.com/photos/70020260@N04/29539037876
+- `stage-5-24.jpg` — BY-SA 2.0. 88d109: Pouring top floor of Witherspoon Street garage. https://www.flickr.com/photos/70020260@N04/28949709823
+- `stage-5-25.jpg` — PDM 1.0. Care to walk the plank?. https://www.flickr.com/photos/60455048@N02/27679857693
+- `stage-5-26.jpg` — BY 2.0. IMG_7759. https://www.flickr.com/photos/61135621@N03/6185385714
+- `stage-5-28.jpg` — BY 2.0. Rebar and formwork for concrete structural slabs and beams at the planned 48th Street Entrance to the future LIRR Concourse. (CM014B, 9-13-2017). https://www.flickr.com/photos/59595815@N03/37101224161
+- `stage-6-29.jpg` — BY 2.0. New Home Under Construction. https://www.flickr.com/photos/66526224@N02/7706518320
+- `stage-6-30.jpg` — BY-SA 2.0. Mellon Bay 01 - South Nave Bay H - National Cathedral - DC. https://www.flickr.com/photos/23165290@N00/6623015313
+- `stage-6-31.jpg` — BY-SA 2.0. Salt Lake Tabernacle, Salt Lake City, Utah. https://www.flickr.com/photos/75683070@N00/5214948614
+- `stage-6-32.jpg` — BY 2.0. Northern Liberty Market. https://www.flickr.com/photos/11897392@N04/11300347336
+- `stage-6-33.jpg` — BY 2.0. Harrisburg Covered Bridge, Sevierville, TN. https://www.flickr.com/photos/94502827@N00/269610905
+- `stage-7-34.jpg` — BY 2.0. A Start On Interior Plastering - Strawbale House Build in Redmond Western Australia. https://www.flickr.com/photos/71646105@N03/7710470936
+- `stage-7-35.jpg` — BY 2.0. Room for living. https://www.flickr.com/photos/7122929@N07/2749468510
+- `stage-7-36.jpg` — BY 2.0. Office After 4b. https://www.flickr.com/photos/42769910@N00/186632599
+- `stage-7-37.jpg` — BY-SA 2.0. Designing Christmas Decoration in Minecraft. https://www.flickr.com/photos/73282154@N08/6626972287
+- `stage-7-38.jpg` — PDM 1.0. Chicago Illinois - Cadillac Palace Theatre -- Atmospheric Theatre. https://www.flickr.com/photos/7156765@N05/51619765831
+- `stage-8-39.jpg` — BY 2.0. City Administration Building. https://www.flickr.com/photos/79721788@N00/8527951359
+- `stage-8-40.jpg` — BY 2.0. office building. https://www.flickr.com/photos/12771303@N00/6424956
+- `stage-8-41.jpg` — BY 2.0. Derelict Buildings. https://www.flickr.com/photos/79721788@N00/14121542417
+- `stage-8-42.jpg` — BY 2.0. J. Carter Brown / Kitty Kelley. https://www.flickr.com/photos/65193799@N00/215422409
+- `stage-8-43.jpg` — BY 2.0. House. https://www.flickr.com/photos/8726888@N08/2377843417
+- `dark.jpg` — BY 2.0. Derivative of the first fixture, darkened. Same licence.. https://www.flickr.com/photos/8398907@N02/3196450555
+- `blur.jpg` — BY 2.0. Derivative of the first fixture, blurred. Same licence.. https://www.flickr.com/photos/8398907@N02/3196450555
+- `duplicate.jpg` — BY 2.0. Copy of the first fixture, for the reused-photo case. Same licence.. https://www.flickr.com/photos/8398907@N02/3196450555
+- `screen.jpg` — BY 2.0. The first fixture placed inside a screen bezel. Same licence.. https://www.flickr.com/photos/8398907@N02/3196450555

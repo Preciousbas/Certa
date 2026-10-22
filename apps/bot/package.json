@@ -11,11 +11,14 @@
   },
   "scripts": {
     "dev": "tsx src/poll.ts",
+    "dev:poll": "tsx src/poll.ts --poll",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "lint": "tsc --noEmit"
   },
   "dependencies": {
+    "@certa/ai": "workspace:*",
+    "@certa/chain": "workspace:*",
     "@certa/db": "workspace:*",
     "drizzle-orm": "0.45.4",
     "@certa/shared": "workspace:*",

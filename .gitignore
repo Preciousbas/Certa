@@ -17,6 +17,11 @@ test-results
 *.log
 .vercel
 .turbo
+apps/web/var
 tsconfig.tsbuildinfo
 .DS_Store
 *.tsbuildinfo
+scripts/e2e-demo/
+docs/eval/vision-2026-10-22.md
+docs/eval/vision-2026-10-22.jsonl
+tests/fixtures/stage-photos/real/*.jpg

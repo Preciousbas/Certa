@@ -9,7 +9,7 @@ Roof structure & covering | Long-span aluminium roof. | 10
 Plastering, screeding & MEP first fix | Plaster, screed, and first-fix services. | 10
 Windows, doors, tiling & finishes | Windows, doors, tiling, and finishes. | 13
 External works, testing & handover | External works and handover. | 5
-Contract sum | 45000000
+Contract sum | 1200000
 Retention percent | 5
 Defects days | 180
 Mobilisation percent | 10`;

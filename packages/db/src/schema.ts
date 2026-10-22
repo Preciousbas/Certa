@@ -1,4 +1,17 @@
-import { bigint, boolean, doublePrecision, integer, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import {
+  bigint,
+  boolean,
+  date,
+  doublePrecision,
+  integer,
+  jsonb,
+  pgTable,
+  real,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from "drizzle-orm/pg-core";
 
 const timestamps = {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -12,6 +25,7 @@ export const users = pgTable("users", {
   phoneCiphertext: text("phone_ciphertext"),
   emailCiphertext: text("email_ciphertext"),
   locale: text("locale").notNull().default("en"),
+  platformRole: text("platform_role").notNull().default("user"),
   ...timestamps,
 });
 
@@ -27,16 +41,21 @@ export const workspaces = pgTable("workspaces", {
   letterheadFileId: uuid("letterhead_file_id"),
   marginTop: integer("margin_top").notNull().default(96),
   marginBottom: integer("margin_bottom").notNull().default(72),
+  isDemo: boolean("is_demo").notNull().default(false),
   ...timestamps,
 });
 
-export const workspaceMembers = pgTable("workspace_members", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  workspaceId: uuid("workspace_id").notNull(),
-  userId: uuid("user_id").notNull(),
-  role: text("role").notNull(),
-  ...timestamps,
-}, (table) => [uniqueIndex("workspace_members_user").on(table.workspaceId, table.userId)]);
+export const workspaceMembers = pgTable(
+  "workspace_members",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    workspaceId: uuid("workspace_id").notNull(),
+    userId: uuid("user_id").notNull(),
+    role: text("role").notNull(),
+    ...timestamps,
+  },
+  (table) => [uniqueIndex("workspace_members_user").on(table.workspaceId, table.userId)],
+);
 
 export const projects = pgTable("projects", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -61,6 +80,8 @@ export const projects = pgTable("projects", {
   contractSumKobo: bigint("contract_sum_kobo", { mode: "bigint" }).notNull(),
   contractSumUsdc: bigint("contract_sum_usdc", { mode: "bigint" }).notNull(),
   termsHash: text("terms_hash"),
+  currentContractVersionId: uuid("current_contract_version_id"),
+  chainSync: text("chain_sync").notNull().default("ok"),
   ...timestamps,
 });
 
@@ -88,6 +109,7 @@ export const joinCodes = pgTable("join_codes", {
   expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
   maxUses: integer("max_uses").notNull().default(1),
   useCount: integer("use_count").notNull().default(0),
+  revokedAt: timestamp("revoked_at", { withTimezone: true }),
   ...timestamps,
 });
 
@@ -107,11 +129,15 @@ export const stages = pgTable("stages", {
   amountNgnKobo: bigint("amount_ngn_kobo", { mode: "bigint" }).notNull(),
   amountUsdc: bigint("amount_usdc", { mode: "bigint" }).notNull(),
   retentionBps: integer("retention_bps").notNull(),
-  status: text("status").notNull().default("pending"),
+  status: text("status").notNull().default("not_started"),
   funded: boolean("funded").notNull().default(false),
   onChainIdx: integer("on_chain_idx").notNull(),
   assignedPartyId: uuid("assigned_party_id"),
   pour: boolean("pour").notNull().default(false),
+  contractVersionId: uuid("contract_version_id"),
+  kind: text("kind").notNull().default("work"),
+  acceptanceCriteria: jsonb("acceptance_criteria").$type<string[]>().notNull().default([]),
+  tags: text("tags").array().notNull().default([]),
   ...timestamps,
 });
 
@@ -136,7 +162,59 @@ export const documents = pgTable("documents", {
   sha256: text("sha256").notNull(),
   parsedJson: jsonb("parsed_json"),
   parseStatus: text("parse_status").notNull().default("pending"),
+  uploadedBy: uuid("uploaded_by"),
+  fileName: text("file_name"),
+  mimeType: text("mime_type"),
+  detectedType: text("detected_type"),
+  sizeBytes: integer("size_bytes"),
+  pageCount: integer("page_count"),
+  sheetNames: text("sheet_names").array(),
+  failureCode: text("failure_code"),
+  status: text("status").notNull().default("uploaded"),
   ...timestamps,
+});
+
+export const documentChunks = pgTable("document_chunks", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  documentId: uuid("document_id").notNull(),
+  anchor: text("anchor").notNull(),
+  kind: text("kind").notNull(),
+  content: text("content").notNull(),
+  ocrConfidence: real("ocr_confidence"),
+  ord: integer("ord").notNull(),
+});
+
+export const extractions = pgTable("extractions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  projectId: uuid("project_id").notNull(),
+  documentIds: uuid("document_ids").array().notNull(),
+  status: text("status").notNull(),
+  model: text("model").notNull(),
+  promptVersion: text("prompt_version").notNull(),
+  rawJson: jsonb("raw_json").notNull().default({}),
+  validatedJson: jsonb("validated_json"),
+  issues: jsonb("issues").notNull().default([]),
+  inputTokens: integer("input_tokens"),
+  outputTokens: integer("output_tokens"),
+  costMicro: bigint("cost_micro", { mode: "bigint" }),
+  startedAt: timestamp("started_at", { withTimezone: true }),
+  finishedAt: timestamp("finished_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const boqItems = pgTable("boq_items", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  contractVersionId: uuid("contract_version_id").notNull(),
+  billRef: text("bill_ref").notNull(),
+  itemRef: text("item_ref").notNull(),
+  description: text("description").notNull(),
+  unit: text("unit"),
+  quantityMilli: bigint("quantity_milli", { mode: "bigint" }),
+  rateKobo: bigint("rate_kobo", { mode: "bigint" }),
+  amountKobo: bigint("amount_kobo", { mode: "bigint" }).notNull(),
+  statedAmountKobo: bigint("stated_amount_kobo", { mode: "bigint" }),
+  sourceAnchor: text("source_anchor").notNull(),
+  confidence: real("confidence").notNull(),
 });
 
 export const submissions = pgTable("submissions", {
@@ -149,6 +227,7 @@ export const submissions = pgTable("submissions", {
   confidence: doublePrecision("confidence"),
   decision: text("decision"),
   evidenceHash: text("evidence_hash"),
+  status: text("status"),
   ...timestamps,
 });
 
@@ -166,7 +245,36 @@ export const photos = pgTable("photos", {
   device: text("device"),
   checksJson: jsonb("checks_json").notNull(),
   stampedKey: text("stamped_key"),
+  stageId: uuid("stage_id"),
+  uploadedBy: uuid("uploaded_by"),
+  accuracyM: real("accuracy_m"),
+  distanceFromSiteM: real("distance_from_site_m"),
+  exif: jsonb("exif").notNull().default({}),
+  nonce: text("nonce"),
+  receivedAt: timestamp("received_at", { withTimezone: true }),
+  originalKey: text("original_key"),
+  widthPx: integer("width_px"),
+  heightPx: integer("height_px"),
   ...timestamps,
+});
+
+export const aiVerdicts = pgTable("ai_verdicts", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  submissionId: uuid("submission_id").notNull(),
+  stageId: uuid("stage_id").notNull(),
+  model: text("model").notNull(),
+  promptVersion: text("prompt_version").notNull(),
+  verdict: text("verdict").notNull(),
+  confidence: real("confidence").notNull(),
+  rawJson: jsonb("raw_json").notNull(),
+  criteriaResults: jsonb("criteria_results").notNull(),
+  reasons: text("reasons").array().notNull(),
+  issues: text("issues").array().notNull(),
+  safetyFlags: text("safety_flags").array().notNull().default([]),
+  missingShots: text("missing_shots").array().notNull().default([]),
+  latencyMs: integer("latency_ms"),
+  costMicro: bigint("cost_micro", { mode: "bigint" }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
 export const approvals = pgTable("approvals", {
@@ -253,6 +361,7 @@ export const outboundEmails = pgTable("outbound_emails", {
 
 export const auditLog = pgTable("audit_log", {
   id: uuid("id").primaryKey().defaultRandom(),
+  projectId: uuid("project_id"),
   workspaceId: uuid("workspace_id"),
   actorUserId: uuid("actor_user_id"),
   actorTelegramId: bigint("actor_telegram_id", { mode: "bigint" }),
@@ -264,7 +373,43 @@ export const auditLog = pgTable("audit_log", {
   prevHash: text("prev_hash").notNull(),
   rowHash: text("row_hash").notNull(),
   ip: text("ip"),
+  reason: text("reason"),
+  requestId: text("request_id"),
+  actorKind: text("actor_kind").notNull().default("user"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const fxRates = pgTable("fx_rates", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  koboPerUsdc: bigint("kobo_per_usdc", { mode: "bigint" }).notNull(),
+  source: text("source").notNull(),
+  asOf: text("as_of").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const notifications = pgTable("notifications", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id").notNull(),
+  kind: text("kind").notNull(),
+  payload: jsonb("payload").$type<Record<string, unknown>>().notNull(),
+  channel: text("channel").notNull().default("telegram"),
+  status: text("status").notNull(),
+  telegramMessageId: bigint("telegram_message_id", { mode: "bigint" }),
+  dedupeKey: text("dedupe_key").notNull().unique(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  sentAt: timestamp("sent_at", { withTimezone: true }),
+});
+
+export const jobs = pgTable("jobs", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  kind: text("kind").notNull(),
+  payload: jsonb("payload").$type<Record<string, unknown>>().notNull().default({}),
+  dedupeKey: text("dedupe_key"),
+  status: text("status").notNull().default("queued"),
+  attempts: integer("attempts").notNull().default(0),
+  runAt: timestamp("run_at", { withTimezone: true }).notNull().defaultNow(),
+  lastError: text("last_error"),
+  ...timestamps,
 });
 
 export const usageLedger = pgTable("usage_ledger", {
@@ -289,6 +434,7 @@ export const captureNonces = pgTable("capture_nonces", {
   id: uuid("id").primaryKey().defaultRandom(),
   projectId: uuid("project_id").notNull(),
   userId: uuid("user_id").notNull(),
+  stageId: uuid("stage_id").notNull(),
   nonceHash: text("nonce_hash").notNull().unique(),
   expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
   usedAt: timestamp("used_at", { withTimezone: true }),
@@ -298,8 +444,126 @@ export const captureNonces = pgTable("capture_nonces", {
 export const botSessions = pgTable("bot_sessions", {
   telegramId: bigint("telegram_id", { mode: "bigint" }).primaryKey(),
   activeProjectId: uuid("active_project_id"),
+  state: jsonb("state").$type<Record<string, unknown> | null>(),
+  stateExpiresAt: timestamp("state_expires_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const telegramIdentities = pgTable("telegram_identities", {
+  telegramUserId: bigint("telegram_user_id", { mode: "bigint" }).primaryKey(),
+  userId: uuid("user_id").notNull(),
+  username: text("username"),
+  firstName: text("first_name"),
+  lastName: text("last_name"),
+  photoUrl: text("photo_url"),
+  languageCode: text("language_code"),
+  lastAuthAt: timestamp("last_auth_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const telegramUpdates = pgTable("telegram_updates", {
+  updateId: bigint("update_id", { mode: "bigint" }).primaryKey(),
+  receivedAt: timestamp("received_at", { withTimezone: true }).notNull().defaultNow(),
+  processedAt: timestamp("processed_at", { withTimezone: true }),
+  error: text("error"),
+});
+
+export const memberships = pgTable("memberships", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  projectId: uuid("project_id").notNull(),
+  userId: uuid("user_id").notNull(),
+  role: text("role").notNull(),
+  status: text("status").notNull().default("active"),
+  joinedAt: timestamp("joined_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const contractVersions = pgTable("contract_versions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  projectId: uuid("project_id").notNull(),
+  version: integer("version").notNull(),
+  extractionId: uuid("extraction_id"),
+  status: text("status").notNull(),
+  currency: text("currency").notNull().default("NGN"),
+  contractSumKobo: bigint("contract_sum_kobo", { mode: "bigint" }).notNull(),
+  vatBps: integer("vat_bps").notNull().default(0),
+  vatKobo: bigint("vat_kobo", { mode: "bigint" }).notNull().default(0n),
+  retentionBps: integer("retention_bps").notNull().default(0),
+  advanceKobo: bigint("advance_kobo", { mode: "bigint" }).notNull().default(0n),
+  advanceRecovery: jsonb("advance_recovery"),
+  ldRateKobo: bigint("ld_rate_kobo", { mode: "bigint" }),
+  ldPeriod: text("ld_period"),
+  ldCapBps: integer("ld_cap_bps"),
+  startDate: date("start_date"),
+  completionDate: date("completion_date"),
+  defectsPeriodDays: integer("defects_period_days").notNull().default(180),
+  koboPerUsdc: bigint("kobo_per_usdc", { mode: "bigint" }).notNull(),
+  fxSource: text("fx_source").notNull(),
+  fxAsOf: date("fx_as_of").notNull(),
+  spendingCapMicro: bigint("spending_cap_micro", { mode: "bigint" }).notNull(),
+  terms: jsonb("terms").notNull(),
+  documentHashes: text("document_hashes").array().notNull(),
+  contentHash: text("content_hash").notNull(),
+  createdBy: uuid("created_by").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const contractAcceptances = pgTable("contract_acceptances", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  contractVersionId: uuid("contract_version_id").notNull(),
+  userId: uuid("user_id").notNull(),
+  role: text("role").notNull(),
+  decision: text("decision").notNull(),
+  reason: text("reason"),
+  contentHash: text("content_hash").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const wallets = pgTable("wallets", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id"),
+  projectId: uuid("project_id"),
+  purpose: text("purpose").notNull(),
+  provider: text("provider").notNull().default("cdp"),
+  providerAccountRef: text("provider_account_ref").notNull(),
+  address: text("address").notNull(),
+  chainId: integer("chain_id").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const escrows = pgTable("escrows", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  projectId: uuid("project_id").notNull().unique(),
+  contractVersionId: uuid("contract_version_id").notNull(),
+  chainId: integer("chain_id").notNull(),
+  factoryAddress: text("factory_address").notNull(),
+  address: text("address").notNull(),
+  createTxId: uuid("create_tx_id").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const chainTxs = pgTable("chain_txs", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  projectId: uuid("project_id"),
+  stageId: uuid("stage_id"),
+  kind: text("kind").notNull(),
+  idempotencyKey: text("idempotency_key").notNull().unique(),
+  chainId: integer("chain_id").notNull(),
+  fromAddress: text("from_address").notNull(),
+  toAddress: text("to_address").notNull(),
+  calldata: text("calldata"),
+  valueMicro: bigint("value_micro", { mode: "bigint" }),
+  status: text("status").notNull(),
+  txHash: text("tx_hash").unique(),
+  blockNumber: bigint("block_number", { mode: "bigint" }),
+  confirmations: integer("confirmations").notNull().default(0),
+  error: text("error"),
+  attempts: integer("attempts").notNull().default(0),
+  submittedAt: timestamp("submitted_at", { withTimezone: true }),
+  confirmedAt: timestamp("confirmed_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  nonce: bigint("nonce", { mode: "bigint" }),
+  intent: text("intent"),
+  replacedHash: text("replaced_hash"),
 });
 
 export const blobs = pgTable("blobs", {

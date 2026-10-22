@@ -1,18 +1,18 @@
-import { captureNonces, getDatabase, projects, sha256Hex, users } from "@certa/db";
-import { randomBytes } from "node:crypto";
-import { eq } from "drizzle-orm";
+import { stages } from "@certa/db";
+import { and, eq } from "drizzle-orm";
+import { apiError, apiJson, nonceInput, nonceOutput } from "../../../../lib/schemas";
+import { issueCaptureNonce } from "../../../../../../src/server/verify/capture";
+import { withAuth } from "../../../../lib/with-auth";
 
-export async function POST() {
-  const db = await getDatabase();
-  const user = (await db.select().from(users).where(eq(users.telegramId, 1001n)))[0];
-  const project = (await db.select().from(projects)).find((row) => row.name.startsWith("EM 22"));
-  if (!user || !project) return Response.json({ error: "No project." }, { status: 404 });
-  const nonce = randomBytes(16).toString("hex");
-  await db.insert(captureNonces).values({
-    projectId: project.id,
-    userId: user.id,
-    nonceHash: sha256Hex(nonce),
-    expiresAt: new Date(Date.now() + 2 * 60 * 1000),
-  });
-  return Response.json({ nonce });
-}
+export const POST = withAuth(
+  async ({ db, userId, project, json }) => {
+    const input = nonceInput.safeParse(json);
+    if (!input.success) return apiError(400, "Choose a stage before opening the camera.");
+    const stage = (await db.select().from(stages).where(and(eq(stages.id, input.data.stageId), eq(stages.projectId, project.id))))[0];
+    if (!stage) return apiError(404, "That stage is not on this project.");
+    const issued = await issueCaptureNonce(db, { projectId: project.id, userId, stageId: stage.id });
+    if ("error" in issued) return apiError(issued.status, issued.error);
+    return apiJson(nonceOutput, issued);
+  },
+  { roles: ["contractor", "subcontractor"], assignedStage: true },
+);

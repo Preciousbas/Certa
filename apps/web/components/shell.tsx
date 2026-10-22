@@ -1,30 +1,36 @@
-import Link from "next/link";
+import { BottomNav, type NavRole } from "./bottom-nav";
+import { MoneyProvider, MoneySwitch } from "./money";
+import { Sidebar } from "./sidebar";
+import { TelegramChrome } from "./telegram";
 
-const links = [
-  ["/", "Timeline"],
-  ["/stages", "Stages"],
-  ["/capture", "Camera"],
-  ["/fund", "Fund"],
-  ["/changes", "Changes"],
-  ["/wallet", "Account"],
-  ["/report", "Report"],
-  ["/billing", "Plan"],
-  ["/cashout", "Cash out"],
-  ["/admin", "Desk"],
-] as const;
-
-export function Shell({ children }: { children: React.ReactNode }) {
+export function Shell({
+  children,
+  sample = false,
+  role = "client",
+  admin = false,
+  syncing = false,
+}: {
+  children: React.ReactNode;
+  sample?: boolean;
+  role?: NavRole;
+  admin?: boolean;
+  syncing?: boolean;
+}) {
   return (
-    <div className="shell">
-      <p className="eyebrow">Certa · site payments</p>
-      <nav className="nav">
-        {links.map(([href, label]) => (
-          <Link key={href} href={href}>
-            {label}
-          </Link>
-        ))}
-      </nav>
-      {children}
+    <div className="app">
+      <Sidebar role={role} admin={admin} />
+      <div className="shell">
+        <TelegramChrome />
+        <MoneyProvider>
+          <div className="topbar">
+            {sample ? <p className="sample-badge">Demo workspace</p> : <span />}
+            <MoneySwitch />
+          </div>
+          {syncing ? <p className="sample-badge">Updating from the blockchain</p> : null}
+          <main>{children}</main>
+          <BottomNav role={role} admin={admin} />
+        </MoneyProvider>
+      </div>
     </div>
   );
 }

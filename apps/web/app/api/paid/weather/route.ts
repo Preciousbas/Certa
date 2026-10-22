@@ -1,12 +1,12 @@
-import { hasPayment, paymentChallenge } from "../../../../lib/x402";
+import { handlePaidWeather } from "../../../../lib/x402-server";
+import { apiError, emptyQuery, queryOf } from "../../../../lib/schemas";
 
-export async function GET(request: Request) {
-  const payTo = process.env.X402_PAY_TO_ADDRESS ?? "0x0000000000000000000000000000000000000001";
-  if (!hasPayment(request, process.env.DEMO_MODE !== "0")) return paymentChallenge(payTo);
-  return Response.json({
-    site: "Lekki Phase 1",
-    rainProbability: 0.18,
-    summary: "Low chance of rain. The pour window is open.",
-    paid: "$0.01",
-  });
+function requirePaidAccess(request: Request) {
+  const query = emptyQuery.safeParse(queryOf(request));
+  if (!query.success) return apiError(400, "That request is not valid.");
+  return handlePaidWeather(request);
+}
+
+export function GET(request: Request) {
+  return requirePaidAccess(request);
 }

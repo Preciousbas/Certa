@@ -21,7 +21,7 @@ export const DEMO_STAGES: readonly DemoStage[] = [
   },
   {
     name: "Substructure",
-    description: "Blockwork to DPC and German floor / oversite concrete.",
+    description: "Blockwork to DPC and oversite concrete.",
     bps: 1000,
     pour: true,
   },

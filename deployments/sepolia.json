@@ -1,0 +1,17 @@
+{
+  "chainId": 11155111,
+  "usdc": "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238",
+  "implementation": "0x7740796284bf5ea67f30f123ee28e5fffa8cca1c",
+  "factory": "0x4f4c6cc95465cefe8a967e351eede69d40660423",
+  "recordedAt": "2026-10-20T10:57:28.712Z",
+  "projectId": "0x130a88ece7f0c917628d1160f7cc6eaab209dc284869377f6bd491193aa66bb6",
+  "escrow": "0x5289dcc36EdC15AdC6314F75EcBFa745e70BD44d",
+  "client": "0xa27b33393f461554500AADf575138544A3620615",
+  "contractor": "0x57F91305c07603759840ef44b3632d313e3cC5e8",
+  "termsHash": "0x88802b75d992c806b19d71d0b6f428d5286c4394fd6e2fbcc4df7091ecda2caa",
+  "fullEscrow": "0xCbBB69f9E5373763D430D25e920B6aE4A632cf0d",
+  "fullProjectId": "0x5f94e9fedfc257ce47a8decda43f510499881f72d68d9af8cb00e2e8a934cb03",
+  "pilotEscrow": "0x5289dcc36EdC15AdC6314F75EcBFa745e70BD44d",
+  "pilotProjectId": "0x130a88ece7f0c917628d1160f7cc6eaab209dc284869377f6bd491193aa66bb6",
+  "pilotTermsHash": "0x88802b75d992c806b19d71d0b6f428d5286c4394fd6e2fbcc4df7091ecda2caa"
+}

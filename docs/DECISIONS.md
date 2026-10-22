@@ -15,13 +15,13 @@ Locked on 13 Oct 2026 before implementation. Change these only by editing this f
 | grammY | 1.46.0 | Bot framework named in the spec. |
 | Drizzle | orm 0.45.4 / kit 0.31.11 | Schema and migrations. |
 | Zod | 3.25.76 | Structured output. Zod 4 is current on npm but the extraction pipeline and drizzle stay on 3.25 so one schema language is shared. |
-| viem | 2.57.5 | Base Sepolia client. |
+| viem | 2.57.5 | Ethereum Sepolia client. |
 | Solidity | 0.8.28 | Spec asked for 0.8.2x. |
 | OpenZeppelin | 5.6.1 | SafeERC20, ReentrancyGuard, AccessControl, Pausable, Clones. |
 | Foundry | forge 1.7.1 | Already installed. |
 | x402 | `@x402/next` and `@x402/fetch` 2.28.0 | The `x402-next` / `x402-fetch` names in the brief are the v1 packages. Current sellers use `@x402/*`. |
 | Vitest | 3.2.4 | Unit tests. |
-| USDC | `0x036CbD53842c5426634e7929541eC2318f3dCF7e` | Circle's Base Sepolia USDC. 6 decimals. Confirmed on Circle's contract-address list. |
+| USDC | `0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238` | Circle's Ethereum Sepolia USDC. 6 decimals. Confirmed on Circle's contract-address list. |
 
 ## File plan
 
@@ -68,21 +68,33 @@ docs/                ARCHITECTURE, DECISIONS, DEPLOYMENTS, SECURITY, DEMO_SCRIPT
 
 14. **Email and phone numbers are encrypted with AES-256-GCM** under `APP_ENCRYPTION_KEY` before they touch Postgres. GPS is omitted from documents sent outside the project.
 
-15. **Demo FX.** Seed locks ₦1,500 per USDC (`fx_rate_locked` stored as 150000 kobo per USDC). Contract sum ₦45,000,000 is exactly 30,000.000000 USDC. Display rounding is half-up to 2 decimals and is never written back to storage.
+15. **Demo FX.** Seed locks ₦1,500 per USDC (`fx_rate_locked` stored as 150000 kobo per USDC). Display rounding is half-up to 2 decimals and is never written back to storage.
 
-16. **Mini App aesthetic.** Site-office ledger: Fraunces + Figtree + IBM Plex Mono, warm charcoal `#161410`, paper `#f3ecdf`, brass `#e2a04a` used on the primary action and the active stage only. Oxide `#c4654a` is the dispute/safety accent. Telegram theme variables override the defaults when the app runs inside Telegram. Buttons shrink on hover. No gradient text, no pure black or white, no three-column feature grids.
+16. **Mini App aesthetic.** Navy ledger from the review mockups. Inter, weights 400–800. Light background `#F8FAFC`, cards `#FFFFFF`, navy `#0F2A44`, action orange `#F97316`. Button labels are `#1E293B` on that orange so the contrast clears WCAG AA. White on `#F97316` does not. Status chips use the released, locked, pending, and disputed pairs. Dark follows Telegram `colorScheme`, with `#0B1220` / `#111A2E` when no theme colours are passed. Phone nav is a 72px four-item bar with a navy active pill. At 1024px and wider the same links move into a navy sidebar. Buttons shrink on hover.
 
 17. **Jobs.** Inngest when keys exist. The same job functions run in-process in tests with a fake clock, so the 72h and 7-day timers are exercised without a network.
 
-18. **x402.** `/api/paid/weather` and `/api/paid/materials-price` return HTTP 402 with an x402 v2 challenge (`amount` `"10000"` = $0.01 USDC on `eip155:84532`). The official `@x402/next` seller middleware is not mounted. Coinbase's CDP SDK imports optional `@x402/*` clients that are not installed, and pulling that graph into the Next bundle broke the build. A `demo` payment header is accepted only when `DEMO_MODE` is not `"0"`. A real facilitator settle, a third-party paid call, and a row in `x402_calls` wait on `X402_FACILITATOR_URL` and a funded operator wallet.
+18. **x402.** `/api/paid/weather` uses `@x402/core` and `@x402/evm` on the server, kept out of the client bundle. The facilitator is `X402_FACILITATOR_URL`, default `https://x402.org/facilitator`, on `eip155:11155111` for $0.01 USDC. The route answers 503 until `X402_PAY_TO_ADDRESS` is a 20-byte address. A `PAYMENT-SIGNATURE` is verified and settled by the facilitator. The weather numbers come from Open-Meteo for the project's stored coordinates, and a row is written only when the settle response carries a 32-byte transaction hash. The daily note links that hash on Etherscan. Allowance left is the workspace allowance minus the sum of `x402_calls`. A pour-stage review tries to pay from `EVM_PRIVATE_KEY` before the approval is stored. No key is set, so no settlement has been made. The demo header does not write a receipt. Materials prices are not invented. `@x402/next` stays unmounted.
 
 23. **Inngest 4.23 takes two arguments.** Triggers, including cron, live on the options object: `createFunction({ id, triggers: [{ cron }] }, handler)`. The three-argument form from older examples does not type-check.
 
 24. **CDP stays out of the Next bundle.** `createPartyWallet` loads `@coinbase/cdp-sdk` with a webpack-ignored dynamic import, and only when all three CDP env vars are set. Without them the address is `sha256(partyId)` and marked mock.
 
+26. **Sample data is off unless `DEMO_SEED=true`.** The Lekki duplex is not loaded on every boot. When the flag is on, the shell shows a Sample data badge. `DEMO_MODE` no longer implies a seed.
+
+30. **The e2e demo folder stays local.** `scripts/e2e-demo/` is gitignored. `pnpm demo:e2e` runs the rehearsal against an in-memory sample project: fund pending through stage 2, join code, gallery reject, live photo accept, pour verdict that does not auto-release, and a pending letterhead PDF. It writes `out/last-run.json` and never invents a Basescan hash. The committed video outline and checklist live in `docs/DEMO_SCRIPT.md`.
+
+29. **A photo check never pays.** `verifyStage` returns a verdict and a decision. `recommend_release` requires confidence at least 0.85, a finished stage, a high-trust photo, and a stage amount at or under 1,000 USDC. An instruction inside the photo text, or an `action` field in the model JSON, cannot take that path. No model key is set, so captures store a text check with `model: null` and the screen says no photo model ran. A consultant approval writes an `approvals` row and does not insert a payment.
+
+28. **Ethereum Sepolia reads are live. Broadcasts are not invented.** The public RPC `https://ethereum-sepolia-rpc.publicnode.com` is chain 11155111, and Circle USDC `0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238` is the token the app reads. Health reports `rpc: ok` only after that check. A payment-account balance is `balanceOf` on that USDC contract. A stage shows an Etherscan link only when `payments.tx_hash` is a real 32-byte hash. `scripts/broadcast-sepolia.sh` exits if `DEPLOYER_PRIVATE_KEY` is unset. No factory address is recorded until that script writes `deployments/sepolia.json`.
+
+31. **The deploy chain is Ethereum Sepolia.** The deployer holds Sepolia ETH, so the factory broadcasts to chain 11155111. `forge script` on Foundry 1.7.1 needs `script/Deploy.s.sol:DeployScript`. `SEPOLIA_RPC_URL` wins over `BASE_SEPOLIA_RPC_URL` when both are set.
+
+27. **Screens only say what the database stored.** A fund confirmation shows the locked naira and USDC and the stages in that request. It stays "Waiting on chain" until a real transaction hash exists. There is no escrow link, certificate, or "contractor notified" without a stored address, document, or outbound email. Change cards are parsed fields, not JSON. The naira/USDC switch is `localStorage` key `certa-money-unit` and uses the project's locked rate. The phone nav is four items. Development CSP adds `'unsafe-eval'` because the Next dev server evaluates scripts. Production does not.
+
 25. **PGlite is a direct dependency of the web app.** The demo database is in-memory Postgres. Next externalises `@electric-sql/pglite`, and Node resolves it from `apps/web/node_modules`. The Vercel project root is `apps/web`. Install runs `cd ../.. && pnpm install` so the workspace still installs. `outputFileTracingRoot` is the monorepo root so the pnpm store is part of the serverless trace. Copying `.next` up to the repository root broke those paths.
 
-19. **Off-ramp.** `OffRampProvider` with a demo stub: quote, bank details, then "coming soon". No live Cleva or Spenda call.
+19. **Off-ramp.** Cash out stays closed until a real bank quote exists. The page does not invent a rate or name a provider. No live Cleva or Spenda call.
 
 20. **Local bot transport.** Long polling in `pnpm dev`. Vercel serves `POST /api/telegram` via `webhookCallback`. The webhook rejects a missing or wrong `x-telegram-bot-api-secret-token`.
 

@@ -30,6 +30,18 @@ export function heuristicAssess(notes: string): { assessment: StageAssessment; d
   return { assessment, decision: decide(assessment) };
 }
 
+export function strictHeuristic(notes: string): { assessment: StageAssessment; decision: ReleaseDecision } {
+  const base = heuristicAssess(notes);
+  const unsafe = /unclear|maybe|both|open edge|no guardrail|no helmet|not started/i.test(notes);
+  const finished = /finished|complete|poured/i.test(notes);
+  const assessment = StageAssessment.parse({
+    ...base.assessment,
+    completed: finished && !unsafe,
+    confidence: unsafe ? Math.min(base.assessment.confidence, 0.5) : finished ? base.assessment.confidence : Math.min(base.assessment.confidence, 0.8),
+  });
+  return { assessment, decision: decide(assessment) };
+}
+
 export async function assessStage(notes: string, model?: LanguageModel, stageNames: string[] = []): Promise<{ assessment: StageAssessment; decision: ReleaseDecision }> {
   if (!model) return heuristicAssess(notes);
   try {

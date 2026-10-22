@@ -307,6 +307,7 @@ CREATE TABLE capture_nonces (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   project_id uuid NOT NULL REFERENCES projects(id),
   user_id uuid NOT NULL REFERENCES users(id),
+  stage_id uuid NOT NULL REFERENCES stages(id),
   nonce_hash text NOT NULL UNIQUE,
   expires_at timestamptz NOT NULL,
   used_at timestamptz,

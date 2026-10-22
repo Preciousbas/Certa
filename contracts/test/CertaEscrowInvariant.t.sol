@@ -139,6 +139,10 @@ contract CertaEscrowInvariantTest is Test {
         assertEq(token.balanceOf(address(escrow)), escrow.expectedBalance());
     }
 
+    function invariant_escrowBalance() public view {
+        assertEq(token.balanceOf(address(escrow)), escrow.totalFunded() - escrow.totalOut());
+    }
+
     function invariant_contractorCap() public view {
         assertLe(escrow.paidToContractor(), escrow.maxContractorReceivable());
     }

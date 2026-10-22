@@ -1,61 +1,62 @@
-import { captureNonces, getDatabase, photos, sha256Hex, users } from "@certa/db";
-import { evaluatePhoto } from "@certa/shared";
-import { and, eq, isNull } from "drizzle-orm";
-import { projects } from "@certa/db";
+import { apiError, apiJson, captureFields, captureOutput, projectIdField } from "../../../../lib/schemas";
+import { storeCapturePhoto } from "../../../../../../src/server/verify/capture";
+import { withAuth } from "../../../../lib/with-auth";
 
-export async function POST(request: Request) {
-  const form = await request.formData();
-  const nonce = String(form.get("nonce") ?? "");
-  const capturedAt = Number(form.get("capturedAt") ?? 0);
-  const lat = form.get("lat");
-  const lng = form.get("lng");
-  const file = form.get("photo");
-  if (!(file instanceof File)) return Response.json({ accepted: false, reasons: ["Take the photo in the camera page."] }, { status: 400 });
-  const db = await getDatabase();
-  const userRows = await db.select().from(users).where(eq(users.telegramId, 1001n));
-  const user = userRows[0];
-  const project = (await db.select().from(projects)).find((row) => row.name.startsWith("EM 22"));
-  if (!user || !project) return Response.json({ accepted: false, reasons: ["No project."] }, { status: 404 });
-  const nonceRows = await db
-    .select()
-    .from(captureNonces)
-    .where(and(eq(captureNonces.nonceHash, sha256Hex(nonce)), isNull(captureNonces.usedAt)));
-  const nonceRow = nonceRows[0];
-  const nonceValid = Boolean(nonceRow && nonceRow.expiresAt.getTime() > Date.now());
-  if (nonceRow && nonceValid) {
-    await db.update(captureNonces).set({ usedAt: new Date() }).where(eq(captureNonces.id, nonceRow.id));
-  }
-  const bytes = new Uint8Array(await file.arrayBuffer());
-  const digest = sha256Hex(bytes);
-  const seen = await db.select().from(photos).where(eq(photos.sha256, digest));
-  const gps = lat && lng ? { lat: Number(lat), lng: Number(lng) } : { lat: project.siteLat, lng: project.siteLng };
-  const checks = evaluatePhoto({
-    nowMs: Date.now(),
-    capturedAtMs: Number.isFinite(capturedAt) ? capturedAt : null,
-    exifPresent: true,
-    gps,
-    site: { lat: project.siteLat, lng: project.siteLng },
-    radiusM: project.geofenceRadiusM,
-    nonceValid,
-    shaDuplicate: seen.length > 0,
-    phashDuplicate: false,
-    screenshotHeuristic: false,
-    compressed: false,
-  });
-  if (checks.accepted) {
-    await db.insert(photos).values({
+const ALLOWED = ["photo", "projectId", "stageId", "nonce", "capturedAt", "lat", "lng", "accuracy", "deviceInfo"];
+
+export const POST = withAuth(
+  async ({ db, userId, project, form }) => {
+    if (!form) return apiError(400, "Take the photo in the camera page.");
+    const file = form.get("photo");
+    if (!(file instanceof File)) return apiError(400, "Take the photo in the camera page.");
+    const stageId = String(form.get("stageId") ?? "");
+    if (!projectIdField.safeParse(stageId).success) return apiError(400, "Choose a stage before taking the photo.");
+    const fields = captureFields.safeParse({
+      projectId: String(form.get("projectId") ?? ""),
+      stageId,
+      nonce: String(form.get("nonce") ?? ""),
+      capturedAt: String(form.get("capturedAt") ?? ""),
+      lat: String(form.get("lat") ?? ""),
+      lng: String(form.get("lng") ?? ""),
+      accuracy: String(form.get("accuracy") ?? ""),
+      ...(form.get("deviceInfo") ? { deviceInfo: String(form.get("deviceInfo")) } : {}),
+    });
+    if (!fields.success) return apiError(400, "Take the photo in the camera page.");
+    const unknown = [...form.keys()].filter((key) => !ALLOWED.includes(key));
+    if (unknown.length > 0) return apiError(400, "Take the photo in the camera page.");
+    const lat = Number(fields.data.lat);
+    const lng = Number(fields.data.lng);
+    const accuracy = Number(fields.data.accuracy);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng) || !Number.isFinite(accuracy)) {
+      return apiError(400, "Certa needs your location to prove the photos were taken on site. Turn on location and try again.");
+    }
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    const stored = await storeCapturePhoto(db, {
       projectId: project.id,
       workspaceId: project.workspaceId,
-      storageKey: `live/${digest}.jpg`,
-      sha256: digest,
-      phash: digest.slice(0, 16),
-      capturedAt: new Date(capturedAt),
-      gpsLat: gps.lat,
-      gpsLng: gps.lng,
-      device: "mini-app",
-      checksJson: checks,
-      stampedKey: `stamped/${digest}.jpg`,
+      userId,
+      stageId,
+      nonce: fields.data.nonce,
+      capturedAtMs: Number(fields.data.capturedAt),
+      lat,
+      lng,
+      accuracyM: accuracy,
+      deviceInfo: fields.data.deviceInfo ?? "mini-app",
+      bytes,
+      site: { lat: project.siteLat, lng: project.siteLng },
+      radiusM: project.geofenceRadiusM,
     });
-  }
-  return Response.json(checks, { status: checks.accepted ? 200 : 422 });
-}
+    return apiJson(
+      captureOutput,
+      {
+        accepted: stored.accepted,
+        trust: stored.accepted ? "high" : "rejected",
+        reasons: [stored.message],
+        message: stored.message,
+        ...(stored.photoId ? { photoId: stored.photoId } : {}),
+      },
+      stored.accepted ? 200 : 422,
+    );
+  },
+  { roles: ["contractor", "subcontractor"], assignedStage: true, upload: true },
+);

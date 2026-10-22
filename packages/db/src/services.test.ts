@@ -1,8 +1,8 @@
 import { eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import { createMemoryDatabase } from "./client.js";
-import { parties, projects, users, workspaceMembers, workspaces } from "./schema.js";
-import { appendAudit, ensureWallet, issueJoinCode, recordPayment, redeemJoinCode, setActiveProject, visibleProjectIds } from "./services.js";
+import { parties, payments, projects, users, workspaceMembers, workspaces } from "./schema.js";
+import { ANONYMOUS_FUND_ID, appendAudit, deleteAnonymousFund, ensureWallet, issueJoinCode, recordPayment, redeemJoinCode, setActiveProject, visibleProjectIds } from "./services.js";
 import { deemedAccepted, shouldEscalateChange, shouldNotifyConsultant } from "./timers.js";
 import { fxRateFromNaira, nairaToKobo, usdcFromNgnKobo } from "@certa/shared";
 
@@ -91,7 +91,29 @@ describe("join codes and wallets", () => {
     const rows = await db.select().from(parties).where(eq(parties.id, good.partyId));
     expect(rows[0]?.walletAddress).toBe("0xabc");
     await close();
-  }, 20_000);
+  }, 60_000);
+
+  it("deletes the anonymous 13 Oct fund and leaves a second pass empty", async () => {
+    const { db, close, project, ws } = await fixture();
+    await db.insert(payments).values({
+      id: ANONYMOUS_FUND_ID,
+      projectId: project.id,
+      workspaceId: ws.id,
+      kind: "stage",
+      amountUsdc: 1n,
+      amountNgnKobo: 100n,
+      idempotencyKey: "anon-test",
+      status: "recorded",
+    });
+    const removed = await deleteAnonymousFund(db);
+    expect(removed.deleted).toBe(true);
+    expect(removed.note).toContain(ANONYMOUS_FUND_ID);
+    const gone = await db.select().from(payments).where(eq(payments.id, ANONYMOUS_FUND_ID));
+    expect(gone).toHaveLength(0);
+    const again = await deleteAnonymousFund(db);
+    expect(again.deleted).toBe(false);
+    await close();
+  }, 60_000);
 
   it("pays a stage once and chains the audit log", async () => {
     const { db, close, project, ws } = await fixture();

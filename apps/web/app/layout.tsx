@@ -1,11 +1,12 @@
-import type { Metadata } from "next";
-import { Figtree, Fraunces, IBM_Plex_Mono } from "next/font/google";
+import type { Metadata, Viewport } from "next";
+import { Inter } from "next/font/google";
+import Script from "next/script";
 import { Shell } from "../components/shell";
+import { loadProject } from "../lib/data";
+import { viewerNav } from "../lib/labels";
 import "./globals.css";
 
-const display = Fraunces({ subsets: ["latin"], variable: "--font-display" });
-const body = Figtree({ subsets: ["latin"], weight: ["400", "500", "600"], variable: "--font-body" });
-const mono = IBM_Plex_Mono({ subsets: ["latin"], weight: ["400", "500"], variable: "--font-mono" });
+const body = Inter({ subsets: ["latin"], weight: ["400", "500", "600", "700", "800"], variable: "--font-body" });
 
 export const metadata: Metadata = {
   title: "Certa",
@@ -14,11 +15,22 @@ export const metadata: Metadata = {
 
 export const dynamic = "force-dynamic";
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+};
+
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  const data = await loadProject();
+  const party = data?.parties.find((row) => row.userId === data.user.id);
+  const nav = viewerNav(party?.role, data?.workspaceRole);
   return (
     <html lang="en">
-      <body className={`${display.variable} ${body.variable} ${mono.variable}`}>
-        <Shell>{children}</Shell>
+      <body className={body.variable}>
+        <Script src="https://telegram.org/js/telegram-web-app.js" strategy="beforeInteractive" />
+        <Shell sample={data?.isDemo === true} role={nav.role} admin={nav.admin} syncing={data?.project.chainSync === "updating"}>
+          {children}
+        </Shell>
       </body>
     </html>
   );

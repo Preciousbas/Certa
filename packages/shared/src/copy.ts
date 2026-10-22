@@ -3,7 +3,7 @@ export const copy = {
   brand: "Certa",
   start:
     "Certa checks site photos against the contract stages, then releases the locked USDC for a finished stage.",
-  startClient: "Create a workspace, add the project, and invite the contractor with a code.",
+  startClient: "Send the contract file here. Certa reads every stage in it, then asks for the terms the file left out.",
   startJoin: "Enter the 8-character code from your client.",
   paymentAccountReady: "Your payment account is ready.",
   paymentAccountAdvanced: "Payment account address",

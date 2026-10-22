@@ -1,0 +1,38 @@
+[
+  {
+    "file": "real-01.jpg",
+    "claimed_stage": 2,
+    "should_verdict": "fail",
+    "note": "Standing block walls. Not an excavation or a foundation."
+  },
+  {
+    "file": "real-02.jpg",
+    "claimed_stage": 4,
+    "should_verdict": "pass",
+    "note": "Ground-floor block walls, openings, and starter bars. No slab across the top."
+  },
+  {
+    "file": "real-03.jpg",
+    "claimed_stage": 5,
+    "should_verdict": "pass",
+    "note": "Concrete is being placed on a deck over a standing storey."
+  },
+  {
+    "file": "real-04.jpg",
+    "claimed_stage": 5,
+    "should_verdict": "fail",
+    "note": "Reinforcement on a deck. Concrete has not covered the bars."
+  },
+  {
+    "file": "real-05.jpg",
+    "claimed_stage": 6,
+    "should_verdict": "pass",
+    "note": "Upper-floor block walls above a lower storey. No roof sheets."
+  },
+  {
+    "file": "real-06.jpg",
+    "claimed_stage": 7,
+    "should_verdict": "fail",
+    "note": "A ribbed slab under construction. No roof covering."
+  }
+]

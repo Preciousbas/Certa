@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { PGlite } from "@electric-sql/pglite";
@@ -8,20 +8,37 @@ import * as schema from "./schema.js";
 
 export type Database = PgliteDatabase<typeof schema>;
 
-export function migrationSql(): string {
+function migrationDir(): string {
   const candidates = [
-    join(dirname(fileURLToPath(String(import.meta.url))), "../migrations/0001_init.sql"),
-    join(process.cwd(), "packages/db/migrations/0001_init.sql"),
-    join(process.cwd(), "../../packages/db/migrations/0001_init.sql"),
+    join(dirname(fileURLToPath(String(import.meta.url))), "../migrations"),
+    join(process.cwd(), "packages/db/migrations"),
+    join(process.cwd(), "../../packages/db/migrations"),
   ];
-  for (const file of candidates) {
+  for (const dir of candidates) {
     try {
-      return readFileSync(file, "utf8");
+      readdirSync(dir);
+      return dir;
     } catch {
-      // The Next server bundle does not sit next to the SQL file.
+      // The Next server bundle does not sit next to the SQL files.
     }
   }
-  throw new Error("Could not read packages/db/migrations/0001_init.sql");
+  throw new Error("Could not read packages/db/migrations");
+}
+
+export function migrationSql(): string {
+  const dir = migrationDir();
+  return readdirSync(dir)
+    .filter((name) => name.endsWith(".sql"))
+    .sort()
+    .map((name) => readFileSync(join(dir, name), "utf8"))
+    .join("\n");
+}
+
+export function migrationNamed(prefix: string): string {
+  const dir = migrationDir();
+  const name = readdirSync(dir).find((file) => file.startsWith(prefix) && file.endsWith(".sql"));
+  if (!name) throw new Error(`Missing migration ${prefix}`);
+  return readFileSync(join(dir, name), "utf8");
 }
 
 export async function createMemoryDatabase(): Promise<{ db: Database; client: PGlite; close: () => Promise<void> }> {

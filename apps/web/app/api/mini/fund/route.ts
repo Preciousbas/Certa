@@ -1,17 +1,113 @@
-import { recordPayment, getDatabase, projects } from "@certa/db";
+import { cdpConfigured } from "@certa/chain";
+import { contractSummaries, contractVersions, recordPayment, stages } from "@certa/db";
+import { koboFromUsdc } from "@certa/shared";
+import { eq } from "drizzle-orm";
+import type { Hex } from "viem";
+import { ChainRejected, ConsultantRequired, fundAccepted } from "../../../../../../src/server/chain/flows";
+import { broadcastClientFund } from "../../../../lib/chain-fund";
+import { chainFundLines } from "../../../../lib/escrow-quote";
+import { apiError, apiJson, fundInput, fundOutput } from "../../../../lib/schemas";
+import { withAuth } from "../../../../lib/with-auth";
 
-export async function POST() {
-  const db = await getDatabase();
-  const project = (await db.select().from(projects)).find((row) => row.name.startsWith("EM 22"));
-  if (!project) return Response.json({ error: "No project." }, { status: 404 });
-  const payment = await recordPayment(db, {
-    projectId: project.id,
-    workspaceId: project.workspaceId,
-    kind: "stage",
-    amountUsdc: project.contractSumUsdc,
-    amountNgnKobo: project.contractSumKobo,
-    idempotencyKey: `demo-fund:${project.id}`,
-    status: "recorded",
-  });
-  return Response.json({ ok: true, created: payment.created, id: payment.payment.id });
-}
+export const POST = withAuth(
+  async ({ db, project, json }) => {
+    const input = fundInput.safeParse(json);
+    if (!input.success) return apiError(400, "The amount and the idempotency key are required.");
+    const rows = (await db.select().from(stages).where(eq(stages.projectId, project.id)))
+      .filter((stage) => stage.stageIndex <= input.data.upToStage)
+      .sort((a, b) => a.stageIndex - b.stageIndex);
+    if (rows.length === 0) return apiError(400, "No stages fall in that range.");
+    const versions = await db.select().from(contractVersions).where(eq(contractVersions.projectId, project.id));
+    if (versions.length > 0) {
+      const current = versions.find((row) => row.id === project.currentContractVersionId) ?? versions.find((row) => row.status === "accepted");
+      if (!current || current.status !== "accepted") {
+        return apiError(409, "Both sides accept the schedule before money can be locked.");
+      }
+    } else if (project.termsHash !== "seeded-terms") {
+      const summaries = await db.select().from(contractSummaries).where(eq(contractSummaries.projectId, project.id));
+      const latest = summaries.sort((a, b) => b.version - a.version)[0];
+      if (!latest?.acceptedByClientAt || !latest?.acceptedByContractorAt) {
+        return apiError(409, "Both sides accept the schedule before money can be locked.");
+      }
+    }
+    const rate = { koboPerUsdc: project.fxRateLocked };
+    const quoted = await chainFundLines(
+      project.escrowAddress ?? "",
+      rows.map((stage) => ({ name: stage.name, stageIndex: stage.stageIndex })),
+      rate.koboPerUsdc,
+    ).catch(() => null);
+    const priced = quoted ?? rows.map((stage) => ({ name: stage.name, usdc: stage.amountUsdc, kobo: stage.amountNgnKobo }));
+    let amountUsdc = priced.reduce((sum, stage) => sum + stage.usdc, 0n);
+    let amountNgnKobo = rate ? koboFromUsdc(amountUsdc, rate.koboPerUsdc) : priced.reduce((sum, stage) => sum + stage.kobo, 0n);
+    let sentHash: Hex | null = null;
+    let escrowFromChain = "";
+    let locked: "pending" | "confirmed" = "pending";
+    const escrow = project.escrowAddress ?? "";
+    const payInNaira = input.data.currency === "ngn";
+    const accepted = versions.find((row) => row.status === "accepted");
+    if (!payInNaira && accepted) {
+      if (!cdpConfigured()) return apiError(503, "The payment account is not configured.");
+      try {
+        const sent = await fundAccepted(db, {
+          projectId: project.id,
+          upToStage: input.data.upToStage,
+          idempotencyKey: input.data.idempotencyKey,
+        });
+        sentHash = (sent.tx.txHash as Hex | null) ?? null;
+        escrowFromChain = sent.escrow;
+        locked = sent.tx.status === "confirmed" ? "confirmed" : "pending";
+        amountUsdc = sent.amount;
+        if (rate) amountNgnKobo = koboFromUsdc(sent.amount, rate.koboPerUsdc);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "The fund transaction reverted.";
+        const status = error instanceof ConsultantRequired ? 409 : error instanceof ChainRejected ? 400 : 502;
+        return apiError(status, message);
+      }
+    } else if (!payInNaira && /^0x[a-fA-F0-9]{40}$/.test(escrow) && process.env.DEPLOYER_PRIVATE_KEY) {
+      try {
+        const sent = await broadcastClientFund(escrow as Hex, input.data.upToStage);
+        sentHash = sent.hash;
+        locked = "confirmed";
+        amountUsdc = sent.amount;
+        if (rate) amountNgnKobo = koboFromUsdc(sent.amount, rate.koboPerUsdc);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "";
+        return apiError(502, message === "The client wallet does not hold enough USDC." || message === "That range has nothing left to fund." ? message : "The fund transaction reverted.");
+      }
+    }
+    const payment = await recordPayment(db, {
+      projectId: project.id,
+      workspaceId: project.workspaceId,
+      kind: payInNaira ? "naira" : "stage",
+      amountUsdc,
+      amountNgnKobo,
+      idempotencyKey: input.data.idempotencyKey,
+      txHash: sentHash ?? undefined,
+      status: locked,
+    });
+    const rawTx = payment.payment.txHash ?? "";
+    const rawEscrow = escrowFromChain || project.escrowAddress || "";
+    const txHash = /^0x[a-fA-F0-9]{64}$/.test(rawTx) ? rawTx : null;
+    const escrowAddress = /^0x[a-fA-F0-9]{40}$/.test(rawEscrow) ? rawEscrow : null;
+    return apiJson(fundOutput, {
+      ok: true,
+      created: payment.created,
+      paymentId: payment.payment.id,
+      status: locked,
+      rail: payment.payment.kind === "naira" ? "ngn" : "usdc",
+      amountUsdc: payment.payment.amountUsdc.toString(),
+      amountNgnKobo: payment.payment.amountNgnKobo.toString(),
+      txHash,
+      escrowAddress,
+      contractorNotified: false,
+      stages: rows
+        .sort((a, b) => a.stageIndex - b.stageIndex)
+        .map((stage, index) => ({
+          name: stage.name,
+          amountNgnKobo: (priced[index]?.kobo ?? stage.amountNgnKobo).toString(),
+          amountUsdc: (priced[index]?.usdc ?? stage.amountUsdc).toString(),
+        })),
+    });
+  },
+  { roles: ["client"] },
+);
