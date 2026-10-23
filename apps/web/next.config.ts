@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { withSentryConfig } from "@sentry/nextjs/config";
 import type { NextConfig } from "next";
 
 const rootEnv = path.join(path.dirname(fileURLToPath(import.meta.url)), "../../.env");
@@ -19,7 +20,7 @@ if (process.env.PLAYWRIGHT !== "1") {
 
 function connectSources(): string {
   const extra = ["https://telegram.org", "https://oauth.telegram.org"];
-  for (const name of ["SUPABASE_URL", "RPC_URL", "SEPOLIA_RPC_URL", "NEXT_PUBLIC_APP_URL"]) {
+  for (const name of ["SUPABASE_URL", "RPC_URL", "SEPOLIA_RPC_URL", "NEXT_PUBLIC_APP_URL", "SENTRY_DSN"]) {
     const value = process.env[name];
     if (!value) continue;
     try {
@@ -45,6 +46,10 @@ function imageSources(): string {
 }
 
 const nextConfig: NextConfig = {
+  env: {
+    NEXT_PUBLIC_SENTRY_DSN: process.env.SENTRY_DSN ?? "",
+    NEXT_PUBLIC_VERCEL_ENV: process.env.VERCEL_ENV ?? "",
+  },
   outputFileTracingRoot: path.join(path.dirname(fileURLToPath(import.meta.url)), "../.."),
   allowedDevOrigins: ["127.0.0.1"],
   transpilePackages: ["@certa/db", "@certa/ai", "@certa/chain", "@certa/pdf", "@certa/shared", "@certa/bot"],
@@ -96,4 +101,13 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default nextConfig;
+const sentryToken = process.env.SENTRY_AUTH_TOKEN;
+export default sentryToken
+  ? withSentryConfig(nextConfig, {
+      org: process.env.SENTRY_ORG,
+      project: process.env.SENTRY_PROJECT,
+      authToken: sentryToken,
+      silent: true,
+      telemetry: false,
+    })
+  : nextConfig;

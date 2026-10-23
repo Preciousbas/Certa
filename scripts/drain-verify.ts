@@ -1,5 +1,6 @@
 import { closeDatabase, getDatabase } from "@certa/db";
 import { enqueueJob } from "../src/server/jobs/enqueue.js";
+import { initSentry } from "../src/server/sentry.js";
 import { drainJobs, registerJobHandler } from "../src/server/jobs/worker.js";
 import { PROMPT_VERSION } from "../src/server/ai/prompts/stage_verify.v3.js";
 import { runVerifyStage } from "../src/server/verify/run.js";
@@ -46,6 +47,7 @@ async function kickCron(): Promise<void> {
 
 export async function drainVerify(): Promise<number> {
   process.env.CERTA_SKIP_MIGRATIONS = "1";
+  await initSentry();
   const result = await drainJobs(20, { kind: "verify_stage", budgetMs: BUDGET_MS });
   if (needsCron) await kickCron();
   return result.ran;

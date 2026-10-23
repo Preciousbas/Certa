@@ -8,6 +8,7 @@ import { registerNotifyJobs } from "../../../src/bot/notify.js";
 import { registerReleaseRetry } from "../../../src/bot/releaseRetry.js";
 import { registerVerifyJobs } from "../../../src/server/verify/register.js";
 import { registerX402Jobs } from "../../../src/server/x402/register.js";
+import { initSentry } from "../../../src/server/sentry.js";
 
 async function runQueuedJobs() {
   registerVerifyJobs();
@@ -75,6 +76,7 @@ if (!poll) {
   console.log("Bot polling is off. Start it with pnpm dev:bot.");
   process.exit(0);
 }
+await initSentry();
 void runQueuedJobs();
 if (!token) {
   console.log("TELEGRAM_BOT_TOKEN is not set. The Mini App can still run on port 3000.");

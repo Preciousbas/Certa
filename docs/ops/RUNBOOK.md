@@ -34,7 +34,7 @@ Prices (kobo, display only until charging is switched on): `PLAN_MONTHLY_KOBO`, 
 
 Demo: `DEMO_MODE`, `DEMO_SEED`, `DEMO_VIDEO_URL`. Production should leave `DEMO_SEED` false.
 
-Errors: `SENTRY_DSN`, `SENTRY_ORG`, `SENTRY_PROJECT`, `SENTRY_AUTH_TOKEN`. The app does nothing with Sentry when `SENTRY_DSN` is empty. `SENTRY_AUTH_TOKEN` is only for source-map upload at build time.
+Errors: `SENTRY_DSN`, `SENTRY_ORG`, `SENTRY_PROJECT`, `SENTRY_AUTH_TOKEN`. Leave all four blank to keep Sentry off. The client, server, edge runtime, bot, and verify worker send nothing when `SENTRY_DSN` is empty. `SENTRY_AUTH_TOKEN` is only for source-map upload at build time, together with `SENTRY_ORG` and `SENTRY_PROJECT`. Events drop email addresses, wallet private keys, tokens, and request bodies. The environment tag is `VERCEL_ENV`.
 
 ## Rotate a key
 
