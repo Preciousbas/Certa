@@ -407,7 +407,8 @@ describe("bot handlers", () => {
     const details = await send({ type: "callback", data: callbackData("wt", "show"), from: contractor });
     expect(textOf(details)).toContain("0x1111111111111111111111111111111111111111");
     const help = await send({ type: "command", command: "help", arg: "", from: client });
-    expect(textOf(help)).toContain("support@example.com");
+    expect(textOf(help)).toContain("/menu");
+    expect(textOf(help)).not.toContain("support@example.com");
     const denied = await send({ type: "command", command: "wallet", arg: "", from: client });
     expect(textOf(denied)).toContain("Only the contractor can do this");
   });

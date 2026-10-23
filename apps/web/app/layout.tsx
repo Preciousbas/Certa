@@ -24,7 +24,8 @@ export const viewport: Viewport = {
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const data = await loadProject();
   const factory = process.env.ESCROW_FACTORY_ADDRESS || PUBLISHED_FACTORY;
-  const supportEmail = process.env.SUPPORT_EMAIL || "support@example.com";
+  const configured = process.env.SUPPORT_EMAIL?.trim();
+  const supportEmail = configured && configured !== "support@example.com" ? configured : "";
   const fxLine = data ? fxLineFor(data.project) : null;
   return (
     <html lang="en">

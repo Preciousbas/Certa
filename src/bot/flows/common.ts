@@ -51,7 +51,9 @@ export function appUrl(deps: EngineDeps): string {
 }
 
 export function supportEmail(deps: EngineDeps): string {
-  return deps.supportEmail || process.env.SUPPORT_EMAIL || "support@example.com";
+  const email = (deps.supportEmail || process.env.SUPPORT_EMAIL || "").trim();
+  if (!email || email === "support@example.com") return "";
+  return email;
 }
 
 export function botUsername(deps: EngineDeps): string {
