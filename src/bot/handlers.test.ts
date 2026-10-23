@@ -202,10 +202,30 @@ describe("bot handlers", () => {
     await send({ type: "text", text: "4-bedroom duplex, Plot 14 Lekki", from: maker });
     await send({ type: "text", text: "Plot 14 Lekki", from: maker });
     await send({ type: "callback", data: callbackData("go", "skip"), from: maker });
-    const created = await send({ type: "text", text: "3 Nov 2026", from: maker });
+    const dated = await send({ type: "text", text: "3 Nov 2026", from: maker });
+    expect(textOf(dated)).toContain("Are you the Client or the Contractor?");
+    const created = await send({ type: "callback", data: callbackData("sd", "client"), from: maker });
     expect(textOf(created)).toContain("Project created");
     expect(textOf(created)).toContain("4-bedroom duplex, Plot 14 Lekki");
     expect(labels(created)).toEqual(["Upload contract or BoQ", "Invite people"]);
+    const makerUser = (await db.select().from(users).where(eq(users.telegramId, 7301n)))[0];
+    const makerRole = makerUser
+      ? (await db.select().from(memberships).where(eq(memberships.userId, makerUser.id)))[0]?.role
+      : null;
+    expect(makerRole).toBe("client");
+    const builder = { id: 7303, firstName: "Chioma" };
+    await send({ type: "callback", data: callbackData("go", "create"), from: builder });
+    await send({ type: "text", text: "Fence", from: builder });
+    await send({ type: "text", text: "Yaba", from: builder });
+    await send({ type: "callback", data: callbackData("go", "skip"), from: builder });
+    await send({ type: "text", text: "3 Nov 2026", from: builder });
+    const asContractor = await send({ type: "callback", data: callbackData("sd", "contractor"), from: builder });
+    expect(textOf(asContractor)).toContain("Project created");
+    const builderUser = (await db.select().from(users).where(eq(users.telegramId, 7303n)))[0];
+    const builderRole = builderUser
+      ? (await db.select().from(memberships).where(eq(memberships.userId, builderUser.id)))[0]?.role
+      : null;
+    expect(builderRole).toBe("contractor");
     await send({ type: "callback", data: callbackData("go", "create"), from: { id: 7302, firstName: "Tunde" } });
     await send({ type: "text", text: "Annex", from: { id: 7302, firstName: "Tunde" } });
     await send({ type: "text", text: "Ikeja", from: { id: 7302, firstName: "Tunde" } });

@@ -76,6 +76,10 @@ export function bPr4Invalid(): string {
   return "I didn't understand that date. Try like this: 3 Nov 2026.";
 }
 
+export function bPrRole(): string {
+  return "Are you the Client or the Contractor?";
+}
+
 /** B-PR-5 */
 export function bPr5(input: { project: string }): string {
   return `\u2705 Project created: **${e(input.project)}**.\nNext: upload the signed contract and the priced BoQ.`;

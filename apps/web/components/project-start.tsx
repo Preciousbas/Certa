@@ -125,7 +125,7 @@ export function ProjectStart({ initial, signedIn }: { initial: Membership[]; sig
         <a className="ui-btn ui-btn-primary" href="https://t.me/CertaApp_bot">Open in Telegram</a>
         {asking === "start" ? (
           <div className="stack">
-            <p>Which side of the contract are you?</p>
+            <p>Are you the Client or the Contractor?</p>
             <label className="stack">
               Project name
               <input value={name} onChange={(event) => setName(event.target.value)} maxLength={180} />

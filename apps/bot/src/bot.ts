@@ -211,7 +211,7 @@ export function createBot(token: string, deps: BotDeps): Bot<BotContext> {
     },
     ctx: Context,
   ) {
-    await ctx.reply("Which side of the contract are you? Reply contractor or client.");
+    await ctx.reply("Are you the Client or the Contractor?");
     const roleMsg = await conversation.waitFor("message:text");
     const role = (roleMsg.message?.text?.trim().toLowerCase() ?? "") as ContractSide;
     if (!sides.has(role)) {
