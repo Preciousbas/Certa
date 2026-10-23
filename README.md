@@ -1,5 +1,7 @@
 # Certa
 
+[![ci](https://github.com/Preciousbas/Certa/actions/workflows/ci.yml/badge.svg)](https://github.com/Preciousbas/Certa/actions/workflows/ci.yml)
+
 An AI site engineer on Telegram. Subcontractors photograph the work. Certa names the finished contract stage, and that stage's USDC leaves escrow after the client and the consultant have checked it.
 
 Nigerian construction payments stall in disputes. Progress photos are easy to fake, and a stage that is actually done still waits on a cheque. Certa keeps the naira figures for people and the USDC for the chain, with one locked rate per contract.

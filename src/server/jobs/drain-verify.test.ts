@@ -16,6 +16,7 @@ describe("drain-verify", () => {
   it("exits on an empty queue without loading the chain package or running migrations", async () => {
     const env = { ...process.env };
     delete env.DATABASE_URL;
+    delete env.SENTRY_DSN;
     delete env.CERTA_SKIP_MIGRATIONS;
     env.CERTA_MIGRATION_SENTRY = "1";
     env.VITEST = "1";

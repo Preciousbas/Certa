@@ -68,8 +68,9 @@ describe("authenticated actions", () => {
 
   it("hides admin from a logged-out caller and opens it for an allowlisted platform admin", async () => {
     const loggedOut = await adminSession(new Request("http://localhost/api/admin/session"));
-    expect(loggedOut.status).toBe(404);
-    expect(await loggedOut.text()).toBe("");
+    expect(loggedOut.status).toBe(403);
+    const loggedOutBody = (await loggedOut.json()) as { error: string };
+    expect(loggedOutBody.error).toBe("forbidden");
 
     const db = await getDatabase();
     const [admin] = await db
@@ -89,7 +90,7 @@ describe("authenticated actions", () => {
     const hidden = await adminSession(
       new Request("http://localhost/api/admin/session", { headers: { cookie: `certa_session=${demoted.token}` } }),
     );
-    expect(hidden.status).toBe(404);
+    expect(hidden.status).toBe(403);
   });
 
   it("rate limits login with the exact message", async () => {

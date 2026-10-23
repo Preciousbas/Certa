@@ -35,6 +35,7 @@ describe("labels", () => {
     const resolution = dispute.resolution as { note?: string; payBps?: number };
     expect(resolution.note).toBe("Released in full");
     expect(resolution.payBps).toBe(10000);
+    if (resolution.payBps === undefined) throw new Error("payBps missing");
     expect(formatPayBps(resolution.payBps)).toBe("100%");
     expect(formatPayBps(Number.NaN)).toBeNull();
   });

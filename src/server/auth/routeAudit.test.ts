@@ -14,6 +14,7 @@ describe("route auth coverage", () => {
     expect(missingAuth("apps/web/app/api/cron/jobs/route.ts", "export function GET() {}")).toBe(false);
     expect(missingAuth("apps/web/app/api/paid/weather/route.ts", "export function GET() {}")).toBe(false);
     expect(missingAuth("apps/web/app/api/auth/logout/route.ts", "export function POST() {}")).toBe(false);
+    expect(missingAuth("apps/web/app/api/test/journey/route.ts", "export function POST() {}")).toBe(false);
     expect(missingAuth("apps/web/app/api/mini/fund/route.ts", "export const POST = function run() {}")).toBe(true);
   });
 

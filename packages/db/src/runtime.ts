@@ -8,7 +8,21 @@ const globalForDb = globalThis as {
   certaSql?: SqlHandle;
   certaClose?: () => Promise<void>;
   certaMigrate?: boolean;
+  certaMemory?: boolean;
 };
+
+/** Playwright may use the journey route and the demo seed only on the in-memory database, off Vercel. */
+export function playwrightMemoryAllowed(env: NodeJS.ProcessEnv = process.env): boolean {
+  if (env.PLAYWRIGHT !== "1") return false;
+  if (env.DATABASE_URL?.trim()) return false;
+  if (env.VERCEL_ENV === "production" || env.VERCEL_ENV === "preview") return false;
+  return true;
+}
+
+/** True after getDatabase() has opened PGlite. False for Postgres and before the first open. */
+export function isMemoryDatabase(): boolean {
+  return globalForDb.certaMemory === true;
+}
 
 export type DatabaseOptions = { migrate?: boolean };
 
@@ -44,6 +58,7 @@ export async function closeDatabase(): Promise<void> {
   globalForDb.certaDb = undefined;
   globalForDb.certaSql = undefined;
   globalForDb.certaClose = undefined;
+  globalForDb.certaMemory = false;
   if (sql) await sql.end({ timeout: 5 });
   if (close) await close();
 }
@@ -51,7 +66,8 @@ export async function closeDatabase(): Promise<void> {
 async function open(options?: DatabaseOptions): Promise<Database> {
   const migrate = migrationsEnabled(options);
   if (migrate) noteMigrationRunner();
-  if (process.env.DATABASE_URL && process.env.PLAYWRIGHT !== "1") {
+  if (process.env.DATABASE_URL?.trim() && process.env.PLAYWRIGHT !== "1") {
+    globalForDb.certaMemory = false;
     const postgres = (await import("postgres")).default;
     const { drizzle } = await import("drizzle-orm/postgres-js");
     const client = postgres(process.env.DATABASE_URL, { max: 1 });
@@ -101,7 +117,8 @@ async function open(options?: DatabaseOptions): Promise<Database> {
   }
   const opened = await createMemoryDatabase();
   globalForDb.certaClose = opened.close;
-  if (process.env.PLAYWRIGHT === "1") {
+  globalForDb.certaMemory = true;
+  if (playwrightMemoryAllowed()) {
     const { seedDemo } = await import("./seed.js");
     await seedDemo(opened.db);
   }

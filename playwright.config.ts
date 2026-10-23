@@ -13,6 +13,7 @@ export default defineConfig({
     env: {
       ...process.env,
       DATABASE_URL: "",
+      VERCEL_ENV: "",
       DEMO_SEED: "true",
       PLAYWRIGHT: "1",
       TELEGRAM_BOT_TOKEN: "123:playwright-demo",

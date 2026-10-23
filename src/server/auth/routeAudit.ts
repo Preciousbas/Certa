@@ -20,6 +20,7 @@ export function routeIsAllowlisted(file: string): boolean {
   if (path.includes("/api/cron/")) return true;
   if (path.includes("/api/paid/")) return true;
   if (path.includes("/api/auth/")) return true;
+  if (path.endsWith("/api/test/journey/route.ts")) return true;
   return false;
 }
 

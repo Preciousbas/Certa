@@ -20,10 +20,11 @@
     "@certa/ai": "workspace:*",
     "@certa/chain": "workspace:*",
     "@certa/db": "workspace:*",
-    "drizzle-orm": "0.45.4",
     "@certa/shared": "workspace:*",
     "@grammyjs/conversations": "2.1.1",
     "@grammyjs/ratelimiter": "1.2.1",
+    "@sentry/node": "^11.9.0",
+    "drizzle-orm": "0.45.4",
     "grammy": "1.46.0"
   },
   "devDependencies": {

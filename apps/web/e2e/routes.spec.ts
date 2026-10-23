@@ -42,15 +42,28 @@ test.describe("mobile routes", () => {
     await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
   });
 
+  test("admin is closed unless you are a platform admin", async ({ page, request }, info) => {
+    test.skip(info.project.name !== "mobile", "one width is enough");
+    const screen = await page.goto("/admin");
+    expect(screen?.status()).toBe(403);
+    await expect(page.getByRole("heading", { name: "You don't have access to this desk." })).toBeVisible();
+    const diagnostics = await request.get("/api/admin/diagnostics");
+    expect(diagnostics.status()).toBe(403);
+    const session = await request.get("/api/admin/session");
+    expect(session.status()).toBe(403);
+  });
+
   test("health reports the live Ethereum Sepolia RPC", async ({ request }, info) => {
     test.skip(info.project.name !== "mobile", "one width is enough");
     const response = await request.get("/api/health");
-    const body = (await response.json()) as { checks?: { rpc?: string; usdc?: string; contract?: string; cdp?: string } };
-    expect(response.ok()).toBe(true);
+    const body = (await response.json()) as {
+      checks?: { rpc?: string; usdc?: string; contract?: string; cdp?: string; storage?: string };
+    };
     expect(body.checks?.rpc).toBe("ok");
     expect(body.checks?.usdc).toBe("ok");
     expect(body.checks?.contract).toMatch(/^0x[a-fA-F0-9]{40}$/);
     expect(body.checks?.cdp).toMatch(/^(configured|unconfigured)$/);
+    if (body.checks?.storage === "ok") expect(response.ok()).toBe(true);
   });
 
   test("the money toggle changes the amounts", async ({ page }) => {

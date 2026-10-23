@@ -75,7 +75,7 @@ test("review issues, correct, and keep", async ({ page }) => {
   await page.locator("form").getByRole("button", { name: "Correct", exact: true }).click();
   await expect(page.getByText("The stage total matches the contract sum.")).toBeVisible();
   await page.getByRole("button", { name: "Keep", exact: true }).last().click();
-  await expect(page.getByText("Kept.")).toBeVisible();
+  await expect(page.getByText("Kept.", { exact: true })).toBeVisible();
   await page.screenshot({ path: join(out, "correct-keep.png"), fullPage: true });
 });
 
@@ -110,7 +110,8 @@ test("large upload succeeds", async ({ page }) => {
   });
   await page.goto("/app/p/sample/documents");
   await page.locator("input[type=file]").setInputFiles(file);
-  await expect(page.getByText("Read")).toBeVisible();
+  await expect(page.getByText("Read", { exact: true })).toBeVisible();
+  await expect(page.getByText("Reading", { exact: true })).toHaveCount(0);
   await page.screenshot({ path: join(out, "large-upload.png"), fullPage: true });
 });
 
