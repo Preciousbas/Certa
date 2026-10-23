@@ -1,6 +1,7 @@
 import { createBot } from "@certa/bot";
 import { getDatabase } from "@certa/db";
 import { webhookCallback } from "grammy";
+import { after } from "next/server";
 import { acceptTelegramUpdate, requireWebhookSecret } from "../../../../../src/server/auth/webhook";
 import { fetchCbnRate } from "../../../lib/cbn-rate";
 
@@ -21,14 +22,13 @@ export async function POST(request: Request) {
         body: JSON.stringify(update),
       });
       const handle = webhookCallback(bot, "std/http");
-      try {
-        await handle(replay);
-      } finally {
+      await handle(replay);
+      after(async () => {
         const { runDocumentJobs } = await import("../../../../../src/server/intake/run");
         await runDocumentJobs().catch((error: unknown) => {
           console.error(JSON.stringify({ msg: "document jobs", message: error instanceof Error ? error.message : "failed", stack: error instanceof Error ? error.stack?.split("\n").slice(0, 8).join("\n") : "" }));
         });
-      }
+      });
     },
   });
 }
