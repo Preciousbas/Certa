@@ -46,7 +46,7 @@ export default async function BillingPage() {
         <div className="row">
           <span>First project</span>
           <span>
-            Free up to <MoneyAmount kobo={config.freeProjectLimitKobo} usdc={usdc(config.freeProjectLimitKobo)} /> released.
+            Free up to <MoneyAmount kobo={config.freeProjectLimitKobo} usdc={usdc(config.freeProjectLimitKobo)} /> paid out.
           </span>
         </div>
         <div className="row">

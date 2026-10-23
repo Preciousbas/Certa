@@ -32,7 +32,7 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
   const unsure = week.length - pass - fail;
   const released = stageRows.filter((stage) => stage.status === "released").reduce((sum, stage) => sum + stage.amountNgnKobo, 0n);
   const next = stageRows.find((stage) => stage.status !== "released")?.name ?? "none";
-  const line = `This week: ${week.length} photo sets checked (${pass} passed, ${fail} need work, ${unsure} need more photos); ${formatNaira(released)} released; next stage due: ${next}.`;
+  const line = `This week: ${week.length} photo sets checked (${pass} passed, ${fail} need work, ${unsure} need more photos); ${formatNaira(released)} paid out; next stage due: ${next}.`;
   const pdf = await renderReportPdf([project.name, line]);
   return attachCookies(
     new Response(Buffer.from(pdf), {

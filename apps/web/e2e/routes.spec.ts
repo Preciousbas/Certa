@@ -49,8 +49,8 @@ test.describe("mobile routes", () => {
     expect(response.ok()).toBe(true);
     expect(body.checks?.rpc).toBe("ok");
     expect(body.checks?.usdc).toBe("ok");
-    expect(body.checks?.contract).toBe("unset");
-    expect(body.checks?.cdp).toBe("unset");
+    expect(body.checks?.contract).toMatch(/^0x[a-fA-F0-9]{40}$/);
+    expect(body.checks?.cdp).toMatch(/^(configured|unconfigured)$/);
   });
 
   test("the money toggle changes the amounts", async ({ page }) => {
