@@ -16,9 +16,10 @@ export function moneyKobo(raw: string): bigint | null {
 }
 
 export function cellMoney(raw: string): bigint | null {
-  const stripped = raw.trim().replace(/\s+/g, "").replace(/[₦]/g, "").replace(/,/g, "");
-  if (!/^\d{1,13}\.\d{2}$/.test(stripped)) return null;
-  return moneyKobo(stripped);
+  const stripped = raw.trim().replace(/\s+/g, "").replace(/₦/g, "").replace(/,/g, "").replace(/^NGN/i, "");
+  if (/^\d{1,13}\.\d{2}$/.test(stripped)) return moneyKobo(stripped);
+  if (/^\d{1,13}$/.test(stripped)) return BigInt(stripped) * 100n;
+  return null;
 }
 
 export function quantityMilli(raw: string): bigint | null {

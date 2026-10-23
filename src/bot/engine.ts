@@ -29,6 +29,7 @@ import {
   planPour,
   rejectAsk,
   report,
+  retryDocuments,
   respondVariation,
   reviewQueue,
   sendVariation,
@@ -142,6 +143,7 @@ async function onCallback(
   if (action === "go" && id === "menu") return showMenu(db, actor, deps);
   if (action === "go" && id === "upload") return beginUpload(db, actor, now);
   if (action === "go" && id === "done") return finishUpload(db, actor, now);
+  if (action === "rx") return retryDocuments(db, actor);
   if (action === "go" && id === "invite") return beginInvite(actor);
   if (action === "go" && id === "fund") return fund(actor, deps);
   if (action === "go" && id === "photos") return photos(db, actor);

@@ -7,6 +7,28 @@ type Chip = { name: string; status: string; progress: number };
 export default function DocumentsPage() {
   const [files, setFiles] = useState<Chip[]>([]);
   const [message, setMessage] = useState<string | null>(null);
+  const [retryId, setRetryId] = useState<string | null>(null);
+
+  async function retry() {
+    if (!retryId) return;
+    const projectId = window.location.pathname.split("/").at(3) ?? "";
+    const headers = new Headers();
+    const initData = window.Telegram?.WebApp?.initData;
+    if (initData) headers.set("authorization", `tma ${initData}`);
+    const csrf = document.cookie.split("; ").find((row) => row.startsWith("certa_csrf="))?.split("=")[1];
+    if (csrf) headers.set("x-csrf-token", decodeURIComponent(csrf));
+    setFiles((current) => current.map((row) => (row.status === "Failed" ? { ...row, status: "Reading", progress: 45 } : row)));
+    const response = await fetch(`/api/projects/${projectId}/documents/${retryId}/complete`, { method: "POST", headers });
+    const body = (await response.json()) as { message?: string };
+    if (!response.ok) {
+      setMessage(body.message ?? "I couldn't read that file. Tap Retry to try again.");
+      setFiles((current) => current.map((row) => (row.status === "Reading" ? { ...row, status: "Failed", progress: 100 } : row)));
+      return;
+    }
+    setMessage(null);
+    setRetryId(null);
+    setFiles((current) => current.map((row) => (row.status === "Reading" ? { ...row, status: "Read", progress: 100 } : row)));
+  }
 
   async function upload(list: FileList | File[]) {
     const projectId = window.location.pathname.split("/").at(3) ?? "";
@@ -45,9 +67,14 @@ export default function DocumentsPage() {
         const done = await fetch(`/api/projects/${projectId}/documents/${ticket.documentId}/complete`, { method: "POST", headers });
         const body = (await done.json()) as { message?: string };
         if (!done.ok) {
-          setMessage(body.message ?? "Upload failed: the connection dropped. Your file wasn't saved. Try again.");
+          const note = body.message ?? "Upload failed: the connection dropped. Your file wasn't saved. Try again.";
+          setMessage(note);
+          const duplicate = note.startsWith("You've already uploaded");
+          setFiles((current) => current.map((row) => (row.name === file.name ? { ...row, progress: 100, status: duplicate ? "Already uploaded" : "Failed" } : row)));
+          setRetryId(duplicate ? null : ticket.documentId);
           continue;
         }
+        setRetryId(null);
         setFiles((current) => current.map((row) => (row.name === file.name ? { ...row, progress: 100, status: "Read" } : row)));
       } catch {
         setMessage("Upload failed: the connection dropped. Your file wasn't saved. Try again.");
@@ -96,6 +123,11 @@ export default function DocumentsPage() {
         </ul>
       )}
       {message ? <p className="toast">{message}</p> : null}
+      {retryId ? (
+        <button className="ui-btn ui-btn-secondary" type="button" onClick={() => void retry()}>
+          Retry
+        </button>
+      ) : null}
       <p className="muted">Button Extract figures is enabled once a file is Read.</p>
     </div>
   );

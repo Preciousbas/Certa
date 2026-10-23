@@ -16,6 +16,10 @@ export function unreadable(fileName: string): string {
   return `I couldn't read ${fileName}. If it's a scan or photo, please take it again in good light, flat, with the whole page in view.`;
 }
 
+export function readFailed(fileName: string, detail: string): string {
+  return `I couldn't read ${fileName}. ${detail} Tap Retry to try that file again.`;
+}
+
 export function telegramTooBig(appUrl: string, projectId: string): string {
   const base = appUrl.replace(/\/$/, "");
   return `This file is bigger than 20 MB, which is Telegram's limit for bots. Please upload it on the web at ${base}/app/p/${projectId}/documents, or send it in smaller parts.`;

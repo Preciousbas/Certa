@@ -43,6 +43,7 @@ export type ValidatedPlan = {
   vatBps: number;
   vatKobo: bigint;
   retentionBps: number;
+  durationWeeks: number | null;
   defectsMonths: number;
   defectsPeriodDays: number;
   advanceKobo: bigint;
@@ -296,6 +297,7 @@ export function validateDraft(draft: BoqDraft, koboPerUsdc: bigint): ValidatedPl
     vatBps,
     vatKobo: recomputedVat,
     retentionBps,
+    durationWeeks: draft.durationWeeks,
     defectsMonths,
     defectsPeriodDays: defectsMonths * 30,
     advanceKobo: advance,

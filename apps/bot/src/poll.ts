@@ -6,10 +6,12 @@ import { createBot } from "./bot.js";
 import { drainJobs } from "../../../src/server/jobs/worker.js";
 import { registerNotifyJobs } from "../../../src/bot/notify.js";
 import { registerReleaseRetry } from "../../../src/bot/releaseRetry.js";
+import { registerIntakeJobs } from "../../../src/server/intake/register.js";
 import { registerVerifyJobs } from "../../../src/server/verify/register.js";
 import { registerX402Jobs } from "../../../src/server/x402/register.js";
 
 async function runQueuedJobs() {
+  registerIntakeJobs();
   registerVerifyJobs();
   registerNotifyJobs();
   registerReleaseRetry();
