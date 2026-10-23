@@ -1,8 +1,15 @@
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"] as const;
 
-/** Parse "3 Nov 2026" or "03/11/2026" (day/month/year). */
+/** Parse "3 Nov 2026", "2026-11-03", or "03/11/2026" (day/month/year). */
 export function parseStartDate(input: string): string | null {
   const text = input.trim().replace(/,/g, "");
+  const isoDate = /^(\d{4})-(\d{2})-(\d{2})$/.exec(text);
+  if (isoDate) {
+    const year = +(isoDate[1] ?? "0");
+    const month = +(isoDate[2] ?? "0") - 1;
+    const day = +(isoDate[3] ?? "0");
+    return iso(year, month, day);
+  }
   const named = /^(\d{1,2})\s+([A-Za-z]{3,9})\s+(\d{4})$/.exec(text);
   if (named) {
     const day = +(named[1] ?? "0");
