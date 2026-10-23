@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 
-type Chip = { id: string; name: string; status: string; progress: number };
+type Chip = { id: string; name: string; status: string; progress: number; retry?: boolean };
 
 function requestHeaders(): Headers {
   const headers = new Headers();
@@ -28,8 +28,8 @@ export default function DocumentsPage() {
       if (body.documents!.length === 0 && current.length > 0) return current;
       return body.documents!;
     });
-    const failed = body.documents.find((row) => row.status === "Failed");
-    if (body.documents.length > 0) setRetryId(failed?.id ?? null);
+    const retryable = body.documents.find((row) => row.retry || row.status === "Failed" || row.status === "Reading");
+    if (body.documents.length > 0) setRetryId(retryable?.id ?? null);
     return body.documents.length > 0;
   }
 
@@ -46,7 +46,7 @@ export default function DocumentsPage() {
     if (!retryId) return;
     const projectId = window.location.pathname.split("/").at(3) ?? "";
     const headers = requestHeaders();
-    setFiles((current) => current.map((row) => (row.status === "Failed" ? { ...row, status: "Reading", progress: 45 } : row)));
+    setFiles((current) => current.map((row) => (row.id === retryId ? { ...row, status: "Reading", progress: 45 } : row)));
     const response = await fetch(`/api/projects/${projectId}/documents/${retryId}/complete`, { method: "POST", headers });
     const body = (await response.json()) as { message?: string };
     if (!response.ok) {

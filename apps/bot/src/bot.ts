@@ -388,7 +388,9 @@ export function createBot(token: string, deps: BotDeps): Bot<BotContext> {
         fileName: name,
         bytes,
       });
-      await ctx.reply(saved.ok ? gotFile(name, saved.pagesOrSheets) : saved.message);
+      const text = saved.ok ? gotFile(name, saved.pagesOrSheets) : saved.message;
+      const duplicate = text.startsWith("You've already");
+      await ctx.reply(text, duplicate ? undefined : { reply_markup: new InlineKeyboard().text("Retry", `v1:rx:${project.id}`) });
       return;
     }
     if (!document || !filenameOf(document)) {
@@ -438,7 +440,9 @@ export function createBot(token: string, deps: BotDeps): Bot<BotContext> {
       fileName: "photo.jpg",
       bytes,
     });
-    await ctx.reply(saved.ok ? gotFile("photo.jpg", saved.pagesOrSheets) : saved.message);
+    const text = saved.ok ? gotFile("photo.jpg", saved.pagesOrSheets) : saved.message;
+    const duplicate = text.startsWith("You've already");
+    await ctx.reply(text, duplicate ? undefined : { reply_markup: new InlineKeyboard().text("Retry", `v1:rx:${project.id}`) });
   });
 
   bot.command("start", async (ctx) => {

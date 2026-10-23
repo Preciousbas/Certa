@@ -85,7 +85,11 @@ export function joinedPayKeyboard(): BotKeyboard {
 }
 
 export function uploadDoneKeyboard(): BotKeyboard {
-  return [[tap("Done", "go", "done")]];
+  return [[tap("Done", "go", "done")], [tap("Retry", "rx")]];
+}
+
+export function readingKeyboard(): BotKeyboard {
+  return [[tap("Retry", "rx")]];
 }
 
 export function reviewFiguresKeyboard(appUrl: string, versionId: string): BotKeyboard {
