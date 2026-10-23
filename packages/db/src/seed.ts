@@ -292,7 +292,7 @@ export async function seedDemo(db: Database) {
       status: "resolved",
       openedAt: new Date("2026-08-12T10:00:00Z"),
       deadlineAt: new Date("2026-08-19T10:00:00Z"),
-      resolution: { note: "Released in full" },
+      resolution: { note: "Released in full", payBps: 10000 },
     });
     await appendAudit(db, {
       workspaceId: workspace.id,

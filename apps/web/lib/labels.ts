@@ -76,6 +76,15 @@ export function changeSummary(
   };
 }
 
+/** Basis points on a dispute resolution. 10000 is the full stage. */
+export function formatPayBps(bps: number): string | null {
+  if (!Number.isInteger(bps) || bps < 0 || bps > 10_000) return null;
+  const whole = Math.trunc(bps / 100);
+  const frac = Math.abs(bps % 100);
+  if (frac === 0) return `${whole}%`;
+  return `${whole}.${frac.toString().padStart(2, "0")}%`;
+}
+
 export function sharePercent(part: bigint, total: bigint): number {
   if (total <= 0n) return 0;
   return Number((part * 1000n) / total) / 10;

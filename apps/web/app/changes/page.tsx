@@ -9,9 +9,10 @@ import { MoneyAmount } from "../../components/money";
 import { StatusChip } from "../../components/status-chip";
 import { SEPOLIA_CHAIN_ID, explorerTx } from "../../lib/explorer";
 import { loadProject } from "../../lib/data";
-import { changeSummary } from "../../lib/labels";
+import { changeSummary, formatPayBps } from "../../lib/labels";
 
 const resolutionNote = z.object({ note: z.string().min(1) }).partial();
+const resolutionPay = z.object({ payBps: z.number().int().nonnegative().max(10_000) });
 const changeBody = z.object({ description: z.string().optional(), title: z.string().optional() }).partial();
 
 function when(date: Date): string {
@@ -66,6 +67,8 @@ export default async function ChangesPage() {
       {data.disputes.length === 0 ? <p>No disputes.</p> : null}
       {data.disputes.map((dispute) => {
         const note = resolutionNote.safeParse(dispute.resolution);
+        const pay = resolutionPay.safeParse(dispute.resolution);
+        const payLabel = pay.success ? formatPayBps(pay.data.payBps) : null;
         const tx = paid.find((row) => row.stageId === dispute.stageId && row.txHash)?.txHash ?? null;
         return (
           <article className="card" key={dispute.id}>
@@ -73,7 +76,11 @@ export default async function ChangesPage() {
             <ol className="plain">
               <li>Raised by {nameOf(dispute.raisedBy)} · {when(dispute.openedAt)}. {dispute.reason}</li>
               <li>Decide after {when(dispute.deadlineAt)}.</li>
-              {note.success && note.data.note ? <li>Consultant decision: {note.data.note}</li> : null}
+              {note.success && note.data.note ? (
+                <li>Consultant decision: {note.data.note}{payLabel ? ` (${payLabel})` : ""}</li>
+              ) : payLabel ? (
+                <li>{payLabel}</li>
+              ) : null}
               {tx ? (
                 <li>
                   <a href={explorerTx(SEPOLIA_CHAIN_ID, tx)}>Release transaction</a>
