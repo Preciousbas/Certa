@@ -67,7 +67,7 @@ export async function loadDiagnostics(): Promise<Diagnostics> {
     database = "down";
   }
   const ethereum = await within(
-    probeBaseSepolia(sepoliaRpcUrl()).then((probe) => (probe.rpc === "ok" ? "ok" : "down") as Diagnostics["ethereumSepolia"]),
+    probeBaseSepolia(sepoliaRpcUrl()).then((probe) => (probe.rpc === "ok" ? "ok" : "down")),
     "down" as const,
   );
   const base = await within(
