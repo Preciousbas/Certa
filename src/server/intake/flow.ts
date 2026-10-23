@@ -72,6 +72,7 @@ export async function ingestDocument(
   const digest = sha256Hex(input.bytes);
   const existing = (await db.select().from(documents).where(and(eq(documents.projectId, input.projectId), eq(documents.sha256, digest))))[0];
   if (existing?.fileName && existing.id !== input.documentId) {
+    if (input.documentId) await db.delete(documents).where(eq(documents.id, input.documentId));
     const message = input.documentId ? webDuplicate(existing.fileName, watStamp(existing.createdAt)) : duplicateUpload(existing.fileName, watStamp(existing.createdAt));
     return { ok: false, message };
   }

@@ -1,22 +1,51 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
-type Chip = { name: string; status: string; progress: number };
+type Chip = { id: string; name: string; status: string; progress: number };
+
+function requestHeaders(): Headers {
+  const headers = new Headers();
+  const initData = window.Telegram?.WebApp?.initData;
+  if (initData) headers.set("authorization", `tma ${initData}`);
+  const csrf = document.cookie.split("; ").find((row) => row.startsWith("certa_csrf="))?.split("=")[1];
+  if (csrf) headers.set("x-csrf-token", decodeURIComponent(csrf));
+  return headers;
+}
 
 export default function DocumentsPage() {
   const [files, setFiles] = useState<Chip[]>([]);
   const [message, setMessage] = useState<string | null>(null);
   const [retryId, setRetryId] = useState<string | null>(null);
 
+  async function loadSaved(): Promise<boolean> {
+    const projectId = window.location.pathname.split("/").at(3) ?? "";
+    const response = await fetch(`/api/projects/${projectId}/documents`, { headers: requestHeaders() });
+    if (!response.ok) return false;
+    const body = (await response.json()) as { documents?: Chip[] };
+    if (!body.documents) return false;
+    setFiles((current) => {
+      if (body.documents!.length === 0 && current.length > 0) return current;
+      return body.documents!;
+    });
+    const failed = body.documents.find((row) => row.status === "Failed");
+    if (body.documents.length > 0) setRetryId(failed?.id ?? null);
+    return body.documents.length > 0;
+  }
+
+  useEffect(() => {
+    const load = () => {
+      void loadSaved();
+    };
+    load();
+    window.addEventListener("certa-telegram-ready", load);
+    return () => window.removeEventListener("certa-telegram-ready", load);
+  }, []);
+
   async function retry() {
     if (!retryId) return;
     const projectId = window.location.pathname.split("/").at(3) ?? "";
-    const headers = new Headers();
-    const initData = window.Telegram?.WebApp?.initData;
-    if (initData) headers.set("authorization", `tma ${initData}`);
-    const csrf = document.cookie.split("; ").find((row) => row.startsWith("certa_csrf="))?.split("=")[1];
-    if (csrf) headers.set("x-csrf-token", decodeURIComponent(csrf));
+    const headers = requestHeaders();
     setFiles((current) => current.map((row) => (row.status === "Failed" ? { ...row, status: "Reading", progress: 45 } : row)));
     const response = await fetch(`/api/projects/${projectId}/documents/${retryId}/complete`, { method: "POST", headers });
     const body = (await response.json()) as { message?: string };
@@ -32,11 +61,7 @@ export default function DocumentsPage() {
 
   async function upload(list: FileList | File[]) {
     const projectId = window.location.pathname.split("/").at(3) ?? "";
-    const headers = new Headers();
-    const initData = window.Telegram?.WebApp?.initData;
-    if (initData) headers.set("authorization", `tma ${initData}`);
-    const csrf = document.cookie.split("; ").find((row) => row.startsWith("certa_csrf="))?.split("=")[1];
-    if (csrf) headers.set("x-csrf-token", decodeURIComponent(csrf));
+    const headers = requestHeaders();
     for (const file of Array.from(list)) {
       if (!/\.(pdf|docx|xlsx|xls|csv|jpe?g|png|heic|heif)$/i.test(file.name)) {
         setMessage("Please send a PDF, Word, Excel or CSV file, or a clear photo of each page.");
@@ -46,7 +71,7 @@ export default function DocumentsPage() {
         setMessage("This file is bigger than 20 MB.");
         continue;
       }
-      setFiles((current) => [...current, { name: file.name, status: "Uploaded", progress: 10 }]);
+      setFiles((current) => [...current, { id: `local-${file.name}`, name: file.name, status: "Uploaded", progress: 10 }]);
       try {
         const issued = await fetch(`/api/projects/${projectId}/documents/upload-url`, {
           method: "POST",
@@ -69,13 +94,17 @@ export default function DocumentsPage() {
         if (!done.ok) {
           const note = body.message ?? "Upload failed: the connection dropped. Your file wasn't saved. Try again.";
           setMessage(note);
-          const duplicate = note.startsWith("You've already uploaded");
-          setFiles((current) => current.map((row) => (row.name === file.name ? { ...row, progress: 100, status: duplicate ? "Already uploaded" : "Failed" } : row)));
-          setRetryId(duplicate ? null : ticket.documentId);
+          const shown = await loadSaved();
+          if (!shown) {
+            const duplicate = note.startsWith("You've already uploaded");
+            setFiles((current) => current.map((row) => (row.name === file.name ? { ...row, progress: 100, status: duplicate ? "Already uploaded" : "Failed" } : row)));
+            setRetryId(duplicate ? null : ticket.documentId);
+          }
           continue;
         }
-        setRetryId(null);
         setFiles((current) => current.map((row) => (row.name === file.name ? { ...row, progress: 100, status: "Read" } : row)));
+        const shown = await loadSaved();
+        if (!shown) setRetryId(null);
       } catch {
         setMessage("Upload failed: the connection dropped. Your file wasn't saved. Try again.");
       }
@@ -112,7 +141,7 @@ export default function DocumentsPage() {
       ) : (
         <ul className="plain">
           {files.map((file) => (
-            <li key={file.name}>
+            <li key={file.id}>
               {file.name}
               <div style={{ height: 6, background: "var(--border)", marginTop: 6 }}>
                 <div style={{ width: `${file.progress}%`, height: 6, background: "var(--action)" }} />
