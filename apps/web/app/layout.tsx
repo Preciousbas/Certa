@@ -1,7 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
-import { formatNaira } from "../../../src/lib/money/kobo";
 import { Shell } from "../components/shell";
+import { fxLineFor } from "../lib/money-display";
 import { SEPOLIA_CHAIN_ID, explorerAddress } from "../lib/explorer";
 import { loadProject } from "../lib/data";
 import { PUBLISHED_FACTORY } from "../lib/published-chain";
@@ -21,22 +21,11 @@ export const viewport: Viewport = {
   initialScale: 1,
 };
 
-function when(date: Date): string {
-  return new Intl.DateTimeFormat("en-GB", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-    timeZone: "Africa/Lagos",
-  }).format(date);
-}
-
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const data = await loadProject();
   const factory = process.env.ESCROW_FACTORY_ADDRESS || PUBLISHED_FACTORY;
   const supportEmail = process.env.SUPPORT_EMAIL || "support@example.com";
-  const fxLine = data
-    ? `${formatNaira(data.project.fxRateLocked)} per USDC · ${data.project.fxSource}, set ${when(data.project.fxLockedAt ?? data.project.createdAt)}`
-    : null;
+  const fxLine = data ? fxLineFor(data.project) : null;
   return (
     <html lang="en">
       <body className={body.variable}>
