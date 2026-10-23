@@ -26,8 +26,11 @@ export default defineConfig({
       DEMO_SEED: "true",
       DEMO_MODE: "1",
       TELEGRAM_BOT_TOKEN: "123:playwright-demo",
+      APP_URL: "http://127.0.0.1:3100",
+      NEXT_PUBLIC_APP_URL: "http://127.0.0.1:3100",
       SESSION_SECRET: "playwright-session-secret-32chars",
       APP_ENCRYPTION_KEY: "playwright-demo-encryption-key-32b",
+      SENTRY_DSN: "",
     },
   },
 });

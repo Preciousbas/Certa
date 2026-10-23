@@ -45,7 +45,10 @@ export async function loadProject() {
     payments: paymentRows,
     workspaceRole: membership?.role,
     isDemo: project.termsHash === "seeded-terms",
-    pair: formatMoneyPair(project.contractSumKobo, project.fxRateLocked),
+    pair:
+      project.fxRateLocked > 0n
+        ? formatMoneyPair(project.contractSumKobo, project.fxRateLocked)
+        : formatNgnFromKobo(project.contractSumKobo),
     ngn: formatNgnFromKobo(project.contractSumKobo),
     usdc: formatUsdc(project.contractSumUsdc),
   };
