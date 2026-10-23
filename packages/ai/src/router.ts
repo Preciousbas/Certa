@@ -127,6 +127,7 @@ export async function agentRouterDocCall(input: {
   const response = await fetch(`${input.base.replace(/\/$/, "")}/chat/completions`, {
     method: "POST",
     headers: clientHeaders(input.key),
+    signal: AbortSignal.timeout(12_000),
     body: JSON.stringify({
       model: input.model,
       max_tokens: 4000,

@@ -1,5 +1,5 @@
 export function gotFile(fileName: string, pagesOrSheets: string): string {
-  return `Got it: ${fileName} (${pagesOrSheets}). Send more files, or tap **Done** when you've sent everything.`;
+  return `Got it: ${fileName} (${pagesOrSheets}). Send more files, or tap Done when you've sent everything.`;
 }
 
 export const READING =
@@ -14,6 +14,10 @@ export const ENCRYPTED =
 
 export function unreadable(fileName: string): string {
   return `I couldn't read ${fileName}. If it's a scan or photo, please take it again in good light, flat, with the whole page in view.`;
+}
+
+export function readFailed(fileName: string, detail: string): string {
+  return `I couldn't read ${fileName}. ${detail} Tap Retry to try that file again.`;
 }
 
 export function telegramTooBig(appUrl: string, projectId: string): string {

@@ -56,6 +56,7 @@ export type BoqDraft = {
   contingencyAnchor: string | null;
   retentionBps: number | null;
   retentionRelease: string | null;
+  durationWeeks: number | null;
   defectsMonths: number | null;
   advanceKobo: bigint | null;
   advanceBps: number | null;
@@ -143,7 +144,7 @@ function cell(row: GridRow, col: string | undefined): string {
 function headerMap(row: GridRow): Record<string, string> | null {
   const hits: { key: string; col: string }[] = [];
   for (const item of row.cells) {
-    const word = item.text.toLowerCase().replace(/[^a-z]/g, "");
+    const word = headerWord(item.text);
     if (word === "item" || word === "ref") hits.push({ key: "item", col: item.col });
     else if (word === "description" || word === "desc") hits.push({ key: "description", col: item.col });
     else if (word === "unit") hits.push({ key: "unit", col: item.col });
@@ -198,6 +199,7 @@ function emptyDraft(): BoqDraft {
     contingencyAnchor: null,
     retentionBps: null,
     retentionRelease: null,
+    durationWeeks: null,
     defectsMonths: null,
     advanceKobo: null,
     advanceBps: null,
@@ -215,13 +217,19 @@ function emptyDraft(): BoqDraft {
   };
 }
 
+function headerWord(text: string): string {
+  return text.toLowerCase().replace(/\([^)]*\)/g, " ").replace(/[^a-z]/g, "");
+}
+
 function readConditions(draft: BoqDraft, text: string): void {
-  const retention = /retention:\s*(\d+(?:\.\d+)?)\s*%/i.exec(text);
+  const retention = /retention\s*:?\s*(\d+(?:\.\d+)?)\s*%/i.exec(text);
   if (retention?.[1]) {
     const bps = bpsFromPct(retention[1]);
     if (bps !== null) draft.retentionBps = bps;
     draft.retentionRelease = text;
   }
+  const weeks = /(?:contract\s+period|duration)\s*:?\s*(\d+)\s*weeks?/i.exec(text);
+  if (weeks?.[1]) draft.durationWeeks = digits(weeks[1]);
   const months = /(\d+)\s*-?\s*month/i.exec(text);
   if (months?.[1]) draft.defectsMonths = digits(months[1]);
   if (/mobilisation advance:\s*nil/i.test(text)) draft.advanceKobo = 0n;
@@ -306,6 +314,9 @@ export function interpretGrid(rows: GridRow[]): BoqDraft {
     const mapped = headerMap(row);
     if (mapped && !summary) {
       columns = mapped;
+      if (!bill) {
+        bill = { billRef: "BOQ", title: row.sheet || "Bill of quantities", items: [], statedSubtotalKobo: null, anchor: row.anchor };
+      }
       continue;
     }
     if (mapped && summary) continue;
@@ -387,6 +398,19 @@ export function interpretGrid(rows: GridRow[]): BoqDraft {
     const itemRef = cell(row, columns.item);
     const moneyText = cell(row, columns.amount);
     const stated = cellMoney(moneyText);
+    if (/^total$/i.test(itemRef) || /^total$/i.test(description)) {
+      const found = stated ?? lastMoney(row)?.kobo ?? null;
+      if (found !== null) {
+        bill.statedSubtotalKobo = found;
+        if (draft.contractSumKobo === null) {
+          draft.contractSumKobo = found;
+          draft.contractSumAnchor = row.anchor;
+          draft.contractSumQuote = (moneyText || text).slice(0, 200);
+        }
+      }
+      continue;
+    }
+    if (!/^\d+(?:\.\d+)*$/.test(itemRef) && !description) continue;
     if (/carried to summary|collection/i.test(text)) {
       const found = stated ?? lastMoney(row)?.kobo ?? null;
       if (found !== null) bill.statedSubtotalKobo = found;
@@ -407,7 +431,7 @@ export function interpretGrid(rows: GridRow[]): BoqDraft {
       continue;
     }
     if (!itemRef && !description) continue;
-    const kind: RowKind = /^\d+(?:\.\d+)+$/.test(itemRef) ? "item" : description ? "heading" : "note";
+    const kind: RowKind = /^\d+(?:\.\d+)*$/.test(itemRef) ? "item" : description ? "heading" : "note";
     bill.items.push({
       billRef: bill.billRef,
       itemRef: itemRef || `row${row.row}`,

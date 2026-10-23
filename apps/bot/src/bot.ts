@@ -211,7 +211,7 @@ export function createBot(token: string, deps: BotDeps): Bot<BotContext> {
     },
     ctx: Context,
   ) {
-    await ctx.reply("Which side of the contract are you? Reply contractor or client.");
+    await ctx.reply("Are you the Client or the Contractor?");
     const roleMsg = await conversation.waitFor("message:text");
     const role = (roleMsg.message?.text?.trim().toLowerCase() ?? "") as ContractSide;
     if (!sides.has(role)) {
@@ -236,7 +236,7 @@ export function createBot(token: string, deps: BotDeps): Bot<BotContext> {
     );
     const link = joinDeepLink(process.env.TELEGRAM_BOT_USERNAME || "CertaApp_bot", started.inviteCode);
     const other = sideLabel(started.inviteRole);
-    await ctx.reply(`You are the ${sideLabel(role)} on ${projectName}. Share this link with the ${other}: ${link}`);
+    await ctx.reply(`You are the ${sideLabel(role)} on ${projectName}. Share this link with your ${other}: ${link}`);
   }
   bot.use(createConversation(startConversation as Parameters<typeof createConversation>[0], "startProject"));
 
@@ -642,7 +642,7 @@ export function createBot(token: string, deps: BotDeps): Bot<BotContext> {
   bot.callbackQuery(/^v1:/, async (ctx) => {
     const who = person(ctx);
     if (!who) return;
-    const slow = /^v1:(ap|cf|rj|jn|dp|va|vd)/.test(ctx.callbackQuery.data);
+    const slow = /^v1:(ap|cf|rj|jn|dp|va|vd|rx)/.test(ctx.callbackQuery.data);
     if (slow) await ctx.answerCallbackQuery({ text: bGe5() });
     else await ctx.answerCallbackQuery();
     try {
@@ -658,14 +658,27 @@ export function createBot(token: string, deps: BotDeps): Bot<BotContext> {
       await speak(ctx, outbound);
     } catch (error) {
       const requestId = requestIds.get(ctx) ?? "none";
-      console.error(JSON.stringify({ msg: "bot callback", requestId, err: error instanceof Error ? error.name : "error" }));
+      console.error(JSON.stringify({
+        msg: "bot callback",
+        requestId,
+        err: error instanceof Error ? error.name : "error",
+        message: error instanceof Error ? error.message : "",
+        stack: error instanceof Error ? error.stack?.split("\n").slice(0, 8).join("\n") : "",
+      }));
       await ctx.reply(toHtml(bGe2({ requestId })), { parse_mode: "HTML" });
     }
   });
 
   bot.catch((error) => {
     const requestId = requestIds.get(error.ctx) ?? "none";
-    console.error(JSON.stringify({ msg: "bot error", requestId, err: error.name }));
+    const cause = error.error;
+    console.error(JSON.stringify({
+      msg: "bot error",
+      requestId,
+      err: error.name,
+      message: cause instanceof Error ? cause.message : "",
+      stack: cause instanceof Error ? cause.stack?.split("\n").slice(0, 8).join("\n") : "",
+    }));
   });
 
   return bot;

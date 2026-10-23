@@ -7,7 +7,8 @@ import { loadProject } from "../../lib/data";
 export default async function SettingsPage() {
   const data = await loadProject();
   if (!data) return <p>No project is open.</p>;
-  const capNaira = data.project.fxRateLocked > 0n ? formatNaira(koboFromUsdc(data.project.spendingCapUsdc, data.project.fxRateLocked)) : "Rate is not locked yet.";
+  const rateLocked = data.project.fxRateLocked > 0n;
+  const capNaira = rateLocked ? formatNaira(koboFromUsdc(data.project.spendingCapUsdc, data.project.fxRateLocked)) : "";
   return (
     <div>
       <p className="eyebrow">Settings</p>
@@ -20,6 +21,7 @@ export default async function SettingsPage() {
         replyHours={data.project.changeReplyHours}
         capUsdc={formatUsdc(data.project.spendingCapUsdc, { dp: 2 })}
         capNaira={capNaira}
+        rateLocked={rateLocked}
         paused={data.project.status === "paused"}
       />
     </div>

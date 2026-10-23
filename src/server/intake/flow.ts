@@ -3,6 +3,7 @@ import {
   blobs,
   botSessions,
   boqItems,
+  jobs,
   contractAcceptances,
   contractVersions,
   documentChunks,
@@ -21,7 +22,7 @@ import { contentHash, sha256Hex } from "./hash.js";
 import { interpretGrid, type GridRow } from "./interpret.js";
 import { badType, duplicateUpload, SCAN_V13, watStamp, webDuplicate } from "./messages.js";
 import { docModelSupportsImages, proposeWithModel } from "./model.js";
-import { notifyFigures, notifyPlanShared } from "./notify.js";
+import { notifyFigures, notifyPlanShared, notifyReadFailed } from "./notify.js";
 import { parseBytes, type Transcriber } from "./parse.js";
 import { detectFile, failureMessage, UPLOAD_MAX_BYTES } from "./detect.js";
 import { validateDraft, type ValidatedPlan } from "./validate.js";
@@ -71,6 +72,7 @@ export async function ingestDocument(
   const digest = sha256Hex(input.bytes);
   const existing = (await db.select().from(documents).where(and(eq(documents.projectId, input.projectId), eq(documents.sha256, digest))))[0];
   if (existing?.fileName && existing.id !== input.documentId) {
+    if (input.documentId) await db.delete(documents).where(eq(documents.id, input.documentId));
     const message = input.documentId ? webDuplicate(existing.fileName, watStamp(existing.createdAt)) : duplicateUpload(existing.fileName, watStamp(existing.createdAt));
     return { ok: false, message };
   }
@@ -114,11 +116,20 @@ export async function parseDocumentJob(db: Database, documentId: string, transcr
   }
   if (!bytes) {
     await db.update(documents).set({ status: "failed", parseStatus: "failed", failureCode: "unreadable" }).where(eq(documents.id, documentId));
+    await notifyReadFailed(db, { projectId: document.projectId, userIds: document.uploadedBy ? [document.uploadedBy] : [], fileName: document.fileName ?? "that file", detail: "The file didn't finish uploading." });
     return;
   }
-  const parsed = await parseBytes(document.fileName ?? "file", bytes, transcribe);
+  let parsed: Awaited<ReturnType<typeof parseBytes>>;
+  try {
+    parsed = await parseBytes(document.fileName ?? "file", bytes, transcribe);
+  } catch {
+    await db.update(documents).set({ status: "failed", parseStatus: "failed", failureCode: "unreadable" }).where(eq(documents.id, documentId));
+    await notifyReadFailed(db, { projectId: document.projectId, userIds: document.uploadedBy ? [document.uploadedBy] : [], fileName: document.fileName ?? "that file", detail: "The spreadsheet could not be opened." });
+    return;
+  }
   if (!parsed.ok) {
     await db.update(documents).set({ status: "failed", parseStatus: "failed", failureCode: parsed.failure }).where(eq(documents.id, documentId));
+    await notifyReadFailed(db, { projectId: document.projectId, userIds: document.uploadedBy ? [document.uploadedBy] : [], fileName: document.fileName ?? "that file", detail: "Please send an Excel, CSV, Word, or text PDF." });
     return;
   }
   await db.delete(documentChunks).where(eq(documentChunks.documentId, documentId));
@@ -151,6 +162,7 @@ function serialisePlan(plan: ValidatedPlan) {
     vatBps: plan.vatBps,
     vatKobo: plan.vatKobo.toString(),
     retentionBps: plan.retentionBps,
+    durationWeeks: plan.durationWeeks,
     defectsMonths: plan.defectsMonths,
     defectsPeriodDays: plan.defectsPeriodDays,
     advanceKobo: plan.advanceKobo.toString(),
@@ -170,13 +182,36 @@ function serialisePlan(plan: ValidatedPlan) {
 export async function enqueueExtraction(db: Database, projectId: string): Promise<void> {
   const files = (await db.select().from(documents).where(eq(documents.projectId, projectId))).filter((row) => row.status === "parsed" || row.status === "uploaded");
   const key = createHash("sha256").update(files.map((file) => file.sha256).sort().join(":")).digest("hex");
-  await enqueueJob(db, { kind: "extract_contract", payload: { projectId }, dedupeKey: `extract:${projectId}:${key}:contract_extract.v1` });
+  const dedupeKey = `extract:${projectId}:${key}:contract_extract.v1`;
+  const existing = (await db.select().from(jobs).where(eq(jobs.dedupeKey, dedupeKey)))[0];
+  if (existing) {
+    if (existing.status === "running") return;
+    await db.update(jobs).set({ status: "queued", attempts: 0, lastError: null, runAt: new Date(), updatedAt: new Date() }).where(eq(jobs.id, existing.id));
+    return;
+  }
+  await enqueueJob(db, { kind: "extract_contract", payload: { projectId }, dedupeKey });
 }
 
 export async function extractDocumentJob(db: Database, projectId: string): Promise<ValidatedPlan | null> {
+  const heldFiles = await db.select().from(documents).where(eq(documents.projectId, projectId));
+  for (const file of heldFiles) {
+    if (file.status === "parsed" || file.status === "failed") continue;
+    if (file.kind === "upload" && !file.detectedType) continue;
+    await parseDocumentJob(db, file.id);
+  }
   const files = (await db.select().from(documents).where(eq(documents.projectId, projectId))).filter((row) => row.status === "parsed");
   const project = (await db.select().from(projects).where(eq(projects.id, projectId)))[0];
-  if (!project || files.length === 0) return null;
+  if (!project || files.length === 0) {
+    const tried = heldFiles.filter((file) => file.detectedType || file.status === "failed");
+    if (!project || tried.length === 0) return null;
+    await notifyReadFailed(db, {
+      projectId,
+      userIds: [...new Set(tried.map((file) => file.uploadedBy).filter((id): id is string => Boolean(id)))],
+      fileName: tried[0]?.fileName ?? "that file",
+      detail: "Nothing in the file could be read.",
+    });
+    return null;
+  }
   const rows: GridRow[] = [];
   const scans = files.filter((file) => (file.parsedJson as { scan?: boolean } | null)?.scan === true);
   for (const file of files) {
@@ -201,10 +236,13 @@ export async function extractDocumentJob(db: Database, projectId: string): Promi
       plan.issues.push({ code: "V13", rule: "scan", severity: "warning", message: SCAN_V13, anchor: null, field: "Document", value: file.fileName ?? "scan" });
     }
   }
-  const proposal = await proposeWithModel({
-    text: held.map((chunk) => chunk.content).join("\n").slice(0, 24_000) || "Read the attached document.",
-    images,
-  });
+  const priced = draft.bills.some((bill) => bill.items.some((item) => item.rowKind === "item" && item.statedKobo !== null));
+  const proposal = priced && plan.contractSumKobo
+    ? { source: "parser" as const, text: null, notice: null }
+    : await proposeWithModel({
+      text: held.map((chunk) => chunk.content).join("\n").slice(0, 24_000) || "Read the attached document.",
+      images,
+    });
   if (scans.length > 0 && images.length > 0 && proposal.source !== "model") {
     plan.issues.push({ code: "V13", rule: "scan", severity: "warning", message: SCAN_V13, anchor: null, field: "Document", value: scans[0]?.fileName ?? "scan" });
   }
@@ -230,6 +268,14 @@ export async function extractDocumentJob(db: Database, projectId: string): Promi
   }).returning();
   if (created) {
     const uploaders = [...new Set(files.map((file) => file.uploadedBy).filter((id): id is string => Boolean(id)))];
+    if (!plan.contractSumKobo) {
+      await notifyReadFailed(db, {
+        projectId,
+        userIds: uploaders,
+        fileName: files[0]?.fileName ?? "that file",
+        detail: "I couldn't find a priced list in the file.",
+      });
+    } else {
     await notifyFigures(db, {
       projectId,
       extractionId: created.id,
@@ -242,6 +288,7 @@ export async function extractDocumentJob(db: Database, projectId: string): Promi
       stages: plan.stages.map((stage) => ({ name: stage.name, amountKobo: stage.amountKobo.toString() })),
       warnings: plan.issues.length,
     });
+    }
   }
   return plan;
 }

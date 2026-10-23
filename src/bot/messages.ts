@@ -76,6 +76,10 @@ export function bPr4Invalid(): string {
   return "I didn't understand that date. Try like this: 3 Nov 2026.";
 }
 
+export function bPrRole(): string {
+  return "Are you the Client or the Contractor?";
+}
+
 /** B-PR-5 */
 export function bPr5(input: { project: string }): string {
   return `\u2705 Project created: **${e(input.project)}**.\nNext: upload the signed contract and the priced BoQ.`;
@@ -138,7 +142,7 @@ export function bIn11(input: { project: string }): string {
 
 /** B-UP-1 */
 export function bUp1(input: { fileName: string; pagesOrSheets: string }): string {
-  return `Got it: ${e(input.fileName)} (${e(input.pagesOrSheets)}). Send more files, or tap **Done** when you've sent everything.`;
+  return `Got it: ${e(input.fileName)} (${e(input.pagesOrSheets)}). Send more files, or tap Done when you've sent everything.`;
 }
 
 /** B-UP-2 */

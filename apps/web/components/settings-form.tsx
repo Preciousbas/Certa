@@ -12,6 +12,7 @@ export function SettingsForm({
   replyHours,
   capUsdc,
   capNaira,
+  rateLocked,
   paused,
 }: {
   lat: string;
@@ -21,6 +22,7 @@ export function SettingsForm({
   replyHours: number;
   capUsdc: string;
   capNaira: string;
+  rateLocked: boolean;
   paused: boolean;
 }) {
   const [ask, setAsk] = useState(false);
@@ -41,7 +43,11 @@ export function SettingsForm({
           Site radius ({radius} m)
           <input name="radius" type="range" min={25} max={2000} defaultValue={radius} />
         </label>
-        <p className="muted">Spending cap {capUsdc}. About {capNaira} at the contract rate. A change to the cap is logged.</p>
+        <p className="muted">
+          {rateLocked
+            ? `Spending cap ${capUsdc}. About ${capNaira} at the contract rate. A change to the cap is logged.`
+            : `Spending cap ${capUsdc}. The contract rate is not locked yet. A change to the cap is logged.`}
+        </p>
         <label>Dispute decision days<input name="disputeDays" type="number" min={1} max={90} defaultValue={disputeDays} /></label>
         <label>Reply window in hours<input name="replyHours" type="number" min={1} max={168} defaultValue={replyHours} /></label>
         <label>

@@ -1,11 +1,11 @@
 import { projects, startOwnProject, type Database } from "@certa/db";
 import { eq } from "drizzle-orm";
 import { audit } from "../../server/audit.js";
-import { parseStartDate } from "../dates.js";
-import { createdKeyboard, skipLocationKeyboard } from "../keyboards.js";
-import { bPr1, bPr2, bPr3, bPr4, bPr4Invalid, bPr5 } from "../messages.js";
+import { formatWatDate, parseStartDate } from "../dates.js";
+import { createdKeyboard, roleSideKeyboard, skipLocationKeyboard } from "../keyboards.js";
+import { bIn2, bPr1, bPr2, bPr3, bPr4, bPr4Invalid, bPr5, bPrRole } from "../messages.js";
 import { writeSession } from "../state.js";
-import { say, type Actor, type Outbound, type Person } from "./common.js";
+import { botUsername, roleLabel, say, type Actor, type Outbound, type Person } from "./common.js";
 
 export async function begin(db: Database, actor: Actor, now: Date): Promise<Outbound> {
   await writeSession(db, actor.telegramId, { step: "project_name", projectId: actor.project?.id ?? null, data: {} }, now);
@@ -37,16 +37,23 @@ export async function onPin(db: Database, actor: Actor, pin: { latitude?: number
   return say(bPr4());
 }
 
-export async function onStartDate(db: Database, actor: Actor, person: Person, text: string, now: Date, depsNow: Date): Promise<Outbound> {
+export async function onStartDate(db: Database, actor: Actor, _person: Person, text: string, now: Date, _depsNow: Date): Promise<Outbound> {
   const start = parseStartDate(text);
   if (!start) return say(bPr4Invalid());
+  await writeSession(db, actor.telegramId, { step: "project_role", data: { ...actor.session.data, start } }, now);
+  return say(bPrRole(), roleSideKeyboard());
+}
+
+export async function onProjectRole(db: Database, actor: Actor, person: Person, text: string, now: Date): Promise<Outbound> {
+  const role = text.trim().toLowerCase();
+  if (role !== "client" && role !== "contractor") return say(bPrRole(), roleSideKeyboard());
   const name = actor.session.data.name ?? "";
   const site = actor.session.data.site ?? "";
   const created = await startOwnProject(db, {
     telegramId: actor.telegramId,
     name: person.firstName || "Telegram",
     projectName: name,
-    role: "client",
+    role,
     site,
   });
   const lat = +(actor.session.data.lat ?? "");
@@ -61,8 +68,20 @@ export async function onStartDate(db: Database, actor: Actor, person: Person, te
     projectId: created.projectId,
     workspaceId: created.workspaceId,
     actor: created.userId,
-    after: { start },
+    after: { start: actor.session.data.start ?? "" },
   });
-  await writeSession(db, actor.telegramId, { step: null, projectId: created.projectId }, depsNow);
-  return say(bPr5({ project: name }), createdKeyboard());
+  await writeSession(db, actor.telegramId, { step: null, projectId: created.projectId }, now);
+  const link = `https://t.me/${botUsername({})}?start=join_${created.inviteCode}`;
+  return {
+    messages: [
+      { text: bPr5({ project: name }), keyboard: createdKeyboard() },
+      {
+        text: bIn2({
+          roleLabel: roleLabel(created.inviteRole),
+          date: formatWatDate(created.inviteExpiresAt),
+          link,
+        }),
+      },
+    ],
+  };
 }

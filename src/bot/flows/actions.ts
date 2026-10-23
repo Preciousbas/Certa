@@ -3,7 +3,9 @@ import {
   approvals,
   changeRequests,
   contractVersions,
+  documents,
   disputes,
+  jobs,
   issueJoinCode,
   memberships,
   parties,
@@ -16,6 +18,7 @@ import { and, eq } from "drizzle-orm";
 import { parseNaira, formatNaira } from "../../lib/money/kobo.js";
 import { InvalidMoney } from "../../lib/money/kobo.js";
 import { acceptPlan, enqueueExtraction } from "../../server/intake/flow.js";
+import { enqueueJob } from "../../server/jobs/enqueue.js";
 import { transitionStage } from "../../server/stages/transition.js";
 import { enqueuePrePour } from "../../server/x402/prepour.js";
 import { stageNeedsWeather } from "../../server/x402/gate.js";
@@ -120,6 +123,24 @@ export async function beginUpload(db: Database, actor: Actor, now: Date): Promis
   if (denied || !actor.project) return denied ?? say(bUp8());
   await writeSession(db, actor.telegramId, { step: "upload", projectId: actor.project.id, data: { projectId: actor.project.id } }, now);
   return say(bUp8(), uploadDoneKeyboard());
+}
+
+export async function retryDocuments(db: Database, actor: Actor): Promise<Outbound> {
+  if (!actor.project) return say(bUp2());
+  const files = await db.select().from(documents).where(eq(documents.projectId, actor.project.id));
+  for (const file of files) {
+    if (file.status === "parsed" && file.parseStatus === "parsed") continue;
+    await db.update(documents).set({ status: "uploaded", parseStatus: "pending", failureCode: null }).where(eq(documents.id, file.id));
+    const dedupeKey = `parse:${file.id}`;
+    const existing = (await db.select().from(jobs).where(eq(jobs.dedupeKey, dedupeKey)))[0];
+    if (existing && existing.status !== "running") {
+      await db.update(jobs).set({ status: "queued", attempts: 0, lastError: null, runAt: new Date(), updatedAt: new Date() }).where(eq(jobs.id, existing.id));
+    } else if (!existing) {
+      await enqueueJob(db, { kind: "parse_document", payload: { documentId: file.id }, dedupeKey });
+    }
+  }
+  await enqueueExtraction(db, actor.project.id);
+  return say(bUp2());
 }
 
 export async function finishUpload(db: Database, actor: Actor, now: Date): Promise<Outbound> {

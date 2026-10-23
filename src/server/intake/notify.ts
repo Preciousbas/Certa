@@ -1,26 +1,28 @@
 import { memberships, notifications, projects, users, type Database } from "@certa/db";
 import { eq, inArray } from "drizzle-orm";
-import { figuresReady, planShared, replyReminder, reviewLink, acceptDeepLink } from "./messages.js";
+import { figuresReady, planShared, readFailed, replyReminder, reviewLink, acceptDeepLink } from "./messages.js";
 import { pctFromBps } from "./amounts.js";
 import { formatNaira } from "../../lib/money/kobo.js";
 
-export type TelegramSender = (chatId: string, text: string) => Promise<void>;
+export type TelegramMarkup = { inline_keyboard: { text: string; callback_data: string }[][] };
 
-async function defaultTelegramSend(chatId: string, text: string): Promise<void> {
+export type TelegramSender = (chatId: string, text: string, markup?: TelegramMarkup) => Promise<void>;
+
+async function defaultTelegramSend(chatId: string, text: string, markup?: TelegramMarkup): Promise<void> {
   if (process.env.VITEST) return;
   const token = process.env.TELEGRAM_BOT_TOKEN;
   if (!token || !chatId) return;
   const response = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ chat_id: chatId, text }),
+    body: JSON.stringify({ chat_id: chatId, text, ...(markup ? { reply_markup: markup } : {}) }),
   });
   if (!response.ok) throw new Error("Telegram did not accept the message.");
 }
 
 export async function notifyOnce(
   db: Database,
-  input: { userId: string; chatId: string; kind: string; dedupeKey: string; text: string; send?: TelegramSender },
+  input: { userId: string; chatId: string; kind: string; dedupeKey: string; text: string; markup?: TelegramMarkup; send?: TelegramSender },
 ): Promise<"sent" | "duplicate" | "skipped"> {
   if (!input.chatId) return "skipped";
   const inserted = await db
@@ -37,12 +39,33 @@ export async function notifyOnce(
     .returning();
   if (!inserted[0]) return "duplicate";
   try {
-    await (input.send ?? defaultTelegramSend)(input.chatId, input.text);
+    await (input.send ?? defaultTelegramSend)(input.chatId, input.text, input.markup);
     await db.update(notifications).set({ status: "sent", sentAt: new Date() }).where(eq(notifications.id, inserted[0].id));
     return "sent";
   } catch {
     await db.update(notifications).set({ status: "failed" }).where(eq(notifications.id, inserted[0].id));
     return "skipped";
+  }
+}
+
+export async function notifyReadFailed(
+  db: Database,
+  input: { projectId: string; userIds: string[]; fileName: string; detail: string; send?: TelegramSender },
+): Promise<void> {
+  if (input.userIds.length === 0) return;
+  const people = await db.select().from(users).where(inArray(users.id, input.userIds));
+  const text = readFailed(input.fileName, input.detail);
+  const markup: TelegramMarkup = { inline_keyboard: [[{ text: "Retry", callback_data: `v1:rx:${input.projectId}` }]] };
+  for (const person of people) {
+    await notifyOnce(db, {
+      userId: person.id,
+      chatId: person.telegramId.toString(),
+      kind: "contract_read_failed",
+      dedupeKey: `bread:${input.projectId}:${person.id}:${Date.now()}`,
+      text,
+      markup,
+      send: input.send,
+    });
   }
 }
 

@@ -29,6 +29,7 @@ import {
   planPour,
   rejectAsk,
   report,
+  retryDocuments,
   respondVariation,
   reviewQueue,
   sendVariation,
@@ -40,7 +41,7 @@ import {
 } from "./flows/actions.js";
 import { loadActor, say, type EngineDeps, type Outbound, type Person } from "./flows/common.js";
 import { joinWithCode } from "./flows/join.js";
-import { begin, onName, onPin, onSite, onStartDate } from "./flows/project.js";
+import { begin, onName, onPin, onProjectRole, onSite, onStartDate } from "./flows/project.js";
 import { askCode, howItWorks, showMenu, welcome } from "./flows/start.js";
 import { helpText } from "./flows/help.js";
 import { bGe4, bGe9, bIn11, bIn7, bSt7 } from "./messages.js";
@@ -115,6 +116,7 @@ async function onText(
   if (step === "project_name") return onName(db, actor, text, now);
   if (step === "project_site") return onSite(db, actor, text, now);
   if (step === "project_start") return onStartDate(db, actor, person, text, now, now);
+  if (step === "project_role") return onProjectRole(db, actor, person, text, now);
   if (step === "reject_reason") return onRejectReason(db, actor, text, now);
   if (step === "decline_reason") return onDeclineReason(db, actor, text, now);
   if (step === "change_reason") return onChangeReason(db, actor, text, now, deps);
@@ -142,6 +144,7 @@ async function onCallback(
   if (action === "go" && id === "menu") return showMenu(db, actor, deps);
   if (action === "go" && id === "upload") return beginUpload(db, actor, now);
   if (action === "go" && id === "done") return finishUpload(db, actor, now);
+  if (action === "rx") return retryDocuments(db, actor);
   if (action === "go" && id === "invite") return beginInvite(actor);
   if (action === "go" && id === "fund") return fund(actor, deps);
   if (action === "go" && id === "photos") return photos(db, actor);
@@ -154,6 +157,7 @@ async function onCallback(
   if (action === "go" && id === "disputes") return listDisputes(db, actor, deps);
   if (action === "go" && id === "howpay") return say(bIn7());
   if (action === "go" && id === "skip") return onPin(db, actor, null, now);
+  if (action === "sd") return onProjectRole(db, actor, { id: actor.fromId, firstName: actor.firstName }, id, now);
   if (action === "go" && id === "cancel") {
     await writeSession(db, actor.telegramId, { step: null, projectId: actor.project?.id ?? null }, now);
     return { messages: [], edit: { text: bGe9() } };

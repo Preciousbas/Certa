@@ -27,6 +27,10 @@ export function skipLocationKeyboard(): BotKeyboard {
   return [[tap("Skip for now", "go", "skip")]];
 }
 
+export function roleSideKeyboard(): BotKeyboard {
+  return [[tap("Client", "sd", "client")], [tap("Contractor", "sd", "contractor")]];
+}
+
 export function roleMenu(role: string, waiting: number, appUrl: string, projectId: string): BotKeyboard {
   const base = appUrl.replace(/\/$/, "");
   if (role === "contractor") {

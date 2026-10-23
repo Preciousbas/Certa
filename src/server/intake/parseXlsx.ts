@@ -5,8 +5,11 @@ import { chunksFromRows, rowsFromMatrix, type ParsedDocument } from "./grid.js";
 function cellText(cell: ExcelJS.Cell): { text: string; formula?: string } {
   const value = cell.value;
   if (value && typeof value === "object" && "formula" in value) {
-    return { text: cell.text?.trim() || "", formula: String(value.formula) };
+    const result = "result" in value ? value.result : undefined;
+    const shown = typeof result === "number" && Number.isFinite(result) ? String(result) : cell.text?.trim() || "";
+    return { text: shown, formula: String(value.formula) };
   }
+  if (typeof value === "number" && Number.isFinite(value)) return { text: String(value) };
   return { text: cell.text?.trim() ?? "" };
 }
 

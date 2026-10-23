@@ -73,6 +73,7 @@ function titleFor(action: string): string {
     declined: "Client declined",
     released: "Payment released",
     x402_payment: "Fee paid",
+    "project.planned_start": "Planned start",
   };
   return names[action] ?? action.replaceAll("_", " ");
 }
