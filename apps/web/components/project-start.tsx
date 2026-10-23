@@ -6,6 +6,14 @@ import { useEffect, useState } from "react";
 type Membership = { projectId: string; name: string; role: string; canInvite: boolean };
 type Side = "client" | "contractor";
 
+function shareWith(role: string | null): string {
+  if (role === "client") return "Share this link with your Client:";
+  if (role === "contractor") return "Share this link with your Contractor:";
+  if (role === "consultant") return "Share this link with your Consultant:";
+  if (role === "subcontractor") return "Share this link with your Subcontractor:";
+  return "Share this link:";
+}
+
 function headersFor(): Headers {
   const headers = new Headers({ "content-type": "application/json" });
   const initData = window.Telegram?.WebApp?.initData;
@@ -23,6 +31,7 @@ export function ProjectStart({ initial, signedIn }: { initial: Membership[]; sig
   const [name, setName] = useState("");
   const [linkInput, setLinkInput] = useState("");
   const [link, setLink] = useState<string | null>(null);
+  const [inviteRole, setInviteRole] = useState<string | null>(null);
   const [code, setCode] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
@@ -54,13 +63,14 @@ export function ProjectStart({ initial, signedIn }: { initial: Membership[]; sig
         headers: headersFor(),
         body: JSON.stringify({ name, role }),
       });
-      const body = (await response.json()) as { message?: string; link?: string; code?: string };
+      const body = (await response.json()) as { message?: string; link?: string; code?: string; inviteRole?: string };
       if (!response.ok || !body.link || !body.code) {
         setMessage(body.message ?? "The project was not created.");
         return;
       }
       setLink(body.link);
       setCode(body.code);
+      setInviteRole(body.inviteRole ?? null);
       setAsking(null);
       router.refresh();
     } finally {
@@ -159,7 +169,7 @@ export function ProjectStart({ initial, signedIn }: { initial: Membership[]; sig
         )}
         {link ? (
           <p className="stack">
-            Share this link: <a href={link}>{link}</a>
+            {shareWith(inviteRole)} <a href={link}>{link}</a>
           </p>
         ) : null}
         {message ? <p className="muted">{message}</p> : null}
@@ -176,7 +186,7 @@ export function ProjectStart({ initial, signedIn }: { initial: Membership[]; sig
           {link && code ? (
             <div className="stack">
               <p>
-                Share this link: <a href={link}>{link}</a>
+                {shareWith(inviteRole)} <a href={link}>{link}</a>
               </p>
               <button type="button" className="ghost" disabled={pending} onClick={() => void revoke(project.projectId)}>
                 Revoke invite

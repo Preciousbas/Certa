@@ -220,7 +220,13 @@ describe("bot handlers", () => {
     await send({ type: "callback", data: callbackData("go", "skip"), from: builder });
     await send({ type: "text", text: "3 Nov 2026", from: builder });
     const asContractor = await send({ type: "callback", data: callbackData("sd", "contractor"), from: builder });
+    expect(textOf(created)).toContain("Share this link with your Contractor");
     expect(textOf(asContractor)).toContain("Project created");
+    expect(textOf(asContractor)).toContain("Share this link with your Client");
+    expect(textOf(asContractor)).not.toContain("Subcontractor");
+    const invited = await send({ type: "callback", data: callbackData("ir", "contractor"), from: maker });
+    expect(textOf(invited)).toContain("Share this link with your Contractor");
+    expect(textOf(invited)).not.toContain("Subcontractor");
     const builderUser = (await db.select().from(users).where(eq(users.telegramId, 7303n)))[0];
     const builderRole = builderUser
       ? (await db.select().from(memberships).where(eq(memberships.userId, builderUser.id)))[0]?.role

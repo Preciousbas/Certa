@@ -236,7 +236,7 @@ export function createBot(token: string, deps: BotDeps): Bot<BotContext> {
     );
     const link = joinDeepLink(process.env.TELEGRAM_BOT_USERNAME || "CertaApp_bot", started.inviteCode);
     const other = sideLabel(started.inviteRole);
-    await ctx.reply(`You are the ${sideLabel(role)} on ${projectName}. Share this link with the ${other}: ${link}`);
+    await ctx.reply(`You are the ${sideLabel(role)} on ${projectName}. Share this link with your ${other}: ${link}`);
   }
   bot.use(createConversation(startConversation as Parameters<typeof createConversation>[0], "startProject"));
 

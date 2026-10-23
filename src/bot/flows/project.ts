@@ -1,11 +1,11 @@
 import { projects, startOwnProject, type Database } from "@certa/db";
 import { eq } from "drizzle-orm";
 import { audit } from "../../server/audit.js";
-import { parseStartDate } from "../dates.js";
+import { formatWatDate, parseStartDate } from "../dates.js";
 import { createdKeyboard, roleSideKeyboard, skipLocationKeyboard } from "../keyboards.js";
-import { bPr1, bPr2, bPr3, bPr4, bPr4Invalid, bPr5, bPrRole } from "../messages.js";
+import { bIn2, bPr1, bPr2, bPr3, bPr4, bPr4Invalid, bPr5, bPrRole } from "../messages.js";
 import { writeSession } from "../state.js";
-import { say, type Actor, type Outbound, type Person } from "./common.js";
+import { botUsername, roleLabel, say, type Actor, type Outbound, type Person } from "./common.js";
 
 export async function begin(db: Database, actor: Actor, now: Date): Promise<Outbound> {
   await writeSession(db, actor.telegramId, { step: "project_name", projectId: actor.project?.id ?? null, data: {} }, now);
@@ -71,5 +71,17 @@ export async function onProjectRole(db: Database, actor: Actor, person: Person, 
     after: { start: actor.session.data.start ?? "" },
   });
   await writeSession(db, actor.telegramId, { step: null, projectId: created.projectId }, now);
-  return say(bPr5({ project: name }), createdKeyboard());
+  const link = `https://t.me/${botUsername({})}?start=join_${created.inviteCode}`;
+  return {
+    messages: [
+      { text: bPr5({ project: name }), keyboard: createdKeyboard() },
+      {
+        text: bIn2({
+          roleLabel: roleLabel(created.inviteRole),
+          date: formatWatDate(created.inviteExpiresAt),
+          link,
+        }),
+      },
+    ],
+  };
 }
