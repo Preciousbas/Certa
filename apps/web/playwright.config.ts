@@ -21,6 +21,7 @@ export default defineConfig({
       ...process.env,
       PLAYWRIGHT: "1",
       DATABASE_URL: "",
+      VERCEL_ENV: "",
       CERTA_SKIP_MIGRATIONS: "1",
       DEPLOYER_PRIVATE_KEY: "",
       DEMO_SEED: "true",

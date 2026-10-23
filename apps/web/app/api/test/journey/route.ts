@@ -1,4 +1,15 @@
-import { botSessions, getDatabase, joinCodes, memberships, parties, payments, projects, stages } from "@certa/db";
+import {
+  botSessions,
+  getDatabase,
+  isMemoryDatabase,
+  joinCodes,
+  memberships,
+  parties,
+  payments,
+  playwrightMemoryAllowed,
+  projects,
+  stages,
+} from "@certa/db";
 import { usdcFromNgnKobo } from "@certa/shared";
 import { eq, inArray, isNull, ne, or } from "drizzle-orm";
 import { z } from "zod";
@@ -18,12 +29,13 @@ function closed() {
   return new Response(null, { status: 404 });
 }
 
-/** Memory-database setup for Playwright journeys. Absent unless PLAYWRIGHT=1. */
+/** Memory-database setup for Playwright journeys. 404 unless the in-memory demo is the only database. */
 export async function POST(request: Request) {
-  if (process.env.PLAYWRIGHT !== "1") return closed();
+  if (!playwrightMemoryAllowed()) return closed();
   const parsed = bodySchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return closed();
   const db = await getDatabase();
+  if (!isMemoryDatabase()) return closed();
   if (parsed.data.action === "reset") {
     const extra = or(isNull(projects.termsHash), ne(projects.termsHash, "seeded-terms"));
     const ids = (await db.select({ id: projects.id }).from(projects).where(extra)).map((row) => row.id);

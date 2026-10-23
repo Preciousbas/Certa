@@ -233,8 +233,8 @@ export async function seedDemo(db: Database) {
     acceptedByContractorAt: new Date("2026-08-01T11:30:00Z"),
   });
 
-  // Narrative rows stay on the in-memory demo. A configured database is not seeded.
-  if (process.env.PLAYWRIGHT === "1" || !process.env.DATABASE_URL) {
+  // Narrative rows stay on the in-memory demo. A database URL or a Vercel deploy does not receive them.
+  if (!process.env.DATABASE_URL?.trim() && process.env.VERCEL_ENV !== "production" && process.env.VERCEL_ENV !== "preview") {
     const releasedStage = stageRows.find((row) => row.stageIndex === 0);
     if (!releasedStage) throw new Error("seed released stage failed");
     const soakawayKobo = nairaToKobo(900_000n);

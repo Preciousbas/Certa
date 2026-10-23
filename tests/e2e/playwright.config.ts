@@ -3,6 +3,7 @@ import { defineConfig } from "@playwright/test";
 const demo = {
   PLAYWRIGHT: "1",
   DATABASE_URL: "",
+  VERCEL_ENV: "",
   CERTA_SKIP_MIGRATIONS: "1",
   DEPLOYER_PRIVATE_KEY: "",
   DEMO_SEED: "true",
