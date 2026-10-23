@@ -37,8 +37,8 @@ function walk(value: unknown): unknown {
 export function scrubEvent<T extends object>(event: T): T {
   const record = event as T & Scrubbable;
   if (record.request) {
-    record.request.data = undefined;
-    record.request.cookies = undefined;
+    delete record.request.data;
+    delete record.request.cookies;
     const headers = record.request.headers;
     if (headers) {
       for (const key of Object.keys(headers)) {

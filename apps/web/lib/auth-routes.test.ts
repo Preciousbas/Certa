@@ -34,7 +34,9 @@ describe("mini app auth", () => {
     const project = (await db.select().from(projects)).find((row) => row.termsHash === "seeded-terms");
     if (!project) throw new Error("sample project missing");
     projectId = project.id;
-    const stage = (await db.select().from(stages).where(eq(stages.projectId, project.id)))[0];
+    const stage = (await db.select().from(stages).where(eq(stages.projectId, project.id))).find(
+      (row) => row.funded && row.status === "not_started",
+    );
     if (!stage) throw new Error("sample stage missing");
     stageId = stage.id;
   }, 30_000);
