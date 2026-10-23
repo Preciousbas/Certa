@@ -2,6 +2,7 @@ import { aiVerdicts, chainTxs, getDatabase, photos, projects, stages } from "@ce
 import { and, desc, eq } from "drizzle-orm";
 import { explorerTx, SEPOLIA_CHAIN_ID } from "../../../../../../lib/explorer";
 import { photoThumb } from "../../../../../../lib/photo-thumb";
+import { MoneyAmount } from "../../../../../../components/money";
 import { ReviewActions } from "../../../../../../components/review-actions";
 import { PlanPour } from "../../../../../../components/plan-pour";
 import { formatWat } from "../../../../../../../../src/server/verify/messages";
@@ -34,7 +35,11 @@ export default async function StageDetailPage({ params }: { params: Promise<{ pr
     <div>
       <p className="eyebrow">Stage {stage.stageIndex + 1}</p>
       <h1>{stage.name}</h1>
+      <p><MoneyAmount kobo={stage.amountNgnKobo.toString()} usdc={stage.amountUsdc.toString()} big /></p>
       <p><a href={`/mini/capture?stage=${stage.id}`}>Submit photos</a></p>
+      {stage.status === "released" ? (
+        <p><a className="ui-btn ui-btn-primary" href={`/api/projects/${project.id}/stages/${stage.stageIndex + 1}/certificate`}>Export payment certificate (PDF)</a></p>
+      ) : null}
       {stageNeedsWeather(stage) && (stage.status === "not_started" || stage.status === "in_progress") ? (
         <PlanPour projectId={project.id} stageId={stage.id} />
       ) : null}

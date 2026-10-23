@@ -1,4 +1,5 @@
 import { usdcFromNgnKobo } from "@certa/shared";
+import { stageChip } from "../../../src/components/ui/status";
 import { z } from "zod";
 
 const newStage = z.object({
@@ -23,33 +24,8 @@ export function isLockedStage(status: string, funded: boolean): boolean {
 }
 
 export function stageStatusLabel(status: string): string {
-  switch (status) {
-    case "released":
-      return "Released";
-    case "submitted":
-    case "ai_review":
-    case "needs_more_evidence":
-    case "awaiting_certification":
-    case "awaiting_client_approval":
-      return "In review";
-    case "in_progress":
-      return "In progress";
-    case "disputed":
-      return "Disputed";
-    case "cancelled":
-      return "Cancelled";
-    case "not_started":
-    case "pending":
-    case "funded":
-      // Funding is a boolean. Migration 0003 stores these statuses as not_started.
-      return "Not started";
-    case "approved":
-    case "releasing":
-    case "release_failed":
-      return "Releasing";
-    default:
-      return "Not started";
-  }
+  // Funding is a boolean. Migration 0003 stores funded stages as not_started.
+  return stageChip(status).label;
 }
 
 export function changeStatusLabel(status: string): string {
@@ -65,11 +41,28 @@ export function changeStatusLabel(status: string): string {
   }
 }
 
+const titledChange = z.object({
+  title: z.string().min(1),
+  amountKobo: z.string().regex(/^-?\d+$/),
+});
+
 export function changeSummary(
   type: string,
   after: unknown,
   fxRateKoboPerUsdc: bigint,
 ): { title: string; kobo: string; usdc: string } | null {
+  if (type === "add" || type === "omit" || type === "alter") {
+    const titled = titledChange.safeParse(after);
+    if (!titled.success) return null;
+    const signed = BigInt(titled.data.amountKobo);
+    const abs = signed < 0n ? -signed : signed;
+    const kind = type === "add" ? "Add work" : type === "omit" ? "Remove work" : "Change work";
+    return {
+      title: `${kind}: ${titled.data.title}`,
+      kobo: signed.toString(),
+      usdc: usdcFromNgnKobo(abs, fxRateKoboPerUsdc).toString(),
+    };
+  }
   if (type !== "new_stage" && type !== "stage_amount" && type !== "terms") return null;
   const parsed = newStage.safeParse(after);
   if (!parsed.success) return null;
@@ -81,6 +74,15 @@ export function changeSummary(
     kobo: kobo.toString(),
     usdc: usdcFromNgnKobo(kobo, fxRateKoboPerUsdc).toString(),
   };
+}
+
+/** Basis points on a dispute resolution. 10000 is the full stage. */
+export function formatPayBps(bps: number): string | null {
+  if (!Number.isInteger(bps) || bps < 0 || bps > 10_000) return null;
+  const whole = Math.trunc(bps / 100);
+  const frac = Math.abs(bps % 100);
+  if (frac === 0) return `${whole}%`;
+  return `${whole}.${frac.toString().padStart(2, "0")}%`;
 }
 
 export function sharePercent(part: bigint, total: bigint): number {

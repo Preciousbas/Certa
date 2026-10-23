@@ -14,7 +14,7 @@ import {
   usdcFromNgnKobo,
 } from "@certa/shared";
 import type { Database } from "./client.js";
-import { encryptEmail } from "./services.js";
+import { appendAudit, encryptEmail } from "./services.js";
 import {
   changeRequests,
   contractSummaries,
@@ -28,7 +28,6 @@ import {
   workspaceMembers,
   workspaces,
 } from "./schema.js";
-
 function chainAddress(name: string, fallback: string): string {
   const value = process.env[name] ?? "";
   return /^0x[a-fA-F0-9]{40}$/.test(value) ? value : fallback;
@@ -203,8 +202,7 @@ export async function seedDemo(db: Database) {
     )
     .returning();
   const slab = stageRows.find((row) => row.stageIndex === 4);
-  const foundation = stageRows.find((row) => row.stageIndex === 1);
-  if (!slab || !foundation) throw new Error("seed stages failed");
+  if (!slab) throw new Error("seed stages failed");
 
   await db.insert(submissions).values({
     stageId: slab.id,
@@ -225,30 +223,6 @@ export async function seedDemo(db: Database) {
     evidenceHash: "0xseed",
   });
 
-  await db.insert(disputes).values({
-    stageId: foundation.id,
-    projectId: project.id,
-    workspaceId: workspace.id,
-    raisedBy: client.id,
-    reason: "Blinding thickness looked short on the first photos.",
-    status: "resolved",
-    deadlineAt: new Date("2026-09-01T00:00:00Z"),
-    resolution: {
-      payBps: 10000,
-      note: "Follow-up photos confirmed the blinding. Released in full.",
-    },
-  });
-
-  await db.insert(changeRequests).values({
-    projectId: project.id,
-    workspaceId: workspace.id,
-    type: "new_stage",
-    beforeJson: { stages: DEMO_STAGES.length },
-    afterJson: { name: "Extra soakaway", amountNgnKobo: nairaToKobo(900_000n).toString() },
-    requestedBy: client.id,
-    status: "pending",
-  });
-
   await db.insert(contractSummaries).values({
     projectId: project.id,
     workspaceId: workspace.id,
@@ -258,6 +232,89 @@ export async function seedDemo(db: Database) {
     acceptedByClientAt: new Date("2026-08-01T09:00:00Z"),
     acceptedByContractorAt: new Date("2026-08-01T11:30:00Z"),
   });
+
+  // Narrative rows stay on the in-memory demo. A configured database is not seeded.
+  if (process.env.PLAYWRIGHT === "1" || !process.env.DATABASE_URL) {
+    const releasedStage = stageRows.find((row) => row.stageIndex === 0);
+    if (!releasedStage) throw new Error("seed released stage failed");
+    const soakawayKobo = nairaToKobo(900_000n);
+    await appendAudit(db, {
+      workspaceId: workspace.id,
+      projectId: project.id,
+      actorUserId: client.id,
+      action: "contract_accepted",
+      entity: "project",
+      entityId: project.id,
+      payload: "seed-contract-accepted",
+      reason: "Both sides agreed the contract.",
+    });
+    await appendAudit(db, {
+      workspaceId: workspace.id,
+      projectId: project.id,
+      actorUserId: client.id,
+      action: "funded",
+      entity: "project",
+      entityId: project.id,
+      payload: "seed-funded",
+      reason: "Stage payments were locked.",
+    });
+    await appendAudit(db, {
+      workspaceId: workspace.id,
+      projectId: project.id,
+      actorUserId: client.id,
+      action: "released",
+      entity: "stage",
+      entityId: releasedStage.id,
+      payload: "seed-released",
+      reason: `${releasedStage.name} was released.`,
+    });
+    await db.insert(changeRequests).values({
+      projectId: project.id,
+      workspaceId: workspace.id,
+      type: "new_stage",
+      beforeJson: {},
+      afterJson: {
+        name: "Extra soakaway",
+        title: "Extra soakaway",
+        description: "Add a soakaway that was not in the signed BoQ.",
+        amountNgnKobo: soakawayKobo.toString(),
+      },
+      requestedBy: main.id,
+      status: "pending",
+      reason: "Extra soakaway",
+    });
+    await db.insert(disputes).values({
+      stageId: releasedStage.id,
+      projectId: project.id,
+      workspaceId: workspace.id,
+      raisedBy: client.id,
+      reason: "The foundation payment was disputed.",
+      status: "resolved",
+      openedAt: new Date("2026-08-12T10:00:00Z"),
+      deadlineAt: new Date("2026-08-19T10:00:00Z"),
+      resolution: { note: "Released in full", payBps: 10000 },
+    });
+    await appendAudit(db, {
+      workspaceId: workspace.id,
+      projectId: project.id,
+      actorUserId: main.id,
+      action: "variation_proposed",
+      entity: "change_request",
+      entityId: project.id,
+      payload: "seed-variation",
+      reason: "Extra soakaway, ₦900,000.",
+    });
+    await appendAudit(db, {
+      workspaceId: workspace.id,
+      projectId: project.id,
+      actorUserId: consultant.id,
+      action: "dispute_resolved",
+      entity: "dispute",
+      entityId: releasedStage.id,
+      payload: "seed-dispute",
+      reason: "Released in full.",
+    });
+  }
 
   return { projectId: project.id, created: true };
 }

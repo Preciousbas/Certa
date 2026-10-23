@@ -1,36 +1,40 @@
-import { BottomNav, type NavRole } from "./bottom-nav";
-import { MoneyProvider, MoneySwitch } from "./money";
-import { Sidebar } from "./sidebar";
-import { TelegramChrome } from "./telegram";
+import { AppFrame } from "./ui/frame";
 
 export function Shell({
   children,
   sample = false,
-  role = "client",
-  admin = false,
   syncing = false,
+  projectId = null,
+  projects = [],
+  factory,
+  factoryHref,
+  supportEmail,
+  fxLine,
 }: {
   children: React.ReactNode;
   sample?: boolean;
-  role?: NavRole;
+  role?: "client" | "consultant" | "contractor" | "subcontractor";
   admin?: boolean;
   syncing?: boolean;
+  projectId?: string | null;
+  projects?: { id: string; name: string }[];
+  factory: string;
+  factoryHref: string;
+  supportEmail: string;
+  fxLine: string | null;
 }) {
   return (
-    <div className="app">
-      <Sidebar role={role} admin={admin} />
-      <div className="shell">
-        <TelegramChrome />
-        <MoneyProvider>
-          <div className="topbar">
-            {sample ? <p className="sample-badge">Demo workspace</p> : <span />}
-            <MoneySwitch />
-          </div>
-          {syncing ? <p className="sample-badge">Updating from the blockchain</p> : null}
-          <main>{children}</main>
-          <BottomNav role={role} admin={admin} />
-        </MoneyProvider>
-      </div>
-    </div>
+    <AppFrame
+      sample={sample}
+      syncing={syncing}
+      projectId={projectId}
+      projects={projects}
+      factory={factory}
+      factoryHref={factoryHref}
+      supportEmail={supportEmail}
+      fxLine={fxLine}
+    >
+      {children}
+    </AppFrame>
   );
 }

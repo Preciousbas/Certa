@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { C1, C2, C8, poorAccuracy } from "../../../src/lib/captureMessages";
+import { useTelegramMainButton } from "./telegram";
 
 type Props = {
   projectId: string;
@@ -263,8 +264,10 @@ export function CaptureCamera({ projectId, stageId, stageName, stageNumber, crit
         body: JSON.stringify({ projectId, stageId, nonce: nonceRef.current }),
       });
       const body = (await response.json()) as { message?: string };
+      window.Telegram?.WebApp?.HapticFeedback?.notificationOccurred(response.ok ? "success" : "error");
       setMessage(body.message ?? "The photos could not be sent.");
     } catch {
+      window.Telegram?.WebApp?.HapticFeedback?.notificationOccurred("error");
       setMessage(C8);
     } finally {
       setSending(false);
@@ -274,6 +277,7 @@ export function CaptureCamera({ projectId, stageId, stageName, stageNumber, crit
   const guidance = criteria[shots.length] ?? criteria[0] ?? "Show the work for this stage from more than one angle.";
   const telegramHref = botUsername ? `https://t.me/${botUsername}?startapp=capture_${stageId}` : "";
   const kept = shots.length;
+  useTelegramMainButton("Send photos for checking", () => void send(), kept >= 3 && !sending);
 
   return (
     <div className="capture">

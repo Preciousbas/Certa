@@ -2,11 +2,14 @@ import { cdpConfigured } from "@certa/chain";
 import { approvals, payments, stages } from "@certa/db";
 import { and, eq } from "drizzle-orm";
 import { ChainRejected, releaseStageTx } from "../../../../../../src/server/chain/flows";
+import { rejectIfPaused } from "../../../../../../src/server/projects/pause";
 import { apiError, apiJson, fundOutput, releaseInput } from "../../../../lib/schemas";
 import { withAuth } from "../../../../lib/with-auth";
 
 export const POST = withAuth(
   async ({ db, project, json }) => {
+    const paused = rejectIfPaused(project.status);
+    if (paused) return paused;
     const input = releaseInput.safeParse(json);
     if (!input.success) return apiError(400, "The stage and the idempotency key are required.");
     const existing = (await db.select().from(payments).where(eq(payments.idempotencyKey, input.data.idempotencyKey)))[0];

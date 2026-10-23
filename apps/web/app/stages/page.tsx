@@ -1,50 +1,58 @@
-import { getDatabase, submissions } from "@certa/db";
-import { formatNgnFromKobo, formatUsdc } from "@certa/shared";
+import { getDatabase, submissions, users } from "@certa/db";
 import { eq } from "drizzle-orm";
 import Link from "next/link";
 import { MoneyAmount } from "../../components/money";
 import { ReviewActions } from "../../components/review-actions";
-import { StageRow } from "../../components/stage-row";
 import { StatusChip } from "../../components/status-chip";
-import { SEPOLIA_CHAIN_ID, explorerTx } from "../../lib/explorer";
+import { DataTable } from "../../components/ui/dialog";
+import { InfoTip } from "../../components/ui/chips";
 import { loadProject } from "../../lib/data";
 import { isLockedStage, isReviewStatus } from "../../lib/labels";
 
-function total(
-  rows: { amountNgnKobo: bigint; amountUsdc: bigint }[],
-  field: "amountNgnKobo" | "amountUsdc",
-) {
+function total(rows: { amountNgnKobo: bigint; amountUsdc: bigint }[], field: "amountNgnKobo" | "amountUsdc") {
   return rows.reduce((sum, row) => sum + row[field], 0n);
 }
 
-export default async function StagesPage() {
+function held(rows: { amountNgnKobo: bigint; amountUsdc: bigint; retentionBps: number; status: string }[]) {
+  return rows
+    .filter((row) => row.status === "released")
+    .reduce(
+      (sum, row) => ({
+        kobo: sum.kobo + (row.amountNgnKobo * BigInt(row.retentionBps)) / 10000n,
+        usdc: sum.usdc + (row.amountUsdc * BigInt(row.retentionBps)) / 10000n,
+      }),
+      { kobo: 0n, usdc: 0n },
+    );
+}
+
+export default async function StagesPage({ searchParams }: { searchParams?: Promise<{ sort?: string }> }) {
+  const query = searchParams ? await searchParams : {};
   const data = await loadProject();
   if (!data) return <p>No project is open.</p>;
   const released = data.stages.filter((stage) => stage.status === "released");
   const review = data.stages.filter((stage) => isReviewStatus(stage.status));
   const locked = data.stages.filter((stage) => isLockedStage(stage.status, stage.funded));
+  const retention = held(data.stages);
   const db = await getDatabase();
-  const notes = await db
-    .select()
-    .from(submissions)
-    .where(eq(submissions.projectId, data.project.id));
+  const notes = await db.select().from(submissions).where(eq(submissions.projectId, data.project.id));
+  const people = await db.select().from(users);
+  const sorted = [...data.stages].sort((a, b) => {
+    if (query.sort === "amount") return a.amountNgnKobo < b.amountNgnKobo ? -1 : a.amountNgnKobo > b.amountNgnKobo ? 1 : 0;
+    if (query.sort === "name") return a.name.localeCompare(b.name);
+    return a.stageIndex - b.stageIndex;
+  });
   return (
     <div>
-      <div className="desk-actions">
-        <Link className="ghost" href="/certificate">
-          Export certificate
-        </Link>
-        <Link className="btn" href="/changes">
-          Propose change
-        </Link>
-      </div>
+      <p className="eyebrow">{data.project.siteLocation}</p>
+      <h1>Stages</h1>
+      <p className="muted">Amounts follow the currency switch.</p>
       {review.map((stage) => {
         const score = notes
           .filter((row) => row.stageId === stage.id && row.evidenceHash !== "0xseed")
           .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0];
         return (
           <article className="card" key={stage.id} style={{ marginBottom: 12 }}>
-            <p className="eyebrow">Review</p>
+            <p className="eyebrow">Waiting for you</p>
             <div className="needs-head">
               <strong>{stage.name}</strong>
               <StatusChip status={stage.status} />
@@ -62,98 +70,59 @@ export default async function StagesPage() {
           </article>
         );
       })}
-      <p className="eyebrow">{data.project.siteLocation}</p>
-      <h1>Stage ledger</h1>
-      <p className="muted">Confirm the split before anyone accepts it.</p>
-      {data.moneyNote ? <p className="muted">{data.moneyNote}</p> : null}
       <div className="stat-row">
-        <article className="stat">
-          <span>Contract sum</span>
-          <strong>
-            <MoneyAmount kobo={data.shownKobo.toString()} usdc={data.shownUsdc.toString()} />
-          </strong>
-        </article>
-        <article className="stat released">
-          <span>Released</span>
-          <strong>
-            <MoneyAmount
-              kobo={total(released, "amountNgnKobo").toString()}
-              usdc={total(released, "amountUsdc").toString()}
-            />
-          </strong>
+        <article className="stat locked">
+          <span>Locked <InfoTip term="Locked" /></span>
+          <strong><MoneyAmount kobo={total(locked, "amountNgnKobo").toString()} usdc={total(locked, "amountUsdc").toString()} /></strong>
         </article>
         <article className="stat review">
-          <span>In review</span>
-          <strong>
-            <MoneyAmount
-              kobo={total(review, "amountNgnKobo").toString()}
-              usdc={total(review, "amountUsdc").toString()}
-            />
-          </strong>
+          <span>In review <InfoTip term="In review" /></span>
+          <strong><MoneyAmount kobo={total(review, "amountNgnKobo").toString()} usdc={total(review, "amountUsdc").toString()} /></strong>
         </article>
-        <article className="stat locked">
-          <span>Locked</span>
-          <strong>
-            <MoneyAmount
-              kobo={total(locked, "amountNgnKobo").toString()}
-              usdc={total(locked, "amountUsdc").toString()}
-            />
-          </strong>
+        <article className="stat released">
+          <span>Released <InfoTip term="Released" /></span>
+          <strong><MoneyAmount kobo={total(released, "amountNgnKobo").toString()} usdc={total(released, "amountUsdc").toString()} /></strong>
+        </article>
+        <article className="stat">
+          <span>Retention held <InfoTip term="Retention" /></span>
+          <strong><MoneyAmount kobo={retention.kobo.toString()} usdc={retention.usdc.toString()} /></strong>
         </article>
       </div>
-      <div className="stage-list">
-        {data.stages.map((stage) => (
-          <StageRow
-            key={stage.id}
-            number={stage.stageIndex + 1}
-            name={stage.name}
-            description={stage.description}
-            status={stage.status}
-            kobo={stage.amountNgnKobo.toString()}
-            usdc={stage.amountUsdc.toString()}
-            txHash={data.payments.find((row) => row.stageId === stage.id && row.txHash)?.txHash}
-          />
-        ))}
-      </div>
-      <table className="stage-table">
-        <thead>
-          <tr>
-            <th className="num">#</th>
-            <th>Stage</th>
-            <th>Status</th>
-            <th className="amount">Naira</th>
-            <th className="amount">USDC</th>
-          </tr>
-        </thead>
-        <tbody>
-          {data.stages.map((stage) => (
-            <tr key={stage.id}>
-              <td className="num">{stage.stageIndex + 1}</td>
-              <td>
-                <strong>{stage.name}</strong>
-                <div className="faint">{stage.description}</div>
-                {/^0x[a-fA-F0-9]{64}$/.test(
-                  data.payments.find((row) => row.stageId === stage.id)?.txHash ?? "",
-                ) ? (
-                  <a
-                    className="faint"
-                    href={explorerTx(SEPOLIA_CHAIN_ID, data.payments.find((row) => row.stageId === stage.id)?.txHash ?? "")}
-                  >
-                    Transaction
-                  </a>
-                ) : stage.status === "released" ? (
-                  <div className="faint">Not on chain yet.</div>
-                ) : null}
-              </td>
-              <td>
+      <p className="sort-row">
+        <Link href="?sort=number">Sort by number</Link>
+        {" · "}
+        <Link href="?sort=name">Sort by name</Link>
+        {" · "}
+        <Link href="?sort=amount">Sort by amount</Link>
+      </p>
+      <DataTable
+        columns={["#", "Stage", "Amount", "Status", "Last event", "Assigned to"]}
+        rows={sorted.map((stage) => {
+          const party = data.parties.find((row) => row.id === stage.assignedPartyId);
+          const person = people.find((row) => row.id === party?.userId);
+          const assigned = person?.name ?? "Unassigned";
+          const href = `/app/p/${data.project.id}/stages/${stage.stageIndex + 1}`;
+          return {
+            key: stage.id,
+            cells: [
+              stage.stageIndex + 1,
+              <Link key="name" href={href}>{stage.name}</Link>,
+              <MoneyAmount key="money" kobo={stage.amountNgnKobo.toString()} usdc={stage.amountUsdc.toString()} />,
+              <StatusChip key="status" status={stage.status} />,
+              <StatusChip key="event" status={stage.status} />,
+              assigned,
+            ],
+            card: (
+              <div>
+                <Link href={href}><strong>{stage.stageIndex + 1}. {stage.name}</strong></Link>
+                <p><MoneyAmount kobo={stage.amountNgnKobo.toString()} usdc={stage.amountUsdc.toString()} /></p>
                 <StatusChip status={stage.status} />
-              </td>
-              <td className="amount money">{formatNgnFromKobo(stage.amountNgnKobo)}</td>
-              <td className="amount money">{formatUsdc(stage.amountUsdc)}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+                <p className="muted">{assigned}</p>
+              </div>
+            ),
+          };
+        })}
+      />
     </div>
   );
 }

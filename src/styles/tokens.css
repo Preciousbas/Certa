@@ -1,0 +1,64 @@
+:root {
+  /* Neutrals */
+  --c-ink-900: #0b1a2e;
+  --c-ink-800: #132a47;
+  --c-ink-700: #1e3a5f;
+  --c-text: #0f172a;
+  --c-text-muted: #475569;
+  --c-text-subtle: #5b6b80;
+  --c-border: #cbd5e1;
+  --c-surface: #ffffff;
+  --c-bg: #f5f7fa;
+  /* Action */
+  --c-primary: #c2410c;
+  --c-primary-hover: #9a3412;
+  --c-focus: #2563eb;
+  /* Status */
+  --c-success: #047857;
+  --c-success-bg: #ecfdf5;
+  --c-warning: #b45309;
+  --c-warning-bg: #fffbeb;
+  --c-danger: #b91c1c;
+  --c-danger-bg: #fef2f2;
+  --c-info: #1d4ed8;
+  --c-info-bg: #eff6ff;
+  --c-neutral-chip: #334155;
+  --c-neutral-chip-bg: #f1f5f9;
+  /* On dark sidebar */
+  --c-on-dark: #f8fafc;
+  --c-on-dark-muted: #cbd5e1;
+  /* Type — size/line-height */
+  --t-xs: 12px/16px;
+  --t-sm: 14px/20px;
+  --t-base: 16px/24px;
+  --t-lg: 18px/28px;
+  --t-xl: 20px/28px;
+  --t-2xl: 24px/32px;
+  --t-3xl: 30px/36px;
+  --t-4xl: 40px/48px;
+  /* Spacing */
+  --s-1: 4px;
+  --s-2: 8px;
+  --s-3: 12px;
+  --s-4: 16px;
+  --s-5: 20px;
+  --s-6: 24px;
+  --s-8: 32px;
+  --s-10: 40px;
+  --s-12: 48px;
+  --s-16: 64px;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --shadow-card: 0 1px 2px rgba(15, 23, 42, 0.06), 0 1px 3px rgba(15, 23, 42, 0.1);
+  /* Layout */
+  --content-max: 1120px;
+  --sidebar-w: 240px;
+  --page-pad-x: 24px;
+}
+
+@media (max-width: 639px) {
+  :root {
+    --page-pad-x: 16px;
+  }
+}

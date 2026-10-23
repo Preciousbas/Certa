@@ -1,12 +1,19 @@
+"use client";
+
+import { useEffect, useState } from "react";
+
 export default function Loading() {
+  const [show, setShow] = useState(false);
+  useEffect(() => {
+    const timer = window.setTimeout(() => setShow(true), 200);
+    return () => window.clearTimeout(timer);
+  }, []);
+  if (!show) return null;
   return (
-    <div>
-      <div className="skel" style={{ width: "40%", marginBottom: 12 }} />
-      <div className="skel" style={{ width: "72%", height: 88, marginBottom: 18 }} />
-      <div className="card">
-        <div className="skel" style={{ width: "88%", marginBottom: 10 }} />
-        <div className="skel" style={{ width: "64%" }} />
-      </div>
+    <div aria-hidden="true">
+      <div className="skel" />
+      <div className="skel" style={{ marginTop: 12, width: "70%" }} />
+      <div className="card" style={{ marginTop: 16 }}><div className="skel" /></div>
     </div>
   );
 }

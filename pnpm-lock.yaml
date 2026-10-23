@@ -90,6 +90,12 @@ importers:
         specifier: 3.25.76
         version: 3.25.76
     devDependencies:
+      '@axe-core/playwright':
+        specifier: 4.13.0
+        version: 4.13.0(playwright-core@1.64.0)
+      '@playwright/test':
+        specifier: 1.64.0
+        version: 1.64.0
       '@types/heic-convert':
         specifier: ^2.1.1
         version: 2.1.1
@@ -223,6 +229,9 @@ importers:
       jose:
         specifier: ^6.2.13
         version: 6.2.13
+      lucide-react:
+        specifier: 0.545.0
+        version: 0.545.0(react@19.2.4)
       next:
         specifier: 15.5.27
         version: 15.5.27(@opentelemetry/api@1.9.1)(@playwright/test@1.64.0)(@types/node@22.19.1)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
@@ -4415,6 +4424,11 @@ packages:
 
   lru-cache@10.4.3:
     resolution: {integrity: sha512-JNAzZcXrCt42VGLuYz0zfAzDfAvJWW6AfYlDBQyDV5DClI2m5sAmK+OIO7s59XfsRsWHp02jAJrRadPRGTt6SQ==}
+
+  lucide-react@0.545.0:
+    resolution: {integrity: sha512-7r1/yUuflQDSt4f1bpn5ZAocyIxcTyVyBBChSVtBKn5M+392cPmI5YJMWOJKk/HUWGm5wg83chlAZtCcGbEZtw==}
+    peerDependencies:
+      react: ^16.5.1 || ^17.0.0 || ^18.0.0 || ^19.0.0
 
   magic-string@0.30.21:
     resolution: {integrity: sha512-vd2F4YUyEXKGcLHoq+TEyCjxueSeHnFxyyjNp80yg0XV4vUhnDer/lvvlqM/arB5bXQN5K2/3oinyCRyx8T2CQ==}
@@ -9514,6 +9528,10 @@ snapshots:
   loupe@3.2.1: {}
 
   lru-cache@10.4.3: {}
+
+  lucide-react@0.545.0(react@19.2.4):
+    dependencies:
+      react: 19.2.4
 
   magic-string@0.30.21:
     dependencies:

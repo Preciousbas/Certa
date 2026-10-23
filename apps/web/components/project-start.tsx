@@ -120,7 +120,9 @@ export function ProjectStart({ initial, signedIn }: { initial: Membership[]; sig
     return (
       <div className="card empty-state">
         <p className="eyebrow">Projects</p>
-        <h1>You are not on a project yet.</h1>
+        <h1>You're not on any project yet.</h1>
+        <p>Create one in Telegram, or ask for a join code.</p>
+        <a className="ui-btn ui-btn-primary" href="https://t.me/CertaApp_bot">Open in Telegram</a>
         {asking === "start" ? (
           <div className="stack">
             <p>Which side of the contract are you?</p>

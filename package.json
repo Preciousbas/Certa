@@ -59,6 +59,8 @@
   "devDependencies": {
     "@types/heic-convert": "^2.1.1",
     "@types/node": "22.19.1",
+    "@axe-core/playwright": "4.13.0",
+    "@playwright/test": "1.64.0",
     "eslint": "9.39.1",
     "pdf-lib": "1.17.1",
     "prettier": "3.6.2",

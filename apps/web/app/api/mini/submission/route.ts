@@ -1,9 +1,12 @@
+import { rejectIfPaused } from "../../../../../../src/server/projects/pause";
 import { apiError, apiJson, submissionInput, submissionOutput } from "../../../../lib/schemas";
 import { sendCaptureSet } from "../../../../../../src/server/verify/capture";
 import { withAuth } from "../../../../lib/with-auth";
 
 export const POST = withAuth(
   async ({ db, userId, project, json }) => {
+    const paused = rejectIfPaused(project.status);
+    if (paused) return paused;
     const input = submissionInput.safeParse(json);
     if (!input.success) return apiError(400, "Choose a stage before sending the photos.");
     const sent = await sendCaptureSet(db, {

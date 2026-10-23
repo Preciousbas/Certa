@@ -7,11 +7,14 @@ import { notifyFundOutcome } from "../../../../../../src/bot/fundNotice";
 import { ChainRejected, ConsultantRequired, fundAccepted } from "../../../../../../src/server/chain/flows";
 import { broadcastClientFund } from "../../../../lib/chain-fund";
 import { chainFundLines } from "../../../../lib/escrow-quote";
+import { rejectIfPaused } from "../../../../../../src/server/projects/pause";
 import { apiError, apiJson, fundInput, fundOutput } from "../../../../lib/schemas";
 import { withAuth } from "../../../../lib/with-auth";
 
 export const POST = withAuth(
   async ({ db, project, json, userId }) => {
+    const paused = rejectIfPaused(project.status);
+    if (paused) return paused;
     const input = fundInput.safeParse(json);
     if (!input.success) return apiError(400, "The amount and the idempotency key are required.");
     const client = (await db.select().from(users).where(eq(users.id, userId)))[0];
