@@ -142,7 +142,7 @@ export function bIn11(input: { project: string }): string {
 
 /** B-UP-1 */
 export function bUp1(input: { fileName: string; pagesOrSheets: string }): string {
-  return `Got it: ${e(input.fileName)} (${e(input.pagesOrSheets)}). Send more files, or tap **Done** when you've sent everything.`;
+  return `Got it: ${e(input.fileName)} (${e(input.pagesOrSheets)}). Send more files, or tap Done when you've sent everything.`;
 }
 
 /** B-UP-2 */

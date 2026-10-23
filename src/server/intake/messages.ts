@@ -1,5 +1,5 @@
 export function gotFile(fileName: string, pagesOrSheets: string): string {
-  return `Got it: ${fileName} (${pagesOrSheets}). Send more files, or tap **Done** when you've sent everything.`;
+  return `Got it: ${fileName} (${pagesOrSheets}). Send more files, or tap Done when you've sent everything.`;
 }
 
 export const READING =
