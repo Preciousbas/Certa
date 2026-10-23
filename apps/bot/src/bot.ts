@@ -611,7 +611,7 @@ export function createBot(token: string, deps: BotDeps): Bot<BotContext> {
     await say(ctx, `Today's note is ready.\n${weather}`, "Report");
   });
 
-  bot.command(["menu", "projects", "upload", "photos", "review", "fund", "cancel"], async (ctx) => {
+  bot.command(["menu", "projects", "upload", "photos", "review", "fund", "cancel", "new", "newproject"], async (ctx) => {
     if (!(await gate(ctx, false))) return;
     const who = person(ctx);
     if (!who) return;
@@ -622,7 +622,16 @@ export function createBot(token: string, deps: BotDeps): Bot<BotContext> {
   bot.on("message:text", async (ctx, next) => {
     const who = person(ctx);
     const text = ctx.message?.text ?? "";
-    if (!who || text.startsWith("/")) return next();
+    if (!who) return next();
+    if (text.startsWith("/")) {
+      const command = text.split(/\s|@/)[0]?.replace(/^\//, "") ?? "";
+      const known = new Set(["start", "join", "menu", "projects", "upload", "photos", "review", "fund", "cancel", "help", "wallet", "dispute", "changes", "report", "done", "new", "newproject"]);
+      if (!known.has(command)) {
+        await ctx.reply("I don't know that command. Send /menu or /help.");
+        return;
+      }
+      return next();
+    }
     if (Object.keys(ctx.conversation.active()).length > 0) return next();
     const outbound = await handleIncoming(deps.db, { type: "text", text, from: who }, { paidWeather: deps.paidWeather });
     if (outbound.messages.length === 0 && !outbound.edit) return next();

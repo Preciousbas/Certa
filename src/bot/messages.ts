@@ -481,6 +481,10 @@ export function bGe3(input: { supportEmail: string }): string {
   ].join("\n");
 }
 
+export function bUnknown(): string {
+  return "I don't know that command. Send /menu or /help.";
+}
+
 /** B-GE-4 Unknown or expired callback. */
 export function bGe4(): string {
   return "This button has expired. Tap /menu to start again.";

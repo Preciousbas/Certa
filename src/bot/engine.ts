@@ -44,7 +44,7 @@ import { joinWithCode } from "./flows/join.js";
 import { begin, onName, onPin, onProjectRole, onSite, onStartDate } from "./flows/project.js";
 import { askCode, howItWorks, showMenu, welcome } from "./flows/start.js";
 import { helpText } from "./flows/help.js";
-import { bGe4, bGe9, bIn11, bIn7, bSt7 } from "./messages.js";
+import { bGe4, bGe9, bIn11, bIn7, bSt7, bUnknown } from "./messages.js";
 import { writeSession } from "./state.js";
 import { projectSwitchKeyboard } from "./keyboards.js";
 import { memberships, projects, setActiveProject } from "@certa/db";
@@ -89,6 +89,7 @@ async function onCommand(
     return joinWithCode(db, actor, inbound.arg, now);
   }
   if (command === "menu") return showMenu(db, actor, deps);
+  if (command === "new" || command === "newproject") return begin(db, actor, now);
   if (command === "help") return helpText(deps);
   if (command === "projects") return listProjects(db, actor);
   if (command === "upload") return beginUpload(db, actor, now);
@@ -100,7 +101,7 @@ async function onCommand(
   if (command === "review") return reviewQueue(db, actor, deps);
   if (command === "fund") return fund(actor, deps);
   if (command === "wallet") return wallet(db, actor);
-  return { messages: [] };
+  return say(bUnknown());
 }
 
 async function onText(

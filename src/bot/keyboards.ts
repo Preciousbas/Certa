@@ -39,6 +39,7 @@ export function roleMenu(role: string, waiting: number, appUrl: string, projectI
       [tap("My stages", "go", "stages")],
       [tap("Payments", "go", "wallet")],
       [tap("Propose change", "go", "change")],
+      [tap("New project", "go", "create")],
       [tap("Switch project", "go", "switch")],
     ];
   }
@@ -47,6 +48,7 @@ export function roleMenu(role: string, waiting: number, appUrl: string, projectI
       [tap("Submit stage photos", "go", "photos")],
       [tap("My stages", "go", "stages")],
       [tap("Payments", "go", "wallet")],
+      [tap("New project", "go", "create")],
     ];
   }
   if (role === "consultant") {
@@ -54,6 +56,7 @@ export function roleMenu(role: string, waiting: number, appUrl: string, projectI
       [tap(`Waiting for me (${waiting})`, "go", "review")],
       [tap("Project report", "go", "report")],
       [tap("Disputes", "go", "disputes")],
+      [tap("New project", "go", "create")],
       [tap("Switch project", "go", "switch")],
     ];
   }
@@ -64,6 +67,7 @@ export function roleMenu(role: string, waiting: number, appUrl: string, projectI
     [tap(`Waiting for me (${waiting})`, "go", "review")],
     [tap("Invite people", "go", "invite")],
     [tap("Project report", "go", "report")],
+    [tap("New project", "go", "create")],
     [tap("Switch project", "go", "switch")],
   ];
 }
