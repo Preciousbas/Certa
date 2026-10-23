@@ -40,9 +40,27 @@ test("fund flow reaches the confirm screen", async ({ page }, info) => {
       },
     };
   }, initData);
+  await page.route("**/api/mini/fund", async (route) => {
+    await route.fulfill({
+      json: {
+        ok: true,
+        created: true,
+        paymentId: "00000000-0000-4000-8000-000000000001",
+        status: "pending",
+        rail: "usdc",
+        amountUsdc: "1000000",
+        amountNgnKobo: "150000000",
+        txHash: null,
+        escrowAddress: null,
+        contractorNotified: false,
+        stages: [{ name: "Site clearing", amountNgnKobo: "150000000", amountUsdc: "1000000" }],
+      },
+    });
+  });
   await page.goto("/fund");
-  await page.getByRole("button", { name: "USDC" }).click();
-  await page.getByRole("button", { name: "Lock USDC" }).click();
+  await page.getByRole("button", { name: "USDC", exact: true }).click();
+  await page.getByRole("button", { name: /Lock .+ in escrow/ }).click();
+  await page.getByRole("button", { name: "Lock money" }).click();
   await expect(page.getByText("Waiting on chain.")).toBeVisible({ timeout: 15_000 });
   await expect(page.getByText("Escrow is not on chain yet.")).toBeVisible();
   await expect(page.getByText("Contractor not notified yet.")).toBeVisible();

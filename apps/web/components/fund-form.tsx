@@ -103,12 +103,34 @@ export function FundForm({ projectId, defaultUpTo, stages, rateLabel }: Props) {
   useTelegramMainButton(`Lock ${nairaLabel} in escrow`, () => setConfirm(true), !receipt && !pending);
 
   if (receipt) {
-    const proof = receipt.txHash ? explorerTx(SEPOLIA_CHAIN_ID, receipt.txHash) : receipt.escrowAddress ? explorerAddress(SEPOLIA_CHAIN_ID, receipt.escrowAddress) : "";
+    const proof = receipt.txHash ? explorerTx(SEPOLIA_CHAIN_ID, receipt.txHash) : "";
     return (
       <section className="card confirm">
-        <h1>{receipt.status === "confirmed" ? "Locked." : "Locking… waiting for the network (usually under 30 seconds)."}</h1>
+        <h1>{receipt.txHash ? "Locked." : "Waiting on chain."}</h1>
         <MoneyAmount kobo={receipt.amountNgnKobo} usdc={receipt.amountUsdc} big />
-        {proof ? <p><a href={proof}>Locked. Proof on Etherscan ↗</a></p> : <p>Locked. The proof link appears when the network confirms it.</p>}
+        <ul className="plain">
+          {receipt.stages.map((stage) => (
+            <li className="row" key={stage.name}>
+              <span>{stage.name}</span>
+              <MoneyAmount kobo={stage.amountNgnKobo} usdc={stage.amountUsdc} />
+            </li>
+          ))}
+        </ul>
+        {receipt.escrowAddress ? (
+          <p>
+            <a href={explorerAddress(SEPOLIA_CHAIN_ID, receipt.escrowAddress)}>Escrow on Etherscan</a>
+          </p>
+        ) : (
+          <p>Escrow is not on chain yet.</p>
+        )}
+        {proof ? (
+          <p>
+            <a href={proof}>Proof on Etherscan</a>
+          </p>
+        ) : (
+          <p>The proof link appears when the network confirms it.</p>
+        )}
+        <p>{receipt.contractorNotified ? "Contractor notified." : "Contractor not notified yet."}</p>
       </section>
     );
   }
@@ -158,7 +180,7 @@ export function FundForm({ projectId, defaultUpTo, stages, rateLabel }: Props) {
       <button className={`ui-btn ${confirm ? "ui-btn-secondary" : "ui-btn-primary"} btn-block`} type="submit" disabled={pending || lines.length === 0}>
         {pending ? "Working…" : `Lock ${money.unit === "usdc" ? usdcLabel : nairaLabel} in escrow`}
       </button>
-      {lines.length === 0 ? <p className="muted">Every stage in this range is already funded.</p> : null}
+      {lines.length === 0 ? <p className="muted">Every stage in this range is already locked.</p> : null}
       {message ? <p className="toast" role="status">{message}</p> : null}
       <ConfirmDialog
         open={confirm}

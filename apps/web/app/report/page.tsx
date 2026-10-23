@@ -11,7 +11,7 @@ function sentence(label: "Today" | "This week", rows: { verdict: string }[], rel
   const pass = rows.filter((row) => row.verdict === "pass").length;
   const fail = rows.filter((row) => row.verdict === "fail").length;
   const unsure = rows.length - pass - fail;
-  return `${label}: ${rows.length} photo sets checked (${pass} passed, ${fail} need work, ${unsure} need more photos); ${released} released; next stage due: ${next}.`;
+  return `${label}: ${rows.length} photo sets checked (${pass} passed, ${fail} need work, ${unsure} need more photos); ${released} paid out; next stage due: ${next}.`;
 }
 
 export default async function ReportPage() {

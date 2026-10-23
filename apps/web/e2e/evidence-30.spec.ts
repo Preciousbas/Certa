@@ -134,10 +134,7 @@ test("telegram messages", async ({ page }) => {
     months: 6,
     link: "https://t.me/certa_bot/app?startapp=contract_sample",
   });
-  await page.goto("/app/p/sample/documents");
-  await page.evaluate(({ read, accept }) => {
-    document.body.innerHTML = `<main><p class="eyebrow">Telegram</p><h1>Contract read</h1><pre class="card">${read}</pre><h1>Please review</h1><pre class="card">${accept}</pre></main>`;
-  }, { read, accept });
+  await page.setContent(`<!doctype html><html><body><main><p>Telegram</p><h1>Contract read</h1><pre>${read}</pre><h1>Please review</h1><pre>${accept}</pre></main></body></html>`);
   await expect(page.getByText("Figures ready for Sample duplex:")).toBeVisible();
   await page.locator("pre").nth(0).screenshot({ path: join(out, "telegram-bex.png") });
   await page.locator("pre").nth(1).screenshot({ path: join(out, "telegram-bac.png") });
