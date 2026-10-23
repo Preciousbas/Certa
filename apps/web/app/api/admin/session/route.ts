@@ -1,7 +1,7 @@
 import { getDatabase } from "@certa/db";
 import { audit } from "../../../../../../src/server/audit";
 import { authenticate, attachCookies } from "../../../../../../src/server/auth/authenticate";
-import { failureResponse } from "../../../../../../src/server/auth/errors";
+import { adminDenied } from "../../../../../../src/server/auth/admin-access";
 import { requirePlatformAdmin, runAsUser } from "../../../../../../src/server/auth/rbac";
 import { emptyQuery, queryOf, apiError } from "../../../../lib/schemas";
 
@@ -23,8 +23,6 @@ export async function GET(request: Request) {
     });
     return attachCookies(Response.json({ ok: true }), auth.setCookies);
   } catch (error) {
-    const response = failureResponse(error);
-    if (response.status >= 500) return response;
-    return new Response(null, { status: 404 });
+    return adminDenied(error);
   }
 }
