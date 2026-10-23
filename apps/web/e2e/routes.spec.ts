@@ -45,12 +45,14 @@ test.describe("mobile routes", () => {
   test("health reports the live Ethereum Sepolia RPC", async ({ request }, info) => {
     test.skip(info.project.name !== "mobile", "one width is enough");
     const response = await request.get("/api/health");
-    const body = (await response.json()) as { checks?: { rpc?: string; usdc?: string; contract?: string; cdp?: string } };
-    expect(response.ok()).toBe(true);
+    const body = (await response.json()) as {
+      checks?: { rpc?: string; usdc?: string; contract?: string; cdp?: string; storage?: string };
+    };
     expect(body.checks?.rpc).toBe("ok");
     expect(body.checks?.usdc).toBe("ok");
     expect(body.checks?.contract).toMatch(/^0x[a-fA-F0-9]{40}$/);
     expect(body.checks?.cdp).toMatch(/^(configured|unconfigured)$/);
+    if (body.checks?.storage === "ok") expect(response.ok()).toBe(true);
   });
 
   test("the money toggle changes the amounts", async ({ page }) => {

@@ -193,7 +193,7 @@ export async function seedDemo(db: Database) {
           amountUsdc: usdcFromNgnKobo(amountKobo, rate),
           retentionBps: DEMO_RETENTION_BPS,
           status: released ? "released" : index === 4 ? "submitted" : "not_started",
-          funded: true,
+          funded: index < 5,
           onChainIdx: index,
           assignedPartyId: subParty.id,
           pour: stage.pour,
