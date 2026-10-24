@@ -9,11 +9,13 @@ import {
   documentChunks,
   documents,
   extractions,
+  memberships,
   projects,
   stages,
+  users,
   type Database,
 } from "@certa/db";
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, asc, desc, eq, inArray } from "drizzle-orm";
 import { fetchCbnRate } from "@certa/shared";
 import { audit } from "../audit.js";
 import { enqueueJob } from "../jobs/enqueue.js";
@@ -21,7 +23,7 @@ import { createSignedUploadUrl, getObject, putObject } from "../storage.js";
 import { chooseDocuments, readSucceeded } from "./choose.js";
 import { citationIssues } from "./citations.js";
 import { contentHash, sha256Hex } from "./hash.js";
-import { interpretGrid, type GridRow } from "./interpret.js";
+import { interpretGrid, type BoqDraft, type GridRow } from "./interpret.js";
 import { badType, duplicateUpload, SCAN_V13, watStamp, webDuplicate } from "./messages.js";
 import { docModelSupportsImages, proposeWithModel } from "./model.js";
 import { notifyFigures, notifyPlanShared, notifyReadFailed } from "./notify.js";
@@ -258,6 +260,36 @@ export async function extractDocumentJob(db: Database, projectId: string): Promi
   }
 }
 
+export function fillPartyNames(
+  draft: BoqDraft,
+  names: { client: string | null; contractor: string | null; consultant: string | null },
+): BoqDraft {
+  draft.clientName ??= names.client ?? "The client";
+  draft.contractorName ??= names.contractor ?? "The contractor";
+  draft.consultantName ??= names.consultant;
+  return draft;
+}
+
+async function partyNames(db: Database, projectId: string): Promise<{ client: string | null; contractor: string | null; consultant: string | null }> {
+  const rows = await db
+    .select({ role: memberships.role, name: users.name })
+    .from(memberships)
+    .innerJoin(users, eq(users.id, memberships.userId))
+    .where(and(eq(memberships.projectId, projectId), eq(memberships.status, "active")))
+    .orderBy(asc(memberships.joinedAt));
+  const names: { client: string | null; contractor: string | null; consultant: string | null } = {
+    client: null,
+    contractor: null,
+    consultant: null,
+  };
+  for (const row of rows) {
+    if (row.role === "client" && names.client === null) names.client = row.name;
+    else if (row.role === "contractor" && names.contractor === null) names.contractor = row.name;
+    else if (row.role === "consultant" && names.consultant === null) names.consultant = row.name;
+  }
+  return names;
+}
+
 async function extractProject(db: Database, projectId: string): Promise<ValidatedPlan | null> {
   const heldFiles = await db.select().from(documents).where(eq(documents.projectId, projectId));
   const readHashes = new Set(heldFiles.filter(readSucceeded).map((file) => file.sha256));
@@ -289,6 +321,7 @@ async function extractProject(db: Database, projectId: string): Promise<Validate
     if (parsed?.rows) rows.push(...parsed.rows);
   }
   const draft = interpretGrid(rows);
+  fillPartyNames(draft, await partyNames(db, projectId));
   const rate = await lockLiveRate(db, project);
   const plan = validateDraft(draft, rate);
   const held = await db.select().from(documentChunks).where(inArray(documentChunks.documentId, files.map((file) => file.id)));
