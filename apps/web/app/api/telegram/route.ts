@@ -13,9 +13,11 @@ export async function POST(request: Request) {
   if (denied) return denied;
   const db = await getDatabase();
   let handler: Promise<unknown> = Promise.resolve();
+  let slow: Promise<void> = Promise.resolve();
   let armed = false;
   after(async () => {
     await drainAfterHandler(armed ? handler : Promise.resolve(), async () => {
+      await slow;
       const { runDocumentJobs } = await import("../../../../../src/server/intake/run");
       await runDocumentJobs().catch((error: unknown) => {
         console.error(JSON.stringify({ msg: "document jobs", message: error instanceof Error ? error.message : "failed", stack: error instanceof Error ? error.stack?.split("\n").slice(0, 8).join("\n") : "" }));
@@ -24,6 +26,9 @@ export async function POST(request: Request) {
   });
   return acceptTelegramUpdate(request, {
     db,
+    onSlow: (done) => {
+      slow = done;
+    },
     dispatch: async (update) => {
       const token = process.env.TELEGRAM_BOT_TOKEN ?? "";
       const bot = createBot(token, { db, officialRate: fetchCbnRate });

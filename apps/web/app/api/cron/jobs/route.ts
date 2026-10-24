@@ -45,6 +45,7 @@ export async function GET(request: Request) {
   const db = await getDatabase();
   const slot = Math.floor(Date.now() / 600_000);
   await enqueueJob(db, { kind: "reconcile_open", dedupeKey: `reconcile-open:${slot}` });
+  // drainJobs marks a telegram.update older than 10 minutes as skipped and does not replay it.
   const result = await drainJobs(20);
   return Response.json({ ok: true, ...result });
 }
