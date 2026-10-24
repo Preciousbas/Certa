@@ -36,6 +36,15 @@ function iso(year: number, month: number, day: number): string | null {
   return `${year}-${mm}-${dd}`;
 }
 
+/** Show an ISO date the way the bot asked for it, for example 9 Nov 2026. */
+export function formatIsoDate(iso: string): string {
+  const parsed = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  if (!parsed) return iso;
+  const month = MONTHS[+(parsed[2] ?? "1") - 1];
+  if (!month) return iso;
+  return `${+(parsed[3] ?? "1")} ${month} ${parsed[1]}`;
+}
+
 export function formatWatDate(date: Date): string {
   const parts = new Intl.DateTimeFormat("en-GB", {
     timeZone: "Africa/Lagos",

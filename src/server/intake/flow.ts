@@ -26,6 +26,7 @@ import { notifyFigures, notifyPlanShared, notifyReadFailed } from "./notify.js";
 import { parseBytes, type Transcriber } from "./parse.js";
 import { detectFile, failureMessage, UPLOAD_MAX_BYTES } from "./detect.js";
 import { documentOpenForResend } from "./status.js";
+import { formatNaira } from "../../lib/money/kobo.js";
 import { validateDraft, type ValidatedPlan } from "./validate.js";
 
 async function readStored(storageKey: string): Promise<Uint8Array | null> {
@@ -71,22 +72,28 @@ export async function ingestDocument(
   const detected = await detectFile(input.fileName, input.bytes);
   if (!detected.ok) return { ok: false, message: failureMessage(detected.failure, input.fileName) };
   const digest = sha256Hex(input.bytes);
-  const existing = (await db.select().from(documents).where(and(eq(documents.projectId, input.projectId), eq(documents.sha256, digest))))[0];
-  if (existing?.fileName && existing.id !== input.documentId && !documentOpenForResend(existing)) {
+  const copies = await db.select().from(documents).where(and(eq(documents.projectId, input.projectId), eq(documents.sha256, digest)));
+  const finished = copies.find((row) => row.id !== input.documentId && !documentOpenForResend(row));
+  if (finished) {
     if (input.documentId) await db.delete(documents).where(eq(documents.id, input.documentId));
-    const message = input.documentId ? webDuplicate(existing.fileName, watStamp(existing.createdAt)) : duplicateUpload(existing.fileName, watStamp(existing.createdAt));
+    const name = finished.fileName ?? "that file";
+    const message = input.documentId ? webDuplicate(name, watStamp(finished.createdAt)) : duplicateUpload(name, watStamp(finished.createdAt));
     return { ok: false, message };
   }
-  if (existing && existing.id !== input.documentId && documentOpenForResend(existing)) {
-    if (input.documentId) await db.delete(documents).where(eq(documents.id, input.documentId));
-    input = { ...input, documentId: existing.id };
+  const reusable = copies.find((row) => row.id !== input.documentId && documentOpenForResend(row));
+  if (reusable) {
+    for (const extra of copies) {
+      if (extra.id !== reusable.id && extra.id !== input.documentId) await db.delete(documents).where(eq(documents.id, extra.id));
+    }
+    if (input.documentId && input.documentId !== reusable.id) await db.delete(documents).where(eq(documents.id, input.documentId));
+    input = { ...input, documentId: reusable.id };
   }
+  const count = (await db.select().from(documents).where(eq(documents.projectId, input.projectId))).filter((row) => row.fileName && row.id !== input.documentId).length;
+  if (count >= 10 && !input.documentId) return { ok: false, message: "Send at most 10 files for one extraction." };
   const storageKey = `${input.workspaceId}/${input.projectId}/${digest}`;
   await putObject({ bucket: "documents", key: storageKey, bytes: input.bytes, contentType: detected.mime, sha256: digest }).catch(async () => {
     await db.insert(blobs).values({ storageKey, bytes: Buffer.from(input.bytes).toString("base64"), contentType: detected.mime }).onConflictDoNothing();
   });
-  const count = (await db.select().from(documents).where(eq(documents.projectId, input.projectId))).filter((row) => row.fileName && row.id !== input.documentId).length;
-  if (count >= 10 && !input.documentId) return { ok: false, message: "Send at most 10 files for one extraction." };
   const documentId = input.documentId ?? crypto.randomUUID();
   const base = {
     fileName: input.fileName,
@@ -261,8 +268,18 @@ export async function extractDocumentJob(db: Database, projectId: string): Promi
   if (scans.length > 0 && images.length > 0 && proposal.source !== "model") {
     plan.issues.push({ code: "V13", rule: "scan", severity: "warning", message: SCAN_V13, anchor: null, field: "Document", value: scans[0]?.fileName ?? "scan" });
   }
+  const lineItems = draft.bills.flatMap((bill) =>
+    bill.items
+      .filter((item) => item.rowKind === "item" && item.statedKobo !== null)
+      .map((item) => ({
+        itemRef: item.itemRef,
+        description: item.description || bill.title,
+        amountKobo: (item.statedKobo ?? 0n).toString(),
+      })),
+  );
   const saved = {
     ...serialisePlan(plan),
+    items: lineItems,
     clientName: draft.clientName,
     contractorName: draft.contractorName,
     source: proposal.source,
@@ -301,6 +318,7 @@ export async function extractDocumentJob(db: Database, projectId: string): Promi
       retentionBps: plan.retentionBps,
       defectsMonths: plan.defectsMonths,
       stages: plan.stages.map((stage) => ({ name: stage.name, amountKobo: stage.amountKobo.toString() })),
+      lines: lineItems.map((item, index) => `${index + 1}. ${item.description} — ${formatNaira(BigInt(item.amountKobo))}`),
       warnings: plan.issues.length,
     });
     }

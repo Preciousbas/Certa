@@ -81,8 +81,9 @@ export function bPrRole(): string {
 }
 
 /** B-PR-5 */
-export function bPr5(input: { project: string }): string {
-  return `\u2705 Project created: **${e(input.project)}**.\nNext: upload the signed contract and the priced BoQ.`;
+export function bPr5(input: { project: string; start?: string }): string {
+  const when = input.start ? `\nWork starts ${e(input.start)}.` : "";
+  return `\u2705 Project created: **${e(input.project)}**.${when}\nNext: upload the signed contract and the priced BoQ.`;
 }
 
 /** B-IN-1 */
@@ -146,6 +147,10 @@ export function bUp1(input: { fileName: string; pagesOrSheets: string }): string
 }
 
 /** B-UP-2 */
+export function bUp9(): string {
+  return "Already reading";
+}
+
 export function bUp2(): string {
   return "Reading your documents now. This usually takes 1\u20133 minutes for a contract and BoQ. I'll message you when the figures are ready.";
 }
@@ -194,7 +199,7 @@ export function bEx1(input: {
   return [
     `Figures ready for ${e(input.project)}:`,
     `Contract sum: ${e(input.sum)} (VAT ${e(input.vatPct)}% included)`,
-    `Stages: ${input.stages} \u00b7 Retention: ${e(input.retentionPct)}% \u00b7 Defects period: ${input.months} months`,
+    `Stages: ${input.stages} ${input.stages === 1 ? "stage" : "stages"} \u00b7 Retention: ${e(input.retentionPct)}% \u00b7 Defects period: ${input.months} months`,
     `${input.warnings} things to check.`,
     "Tap **Review figures** to check each one against your documents.",
   ].join("\n");
@@ -510,6 +515,11 @@ export function bGe9(): string {
 /** B-RV-3 Nothing in the review queue. */
 export function bRv3(input: { project: string }): string {
   return `Nothing is waiting for you on ${e(input.project)}.`;
+}
+
+/** A document job is still queued or running, so the review queue is not empty. */
+export function bRv4(input: { project: string }): string {
+  return `I'm still reading the documents on ${e(input.project)}.`;
 }
 
 /** B-CF-1 After the consultant certifies. */

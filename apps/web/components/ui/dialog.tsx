@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useRef } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import type { ReactNode } from "react";
 
 export function ConfirmDialog({
@@ -86,13 +86,19 @@ export function ProjectSwitcher({
   projects: { id: string; name: string }[];
   currentId: string | null;
 }) {
+  const [pathId, setPathId] = useState<string | null>(null);
+  useEffect(() => {
+    const match = window.location.pathname.match(/\/app\/p\/([^/]+)/);
+    setPathId(match?.[1] ?? null);
+  }, []);
   if (projects.length === 0) return null;
+  const selected = pathId && projects.some((project) => project.id === pathId) ? pathId : (currentId ?? projects[0]?.id);
   return (
     <label className="switcher">
       <span className="nav-label">Project</span>
       <select
         aria-label="Switch project"
-        value={currentId ?? projects[0]?.id}
+        value={selected}
         onChange={(event) => {
           window.location.href = `/app/p/${event.target.value}`;
         }}

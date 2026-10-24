@@ -34,7 +34,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
           sample={data?.isDemo === true}
           syncing={data?.project.chainSync === "updating"}
           projectId={data?.project.id ?? null}
-          projects={data ? [{ id: data.project.id, name: data.project.name }] : []}
+          projects={data?.projects ?? []}
           factory={`${factory.slice(0, 6)}…${factory.slice(-4)}`}
           factoryHref={explorerAddress(SEPOLIA_CHAIN_ID, factory)}
           supportEmail={supportEmail}

@@ -148,7 +148,7 @@ export async function ProjectTimeline({ projectId, cursor }: { projectId: string
       <aside className="card glance">
         <h2>Project at a glance</h2>
         <p>{project.siteLocation}</p>
-        <p>{stageRows.length} stages</p>
+        <p>{stageRows.length === 1 ? "1 stage" : `${stageRows.length} stages`}</p>
         <p>{shots.length} photos</p>
         <p>Released <MoneyAmount kobo={releasedKobo.toString()} usdc={releasedUsdc.toString()} /></p>
       </aside>
