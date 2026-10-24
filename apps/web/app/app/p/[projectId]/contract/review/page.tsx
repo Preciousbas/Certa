@@ -19,7 +19,9 @@ type Review = {
   empty?: boolean;
   contractSumLabel: string;
   stageTotalLabel: string;
+  stageCountLabel?: string;
   match: boolean;
+  items?: { label: string }[];
   issues: Row[];
   message?: string;
 };
@@ -111,7 +113,14 @@ export default function ReviewPage() {
         <>
           <section className="card">
             <p>Contract sum {review.contractSumLabel}</p>
-            <p>Stage total {review.stageTotalLabel}</p>
+            <p>{review.stageCountLabel ?? "Stages"} · stage total {review.stageTotalLabel}</p>
+            {(review.items ?? []).length > 0 ? (
+              <ul className="plain">
+                {(review.items ?? []).map((item) => (
+                  <li key={item.label}>{item.label}</li>
+                ))}
+              </ul>
+            ) : null}
             <p className="muted">{review.match ? "The stage total matches the contract sum." : "The stage total does not match the contract sum."}</p>
           </section>
           {review.issues.length === 0 ? <p className="muted">Nothing to check. The figures have a source.</p> : null}

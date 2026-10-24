@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useRef } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import type { ReactNode } from "react";
 
 export function ConfirmDialog({
@@ -86,18 +86,46 @@ export function ProjectSwitcher({
   projects: { id: string; name: string }[];
   currentId: string | null;
 }) {
-  if (projects.length === 0) return null;
+  const [listed, setListed] = useState(projects);
+  const [pathId, setPathId] = useState<string | null>(null);
+  useEffect(() => {
+    const match = window.location.pathname.match(/\/app\/p\/([^/]+)/);
+    setPathId(match?.[1] ?? null);
+    let stop = false;
+    async function loadMemberships() {
+      const initData = window.Telegram?.WebApp?.initData;
+      if (!initData) return;
+      const headers = new Headers();
+      headers.set("authorization", `tma ${initData}`);
+      const response = await fetch("/api/projects", { headers }).catch(() => null);
+      if (!response?.ok || stop) return;
+      const body = (await response.json()) as { projects?: { projectId: string; name: string }[] };
+      if (!body.projects || body.projects.length === 0) return;
+      setListed(body.projects.map((project) => ({ id: project.projectId, name: project.name })));
+    }
+    const onReady = () => {
+      void loadMemberships();
+    };
+    void loadMemberships();
+    window.addEventListener("certa-telegram-ready", onReady);
+    return () => {
+      stop = true;
+      window.removeEventListener("certa-telegram-ready", onReady);
+    };
+  }, []);
+  if (listed.length === 0) return null;
+  const selected = pathId && listed.some((project) => project.id === pathId) ? pathId : (currentId ?? listed[0]?.id);
   return (
     <label className="switcher">
       <span className="nav-label">Project</span>
       <select
         aria-label="Switch project"
-        value={currentId ?? projects[0]?.id}
+        value={selected}
         onChange={(event) => {
           window.location.href = `/app/p/${event.target.value}`;
         }}
       >
-        {projects.map((project) => (
+        {listed.map((project) => (
           <option key={project.id} value={project.id}>
             {project.name}
           </option>

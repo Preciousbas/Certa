@@ -60,6 +60,10 @@ export function acceptDeepLink(projectId: string): string {
   return reviewLink(projectId);
 }
 
+export function stageCountPhrase(count: number): string {
+  return `${count} ${count === 1 ? "stage" : "stages"}`;
+}
+
 export function figuresReady(input: {
   project: string;
   sum: string;
@@ -69,12 +73,14 @@ export function figuresReady(input: {
   months: number;
   warnings: number;
   link: string;
+  lines?: string[];
 }): string {
   return [
     `Figures ready for ${input.project}:`,
     `Contract sum: ${input.sum} (VAT ${input.vatPct}% included)`,
-    `Stages: ${input.stages} · Retention: ${input.retentionPct}% · Defects period: ${input.months} months`,
+    `Stages: ${stageCountPhrase(input.stages)} · Retention: ${input.retentionPct}% · Defects period: ${input.months} months`,
     `${input.warnings} things to check.`,
+    ...(input.lines ?? []),
     "Tap Review figures to check each one against your documents.",
     input.link,
   ].join("\n");

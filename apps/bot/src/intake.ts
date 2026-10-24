@@ -1,5 +1,6 @@
 import type { ContractSummary } from "@certa/ai";
 import { formatMoneyPair, formatNgnFromKobo } from "@certa/shared";
+import { stageCountPhrase } from "../../../src/server/intake/messages.js";
 
 /** Matches CertaEscrow.MAX_STAGES. */
 export const MAX_CONTRACT_STAGES = 64;
@@ -30,7 +31,7 @@ export function contractNote(summary: Pick<ContractSummary, "stages" | "contract
   const shown = summary.stages.slice(0, 30).map((stage, index) => `${index + 1}. ${stage.name}`);
   const rest = summary.stages.length - shown.length;
   if (rest > 0) shown.push(`${rest} further stages are on the project.`);
-  return [`${summary.stages.length} stages`, money, "", ...shown].join("\n");
+  return [stageCountPhrase(summary.stages.length), money, "", ...shown].join("\n");
 }
 
 export function contractGaps(summary: ContractSummary): GapQuestion[] {
@@ -120,7 +121,7 @@ export function applyGapAnswer(
 
 export function savedContractMessage(stageCount: number, code: string): string {
   return [
-    `${stageCount} stages are saved.`,
+    `${stageCount === 1 ? "1 stage is saved." : `${stageCount} stages are saved.`}`,
     "Money stays unlocked until both sides accept this summary.",
     `Contractor code: ${code}`,
     "The site pin is not on the map yet.",

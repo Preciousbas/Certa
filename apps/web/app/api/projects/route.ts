@@ -1,11 +1,11 @@
-import { getDatabase, memberships, projects, startOwnProject, CONTRACT_SIDES } from "@certa/db";
+import { getDatabase, startOwnProject, CONTRACT_SIDES } from "@certa/db";
 import { joinDeepLink } from "@certa/shared";
-import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { attachCookies } from "../../../../../src/server/auth/authenticate";
 import { failureResponse } from "../../../../../src/server/auth/errors";
-import { allows, type Role } from "../../../../../src/server/auth/matrix";
+import { allows } from "../../../../../src/server/auth/matrix";
 import { isRole } from "../../../../../src/server/auth/rbac";
+import { listMemberProjects } from "../../../lib/member-projects";
 import { apiError } from "../../../lib/schemas";
 import { requireUser } from "../../../lib/with-auth";
 
@@ -27,16 +27,13 @@ export async function GET(request: Request) {
   if (auth instanceof Response) return auth;
   try {
     const db = await getDatabase();
-    const rows = await db
-      .select({ projectId: memberships.projectId, role: memberships.role, name: projects.name })
-      .from(memberships)
-      .innerJoin(projects, eq(projects.id, memberships.projectId))
-      .where(and(eq(memberships.userId, auth.user.id), eq(memberships.status, "active")));
-    const visible = rows.flatMap((row) => {
-      if (!isRole(row.role)) return [];
-      const role: Role = row.role;
-      return [{ projectId: row.projectId, name: row.name, role, canInvite: allows(role, "invite_extra") }];
-    });
+    const rows = await listMemberProjects(db, auth.user.id);
+    const visible = rows.map((row) => ({
+      projectId: row.project.id,
+      name: row.project.name,
+      role: row.role,
+      canInvite: isRole(row.role) && allows(row.role, "invite_extra"),
+    }));
     return attachCookies(Response.json({ projects: visible }), auth.setCookies);
   } catch (error) {
     return attachCookies(failureResponse(error), auth.setCookies);

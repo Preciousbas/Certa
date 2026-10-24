@@ -17,6 +17,7 @@ import { koboFromUsdc, usdcFromNgnKobo } from "@certa/shared";
 import { and, eq } from "drizzle-orm";
 import { parseNaira, formatNaira } from "../../lib/money/kobo.js";
 import { InvalidMoney } from "../../lib/money/kobo.js";
+import { readSucceeded } from "../../server/intake/choose.js";
 import { acceptPlan, enqueueExtraction } from "../../server/intake/flow.js";
 import { enqueueJob } from "../../server/jobs/enqueue.js";
 import { transitionStage } from "../../server/stages/transition.js";
@@ -78,9 +79,11 @@ import {
   bRv1,
   bRv2,
   bRv3,
+  bRv4,
   bSt6,
   bUp1,
   bUp2,
+  bUp9,
   bUp8,
   bVa1,
   bVa1Amount,
@@ -126,17 +129,30 @@ export async function beginUpload(db: Database, actor: Actor, now: Date): Promis
   return say(bUp8(), uploadDoneKeyboard());
 }
 
+function readFailed(file: { status: string; parseStatus: string | null }): boolean {
+  return file.status === "failed" || file.parseStatus === "failed";
+}
+
+function parseInFlight(file: { id: string; status: string; parseStatus: string | null }, openJobs: { dedupeKey: string | null; status: string }[]): boolean {
+  if (readSucceeded(file) || readFailed(file)) return false;
+  const existing = openJobs.find((job) => job.dedupeKey === `parse:${file.id}`);
+  return existing?.status === "queued" || existing?.status === "running";
+}
+
 export async function retryDocuments(db: Database, actor: Actor): Promise<Outbound> {
   if (!actor.project) return say(bUp2());
   const files = await db.select().from(documents).where(eq(documents.projectId, actor.project.id));
-  for (const file of files) {
-    if (file.status === "parsed" && file.parseStatus === "parsed") continue;
+  const openJobs = await db.select().from(jobs);
+  const waiting = files.filter((file) => parseInFlight(file, openJobs));
+  const idle = files.filter((file) => !readSucceeded(file) && !parseInFlight(file, openJobs));
+  if (waiting.length > 0 && idle.length === 0) return say(bUp9());
+  for (const file of idle) {
     await db.update(documents).set({ status: "uploaded", parseStatus: "pending", failureCode: null }).where(eq(documents.id, file.id));
     const dedupeKey = `parse:${file.id}`;
-    const existing = (await db.select().from(jobs).where(eq(jobs.dedupeKey, dedupeKey)))[0];
-    if (existing && existing.status !== "running") {
+    const existing = openJobs.find((job) => job.dedupeKey === dedupeKey);
+    if (existing) {
       await db.update(jobs).set({ status: "queued", attempts: 0, lastError: null, runAt: new Date(), updatedAt: new Date() }).where(eq(jobs.id, existing.id));
-    } else if (!existing) {
+    } else {
       await enqueueJob(db, { kind: "parse_document", payload: { documentId: file.id }, dedupeKey });
     }
   }
@@ -313,6 +329,24 @@ export async function myStages(db: Database, actor: Actor): Promise<Outbound> {
   return say(bSt6({ project: actor.project.name, lines }));
 }
 
+async function documentsStillReading(db: Database, projectId: string): Promise<boolean> {
+  const files = await db.select().from(documents).where(eq(documents.projectId, projectId));
+  const ids = new Set(files.map((file) => file.id));
+  const settled = new Set(files.filter((file) => readSucceeded(file) || readFailed(file)).map((file) => file.id));
+  const open = await db.select().from(jobs);
+  const cutoff = Date.now() - 10 * 60 * 1000;
+  return open.some((job) => {
+    if (job.status !== "queued" && job.status !== "running") return false;
+    if (job.status === "running" && job.updatedAt.getTime() < cutoff) return false;
+    const payload = job.payload ?? {};
+    if (job.kind === "extract_contract") return payload.projectId === projectId;
+    if (job.kind === "parse_document") {
+      return typeof payload.documentId === "string" && ids.has(payload.documentId) && !settled.has(payload.documentId);
+    }
+    return false;
+  });
+}
+
 export async function reviewQueue(db: Database, actor: Actor, deps: EngineDeps): Promise<Outbound> {
   const denied = forbid(actor, ["client", "consultant"], "consultant");
   if (denied || !actor.project) return denied ?? say(bRv3({ project: "this project" }));
@@ -320,7 +354,10 @@ export async function reviewQueue(db: Database, actor: Actor, deps: EngineDeps):
   const waiting = rows.filter((stage) =>
     actor.role === "consultant" ? stage.status === "awaiting_certification" || stage.status === "needs_more_evidence" : stage.status === "awaiting_client_approval",
   );
-  if (waiting.length === 0 || !waiting[0]) return say(bRv3({ project: actor.project.name }));
+  if (waiting.length === 0 || !waiting[0]) {
+    if (await documentsStillReading(db, actor.project.id)) return say(bRv4({ project: actor.project.name }));
+    return say(bRv3({ project: actor.project.name }));
+  }
   const stage = waiting[0];
   if (actor.role === "client") return approvalPrompt(db, actor, stage.id, deps);
   return say(bCf1({ n: stage.stageIndex + 1 }), certifyKeyboard(appUrl(deps), stage.id));

@@ -83,6 +83,7 @@ export async function notifyFigures(
     retentionBps: number;
     defectsMonths: number;
     stages: SavedStage[];
+    lines?: string[];
     warnings: number;
     send?: TelegramSender;
   },
@@ -94,6 +95,7 @@ export async function notifyFigures(
     sum: input.contractSumKobo === null ? "not found" : formatNaira(input.contractSumKobo),
     vatPct: pctFromBps(input.vatBps),
     stages: input.stages.length,
+    lines: input.lines,
     retentionPct: pctFromBps(input.retentionBps),
     months: input.defectsMonths,
     warnings: input.warnings,
