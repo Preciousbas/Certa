@@ -35,6 +35,23 @@ function authHeaders(): Headers {
   return headers;
 }
 
+function waitForInitData(timeoutMs = 4000): Promise<void> {
+  if (window.Telegram?.WebApp?.initData) return Promise.resolve();
+  return new Promise((resolve) => {
+    const finish = () => {
+      window.clearInterval(poll);
+      window.clearTimeout(timeout);
+      window.removeEventListener("certa-telegram-ready", finish);
+      resolve();
+    };
+    window.addEventListener("certa-telegram-ready", finish);
+    const poll = window.setInterval(() => {
+      if (window.Telegram?.WebApp?.initData) finish();
+    }, 100);
+    const timeout = window.setTimeout(finish, timeoutMs);
+  });
+}
+
 function projectIdFromPath(): string {
   return window.location.pathname.split("/")[3] ?? "";
 }
@@ -54,10 +71,24 @@ export default function ReviewPage() {
   const [confirming, setConfirming] = useState(false);
 
   useEffect(() => {
-    const headers = authHeaders();
-    void fetch(`/api/projects/${projectIdFromPath()}/contract`, { headers })
-      .then(async (response) => {
-        const body = (await response.json()) as Review;
+    let cancelled = false;
+    void (async () => {
+      await waitForInitData();
+      if (cancelled) return;
+      const read = (headers: Headers) =>
+        fetch(`/api/projects/${projectIdFromPath()}/contract`, { headers }).then(async (response) => ({
+          response,
+          body: (await response.json()) as Review,
+        }));
+      try {
+        let result = await read(authHeaders());
+        if (result.response.status === 401) {
+          await new Promise((resolve) => window.setTimeout(resolve, 800));
+          if (cancelled) return;
+          result = await read(authHeaders());
+        }
+        if (cancelled) return;
+        const { response, body } = result;
         if (!response.ok) {
           setState("error");
           setError(body.message ?? "The figures could not be loaded.");
@@ -69,14 +100,19 @@ export default function ReviewPage() {
         }
         setReview(body);
         setState("ready");
-      })
-      .catch(() => {
+      } catch {
+        if (cancelled) return;
         setState("error");
         setError("The figures could not be loaded.");
-      });
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   async function act(row: Row, action: "correct" | "keep") {
+    await waitForInitData();
     const headers = authHeaders();
     headers.set("content-type", "application/json");
     const response = await fetch(`/api/projects/${projectIdFromPath()}/contract`, {
@@ -95,6 +131,7 @@ export default function ReviewPage() {
   }
 
   async function send() {
+    await waitForInitData();
     const headers = authHeaders();
     headers.set("content-type", "application/json");
     const response = await fetch(`/api/projects/${projectIdFromPath()}/contract`, { method: "POST", headers, body: JSON.stringify({ send: true }) });
