@@ -284,7 +284,7 @@ export function createBot(token: string, deps: BotDeps): Bot<BotContext> {
       return;
     }
     if (loaded.summary.stages.length > MAX_CONTRACT_STAGES) {
-      await ctx.reply(`This file has ${loaded.summary.stages.length} stages. A project can hold ${MAX_CONTRACT_STAGES}.`);
+      await ctx.reply(`This file has ${loaded.summary.stages.length === 1 ? "1 stage" : `${loaded.summary.stages.length} stages`}. A project can hold ${MAX_CONTRACT_STAGES}.`);
       return;
     }
     const rate = { koboPerUsdc: BigInt(loaded.koboPerUsdc), asOf: loaded.asOf };
@@ -514,7 +514,7 @@ export function createBot(token: string, deps: BotDeps): Bot<BotContext> {
     const done = stageRows.filter((stage) => stage.status === "released").length;
     await say(
       ctx,
-      `${row.project.name}\n${await moneyLine(row.project.contractSumKobo, row.project.fxRateLocked)}\n${done} of ${stageRows.length} stages paid.`,
+      `${row.project.name}\n${await moneyLine(row.project.contractSumKobo, row.project.fxRateLocked)}\n${done} of ${stageRows.length} ${stageRows.length === 1 ? "stage" : "stages"} paid.`,
     );
   });
 

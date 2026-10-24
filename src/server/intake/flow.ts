@@ -26,6 +26,7 @@ import { notifyFigures, notifyPlanShared, notifyReadFailed } from "./notify.js";
 import { parseBytes, type Transcriber } from "./parse.js";
 import { detectFile, failureMessage, UPLOAD_MAX_BYTES } from "./detect.js";
 import { documentOpenForResend } from "./status.js";
+import { formatNaira } from "../../lib/money/kobo.js";
 import { validateDraft, type ValidatedPlan } from "./validate.js";
 
 async function readStored(storageKey: string): Promise<Uint8Array | null> {
@@ -266,8 +267,18 @@ export async function extractDocumentJob(db: Database, projectId: string): Promi
   if (scans.length > 0 && images.length > 0 && proposal.source !== "model") {
     plan.issues.push({ code: "V13", rule: "scan", severity: "warning", message: SCAN_V13, anchor: null, field: "Document", value: scans[0]?.fileName ?? "scan" });
   }
+  const lineItems = draft.bills.flatMap((bill) =>
+    bill.items
+      .filter((item) => item.rowKind === "item" && item.statedKobo !== null)
+      .map((item) => ({
+        itemRef: item.itemRef,
+        description: item.description || bill.title,
+        amountKobo: (item.statedKobo ?? 0n).toString(),
+      })),
+  );
   const saved = {
     ...serialisePlan(plan),
+    items: lineItems,
     clientName: draft.clientName,
     contractorName: draft.contractorName,
     source: proposal.source,
@@ -306,6 +317,7 @@ export async function extractDocumentJob(db: Database, projectId: string): Promi
       retentionBps: plan.retentionBps,
       defectsMonths: plan.defectsMonths,
       stages: plan.stages.map((stage) => ({ name: stage.name, amountKobo: stage.amountKobo.toString() })),
+      lines: lineItems.map((item, index) => `${index + 1}. ${item.description} — ${formatNaira(BigInt(item.amountKobo))}`),
       warnings: plan.issues.length,
     });
     }

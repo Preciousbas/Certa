@@ -195,7 +195,7 @@ export function bEx1(input: {
   return [
     `Figures ready for ${e(input.project)}:`,
     `Contract sum: ${e(input.sum)} (VAT ${e(input.vatPct)}% included)`,
-    `Stages: ${input.stages} \u00b7 Retention: ${e(input.retentionPct)}% \u00b7 Defects period: ${input.months} months`,
+    `Stages: ${input.stages} ${input.stages === 1 ? "stage" : "stages"} \u00b7 Retention: ${e(input.retentionPct)}% \u00b7 Defects period: ${input.months} months`,
     `${input.warnings} things to check.`,
     "Tap **Review figures** to check each one against your documents.",
   ].join("\n");
