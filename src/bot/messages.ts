@@ -512,6 +512,11 @@ export function bRv3(input: { project: string }): string {
   return `Nothing is waiting for you on ${e(input.project)}.`;
 }
 
+/** A document job is still queued or running, so the review queue is not empty. */
+export function bRv4(input: { project: string }): string {
+  return `I'm still reading the documents on ${e(input.project)}.`;
+}
+
 /** B-CF-1 After the consultant certifies. */
 export function bCf1(input: { n: number }): string {
   return `Stage ${input.n} is certified. The client has been asked to approve payment.`;

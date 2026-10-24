@@ -78,6 +78,7 @@ import {
   bRv1,
   bRv2,
   bRv3,
+  bRv4,
   bSt6,
   bUp1,
   bUp2,
@@ -313,6 +314,19 @@ export async function myStages(db: Database, actor: Actor): Promise<Outbound> {
   return say(bSt6({ project: actor.project.name, lines }));
 }
 
+async function documentsStillReading(db: Database, projectId: string): Promise<boolean> {
+  const files = await db.select().from(documents).where(eq(documents.projectId, projectId));
+  const ids = new Set(files.map((file) => file.id));
+  const open = await db.select().from(jobs);
+  return open.some((job) => {
+    if (job.status !== "queued" && job.status !== "running") return false;
+    const payload = job.payload ?? {};
+    if (job.kind === "extract_contract") return payload.projectId === projectId;
+    if (job.kind === "parse_document") return typeof payload.documentId === "string" && ids.has(payload.documentId);
+    return false;
+  });
+}
+
 export async function reviewQueue(db: Database, actor: Actor, deps: EngineDeps): Promise<Outbound> {
   const denied = forbid(actor, ["client", "consultant"], "consultant");
   if (denied || !actor.project) return denied ?? say(bRv3({ project: "this project" }));
@@ -320,7 +334,10 @@ export async function reviewQueue(db: Database, actor: Actor, deps: EngineDeps):
   const waiting = rows.filter((stage) =>
     actor.role === "consultant" ? stage.status === "awaiting_certification" || stage.status === "needs_more_evidence" : stage.status === "awaiting_client_approval",
   );
-  if (waiting.length === 0 || !waiting[0]) return say(bRv3({ project: actor.project.name }));
+  if (waiting.length === 0 || !waiting[0]) {
+    if (await documentsStillReading(db, actor.project.id)) return say(bRv4({ project: actor.project.name }));
+    return say(bRv3({ project: actor.project.name }));
+  }
   const stage = waiting[0];
   if (actor.role === "client") return approvalPrompt(db, actor, stage.id, deps);
   return say(bCf1({ n: stage.stageIndex + 1 }), certifyKeyboard(appUrl(deps), stage.id));
