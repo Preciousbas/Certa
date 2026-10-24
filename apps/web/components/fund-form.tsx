@@ -7,6 +7,7 @@ import { SEPOLIA_CHAIN_ID, explorerAddress, explorerTx } from "../lib/explorer";
 import { MoneyAmount } from "./money";
 import { useMoneyUnit } from "./money";
 import { useTelegramMainButton } from "./telegram";
+import { NO_STAGES_TO_FUND, showFundLock } from "../lib/fund-lock";
 import { ConfirmDialog } from "./ui/dialog";
 import { SegmentedToggle } from "./ui/button";
 
@@ -51,6 +52,7 @@ export function FundForm({ projectId, defaultUpTo, stages, rateLabel }: Props) {
   const nairaLabel = formatNaira(kobo);
   const usdcLabel = shortUsdc(usdc);
   const stageSpan = lines.length === 0 ? "none" : `stages 1–${limit + 1}`;
+  const canLock = showFundLock(stages.length, kobo);
 
   async function onSubmit(event?: FormEvent) {
     event?.preventDefault();
@@ -100,7 +102,7 @@ export function FundForm({ projectId, defaultUpTo, stages, rateLabel }: Props) {
     }
   }
 
-  useTelegramMainButton(`Lock ${nairaLabel} in escrow`, () => setConfirm(true), !receipt && !pending);
+  useTelegramMainButton(`Lock ${nairaLabel} in escrow`, () => setConfirm(true), !receipt && !pending && canLock);
 
   if (receipt) {
     const proof = receipt.txHash ? explorerTx(SEPOLIA_CHAIN_ID, receipt.txHash) : "";
@@ -177,10 +179,13 @@ export function FundForm({ projectId, defaultUpTo, stages, rateLabel }: Props) {
         </div>
         <p className="muted">Total to lock: {nairaLabel} ({usdcLabel})</p>
       </div>
-      <button className={`ui-btn ${confirm ? "ui-btn-secondary" : "ui-btn-primary"} btn-block`} type="submit" disabled={pending || lines.length === 0}>
-        {pending ? "Working…" : `Lock ${money.unit === "usdc" ? usdcLabel : nairaLabel} in escrow`}
-      </button>
-      {lines.length === 0 ? <p className="muted">Every stage in this range is already locked.</p> : null}
+      {canLock ? (
+        <button className={`ui-btn ${confirm ? "ui-btn-secondary" : "ui-btn-primary"} btn-block`} type="submit" disabled={pending}>
+          {pending ? "Working…" : `Lock ${money.unit === "usdc" ? usdcLabel : nairaLabel} in escrow`}
+        </button>
+      ) : (
+        <p className="muted">{NO_STAGES_TO_FUND}</p>
+      )}
       {message ? <p className="toast" role="status">{message}</p> : null}
       <ConfirmDialog
         open={confirm}
