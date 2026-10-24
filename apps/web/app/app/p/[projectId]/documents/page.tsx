@@ -157,7 +157,7 @@ export default function DocumentsPage() {
           Retry
         </button>
       ) : null}
-      <p className="muted">Button Extract figures is enabled once a file is Read.</p>
+      <p className="muted">You can extract figures once the file has been read.</p>
     </div>
   );
 }

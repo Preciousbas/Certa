@@ -200,7 +200,10 @@ async function switchProject(db: Database, actor: Awaited<ReturnType<typeof load
   const ok = await setActiveProject(db, actor.telegramId, projectId, actor.userId);
   if (!ok) return { messages: [], edit: { text: bGe4() } };
   const fresh = await loadActor(db, { id: actor.fromId, firstName: actor.firstName }, deps.now ? deps.now() : new Date());
-  return showMenu(db, fresh, deps);
+  const menu = await showMenu(db, fresh, deps);
+  const name = fresh.project?.name;
+  if (name && menu.messages[0]) menu.messages[0].text = `Now working on ${name}.\n${menu.messages[0].text}`;
+  return menu;
 }
 
 export async function verdictText(id: string, params: Record<string, string | number>): Promise<string> {
