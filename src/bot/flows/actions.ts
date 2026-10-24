@@ -17,6 +17,7 @@ import { koboFromUsdc, usdcFromNgnKobo } from "@certa/shared";
 import { and, eq } from "drizzle-orm";
 import { parseNaira, formatNaira } from "../../lib/money/kobo.js";
 import { InvalidMoney } from "../../lib/money/kobo.js";
+import { readSucceeded } from "../../server/intake/choose.js";
 import { acceptPlan, enqueueExtraction } from "../../server/intake/flow.js";
 import { enqueueJob } from "../../server/jobs/enqueue.js";
 import { transitionStage } from "../../server/stages/transition.js";
@@ -128,16 +129,23 @@ export async function beginUpload(db: Database, actor: Actor, now: Date): Promis
   return say(bUp8(), uploadDoneKeyboard());
 }
 
+function readFailed(file: { status: string; parseStatus: string | null }): boolean {
+  return file.status === "failed" || file.parseStatus === "failed";
+}
+
+function parseInFlight(file: { id: string; status: string; parseStatus: string | null }, openJobs: { dedupeKey: string | null; status: string }[]): boolean {
+  if (readSucceeded(file) || readFailed(file)) return false;
+  const existing = openJobs.find((job) => job.dedupeKey === `parse:${file.id}`);
+  return existing?.status === "queued" || existing?.status === "running";
+}
+
 export async function retryDocuments(db: Database, actor: Actor): Promise<Outbound> {
   if (!actor.project) return say(bUp2());
   const files = await db.select().from(documents).where(eq(documents.projectId, actor.project.id));
-  const unfinished = files.filter((file) => !(file.status === "parsed" && file.parseStatus === "parsed"));
   const openJobs = await db.select().from(jobs);
-  const idle = unfinished.filter((file) => {
-    const existing = openJobs.find((job) => job.dedupeKey === `parse:${file.id}`);
-    return !existing || (existing.status !== "queued" && existing.status !== "running");
-  });
-  if (unfinished.length > 0 && idle.length === 0) return say(bUp9());
+  const waiting = files.filter((file) => parseInFlight(file, openJobs));
+  const idle = files.filter((file) => !readSucceeded(file) && !parseInFlight(file, openJobs));
+  if (waiting.length > 0 && idle.length === 0) return say(bUp9());
   for (const file of idle) {
     await db.update(documents).set({ status: "uploaded", parseStatus: "pending", failureCode: null }).where(eq(documents.id, file.id));
     const dedupeKey = `parse:${file.id}`;
@@ -324,12 +332,17 @@ export async function myStages(db: Database, actor: Actor): Promise<Outbound> {
 async function documentsStillReading(db: Database, projectId: string): Promise<boolean> {
   const files = await db.select().from(documents).where(eq(documents.projectId, projectId));
   const ids = new Set(files.map((file) => file.id));
+  const settled = new Set(files.filter((file) => readSucceeded(file) || readFailed(file)).map((file) => file.id));
   const open = await db.select().from(jobs);
+  const cutoff = Date.now() - 10 * 60 * 1000;
   return open.some((job) => {
     if (job.status !== "queued" && job.status !== "running") return false;
+    if (job.status === "running" && job.updatedAt.getTime() < cutoff) return false;
     const payload = job.payload ?? {};
     if (job.kind === "extract_contract") return payload.projectId === projectId;
-    if (job.kind === "parse_document") return typeof payload.documentId === "string" && ids.has(payload.documentId);
+    if (job.kind === "parse_document") {
+      return typeof payload.documentId === "string" && ids.has(payload.documentId) && !settled.has(payload.documentId);
+    }
     return false;
   });
 }
