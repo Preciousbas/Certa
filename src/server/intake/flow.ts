@@ -76,7 +76,8 @@ export async function ingestDocument(
   const finished = copies.find((row) => row.id !== input.documentId && !documentOpenForResend(row));
   if (finished) {
     if (input.documentId) await db.delete(documents).where(eq(documents.id, input.documentId));
-    const message = input.documentId ? webDuplicate(finished.fileName, watStamp(finished.createdAt)) : duplicateUpload(finished.fileName, watStamp(finished.createdAt));
+    const name = finished.fileName ?? "that file";
+    const message = input.documentId ? webDuplicate(name, watStamp(finished.createdAt)) : duplicateUpload(name, watStamp(finished.createdAt));
     return { ok: false, message };
   }
   const reusable = copies.find((row) => row.id !== input.documentId && documentOpenForResend(row));
