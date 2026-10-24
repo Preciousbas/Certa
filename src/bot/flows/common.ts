@@ -1,5 +1,6 @@
-import { memberships, parties, projects, stages, users, upsertTelegramUser, type Database } from "@certa/db";
+import { documents, memberships, parties, projects, stages, users, upsertTelegramUser, type Database } from "@certa/db";
 import { and, eq } from "drizzle-orm";
+import { documentOpenForResend } from "../../server/intake/status.js";
 import { roleMenu, startKeyboard, type BotKeyboard } from "../keyboards.js";
 import { bGe1, bSt1, bSt3 } from "../messages.js";
 import { readSession, type SessionRecord } from "../state.js";
@@ -109,12 +110,18 @@ export async function waitingCount(db: Database, projectId: string, role: string
   return 0;
 }
 
+async function projectNeedsRetry(db: Database, projectId: string): Promise<boolean> {
+  const files = await db.select().from(documents).where(eq(documents.projectId, projectId));
+  return files.some((file) => documentOpenForResend(file));
+}
+
 export async function menuFor(db: Database, actor: Actor, deps: EngineDeps): Promise<Outbound> {
   if (!actor.project || !actor.role) return say(bSt1(), startKeyboard());
   const waiting = await waitingCount(db, actor.project.id, actor.role);
+  const retry = await projectNeedsRetry(db, actor.project.id);
   return say(
     bSt3({ firstName: actor.firstName, project: actor.project.name, roleLabel: roleLabel(actor.role) }),
-    roleMenu(actor.role, waiting, appUrl(deps), actor.project.id),
+    roleMenu(actor.role, waiting, appUrl(deps), actor.project.id, retry),
   );
 }
 

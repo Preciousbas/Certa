@@ -2,6 +2,8 @@ import { getDatabase, jobs } from "@certa/db";
 import { and, eq, lte, sql } from "drizzle-orm";
 
 const BACKOFF_MS = [30_000, 120_000, 600_000, 3_600_000, 21_600_000];
+const TELEGRAM_REPLAY_MS = 10 * 60 * 1000;
+export const STALE_TELEGRAM_UPDATE = "telegram.update older than 10 minutes";
 
 export type JobHandler = (payload: Record<string, unknown>) => Promise<void>;
 
@@ -35,6 +37,13 @@ export async function drainJobs(
         .limit(1)
     )[0];
     if (!due) break;
+    if (due.kind === "telegram.update" && Date.now() - due.createdAt.getTime() > TELEGRAM_REPLAY_MS) {
+      await db
+        .update(jobs)
+        .set({ status: "skipped", lastError: STALE_TELEGRAM_UPDATE, updatedAt: new Date() })
+        .where(and(eq(jobs.id, due.id), eq(jobs.status, "queued")));
+      continue;
+    }
     const claimed = await db
       .update(jobs)
       .set({ status: "running", updatedAt: new Date() })

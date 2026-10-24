@@ -17,6 +17,7 @@ import { and, desc, eq, inArray } from "drizzle-orm";
 import { audit } from "../audit.js";
 import { enqueueJob } from "../jobs/enqueue.js";
 import { createSignedUploadUrl, getObject, putObject } from "../storage.js";
+import { chooseDocuments, readSucceeded } from "./choose.js";
 import { citationIssues } from "./citations.js";
 import { contentHash, sha256Hex } from "./hash.js";
 import { interpretGrid, type GridRow } from "./interpret.js";
@@ -116,6 +117,21 @@ export async function ingestDocument(
   return { ok: true, documentId, pagesOrSheets };
 }
 
+async function markJobDone(db: Database, dedupeKey: string): Promise<void> {
+  await db
+    .update(jobs)
+    .set({ status: "succeeded", lastError: null, updatedAt: new Date() })
+    .where(and(eq(jobs.dedupeKey, dedupeKey), inArray(jobs.status, ["queued", "running"])));
+}
+
+async function markExtractDone(db: Database, projectId: string): Promise<void> {
+  const running = await db.select().from(jobs).where(and(eq(jobs.kind, "extract_contract"), eq(jobs.status, "running")));
+  for (const job of running) {
+    if (job.payload?.projectId !== projectId) continue;
+    await db.update(jobs).set({ status: "succeeded", lastError: null, updatedAt: new Date() }).where(eq(jobs.id, job.id));
+  }
+}
+
 async function requeueParse(db: Database, documentId: string): Promise<void> {
   const dedupeKey = `parse:${documentId}`;
   const existing = (await db.select().from(jobs).where(eq(jobs.dedupeKey, dedupeKey)))[0];
@@ -127,6 +143,14 @@ async function requeueParse(db: Database, documentId: string): Promise<void> {
 }
 
 export async function parseDocumentJob(db: Database, documentId: string, transcribe?: Transcriber): Promise<void> {
+  try {
+    await readDocument(db, documentId, transcribe);
+  } finally {
+    await markJobDone(db, `parse:${documentId}`);
+  }
+}
+
+async function readDocument(db: Database, documentId: string, transcribe?: Transcriber): Promise<void> {
   const document = (await db.select().from(documents).where(eq(documents.id, documentId)))[0];
   if (!document) return;
   const already = await db.select().from(documentChunks).where(eq(documentChunks.documentId, documentId));
@@ -203,7 +227,7 @@ function serialisePlan(plan: ValidatedPlan) {
 
 export async function enqueueExtraction(db: Database, projectId: string): Promise<void> {
   const files = (await db.select().from(documents).where(eq(documents.projectId, projectId))).filter((row) => row.status === "parsed" || row.status === "uploaded");
-  const key = createHash("sha256").update(files.map((file) => file.sha256).sort().join(":")).digest("hex");
+  const key = createHash("sha256").update([...new Set(files.map((file) => file.sha256))].sort().join(":")).digest("hex");
   const dedupeKey = `extract:${projectId}:${key}:contract_extract.v1`;
   const existing = (await db.select().from(jobs).where(eq(jobs.dedupeKey, dedupeKey)))[0];
   if (existing) {
@@ -215,13 +239,25 @@ export async function enqueueExtraction(db: Database, projectId: string): Promis
 }
 
 export async function extractDocumentJob(db: Database, projectId: string): Promise<ValidatedPlan | null> {
-  const heldFiles = await db.select().from(documents).where(eq(documents.projectId, projectId));
-  for (const file of heldFiles) {
-    if (file.status === "parsed" || file.status === "failed") continue;
-    if (file.kind === "upload" && !file.detectedType) continue;
-    await parseDocumentJob(db, file.id);
+  try {
+    return await extractProject(db, projectId);
+  } finally {
+    await markExtractDone(db, projectId);
   }
-  const files = (await db.select().from(documents).where(eq(documents.projectId, projectId))).filter((row) => row.status === "parsed");
+}
+
+async function extractProject(db: Database, projectId: string): Promise<ValidatedPlan | null> {
+  const heldFiles = await db.select().from(documents).where(eq(documents.projectId, projectId));
+  const readHashes = new Set(heldFiles.filter(readSucceeded).map((file) => file.sha256));
+  const pending = new Map<string, (typeof heldFiles)[number]>();
+  for (const file of heldFiles) {
+    if (file.status === "parsed" || file.status === "failed" || readHashes.has(file.sha256)) continue;
+    if (file.kind === "upload" && !file.detectedType) continue;
+    const current = pending.get(file.sha256);
+    if (!current || file.createdAt.getTime() > current.createdAt.getTime()) pending.set(file.sha256, file);
+  }
+  for (const file of pending.values()) await parseDocumentJob(db, file.id);
+  const files = chooseDocuments((await db.select().from(documents).where(eq(documents.projectId, projectId))).filter((row) => row.status === "parsed"));
   const project = (await db.select().from(projects).where(eq(projects.id, projectId)))[0];
   if (!project || files.length === 0) {
     const tried = heldFiles.filter((file) => file.detectedType || file.status === "failed");
@@ -344,8 +380,8 @@ export async function sendPlan(
   if (!saved?.contractSumKobo || !saved.stages?.length || hard.length > 0) {
     return { ok: false, message: `Totals don't reconcile yet: fix the ${hard.length} red items before sending.` };
   }
-  const files = (await db.select().from(documents).where(eq(documents.projectId, input.projectId))).filter((row) => row.status === "parsed");
-  const hashes = files.map((row) => row.sha256).sort();
+  const files = chooseDocuments((await db.select().from(documents).where(eq(documents.projectId, input.projectId))).filter((row) => row.status === "parsed"));
+  const hashes = [...new Set(files.map((row) => row.sha256))].sort();
   const hash = contentHash({
     terms: { retention_bps: saved.retentionBps ?? 0, defects_period_days: saved.defectsPeriodDays ?? 180 },
     stages: saved.stages.map((stage) => ({ name: stage.name, amount_kobo: stage.amountKobo, amount_micro: stage.amountMicro, criteria: stage.acceptanceCriteria, tags: stage.tags })),
@@ -396,7 +432,7 @@ export async function sendPlan(
     tags: stage.tags,
     pour: stage.tags.includes("concrete_pour"),
   })));
-  const grid = ((await db.select().from(documents).where(eq(documents.projectId, input.projectId)))[0]?.parsedJson as { rows?: GridRow[] } | null)?.rows ?? [];
+  const grid = files.flatMap((file) => ((file.parsedJson as { rows?: GridRow[] } | null)?.rows ?? []));
   const draft = interpretGrid(grid);
   const items = draft.bills.flatMap((bill) => bill.items.filter((item) => item.rowKind === "item" && item.statedKobo !== null).map((item) => ({
     contractVersionId: created.id,

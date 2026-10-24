@@ -1,3 +1,4 @@
+import { countNoun } from "../lib/count-noun.js";
 import { escapeHtml } from "./html.js";
 
 const e = escapeHtml;
@@ -199,15 +200,16 @@ export function bEx1(input: {
   return [
     `Figures ready for ${e(input.project)}:`,
     `Contract sum: ${e(input.sum)} (VAT ${e(input.vatPct)}% included)`,
-    `Stages: ${input.stages} ${input.stages === 1 ? "stage" : "stages"} \u00b7 Retention: ${e(input.retentionPct)}% \u00b7 Defects period: ${input.months} months`,
-    `${input.warnings} things to check.`,
+    `Stages: ${countNoun(input.stages, "stage")} \u00b7 Retention: ${e(input.retentionPct)}% \u00b7 Defects period: ${countNoun(input.months, "month")}`,
+    `${countNoun(input.warnings, "thing")} to check.`,
     "Tap **Review figures** to check each one against your documents.",
   ].join("\n");
 }
 
 /** B-EX-2 */
 export function bEx2(input: { count: number; firstIssue: string }): string {
-  return `I've read your documents, but ${input.count} figures don't add up. For example: ${e(input.firstIssue)}\nTap **Review figures** to fix them before sending the plan to your contractor.`;
+  const figures = countNoun(input.count, "figure");
+  return `I've read your documents, but ${figures} ${input.count === 1 ? "doesn't" : "don't"} add up. For example: ${e(input.firstIssue)}\nTap **Review figures** to fix them before sending the plan to your contractor.`;
 }
 
 /** B-EX-3 */
@@ -233,7 +235,7 @@ export function bAc1(input: {
     `${e(input.clientName)} has shared the payment plan for **${e(input.project)}**.`,
     `Contract sum: ${e(input.sum)}`,
     input.stageLines,
-    `Retention: ${e(input.retentionPct)}% until ${input.months} months after completion.`,
+    `Retention: ${e(input.retentionPct)}% until ${countNoun(input.months, "month")} after completion.`,
     "Please check it carefully. Tap **Review plan** to see each figure and where it came from.",
   ].join("\n");
 }
@@ -250,7 +252,7 @@ export function bAc3(input: { dateTimeWat: string; clientName: string }): string
 
 /** B-AC-4 */
 export function bAc4(input: { project: string; hoursLeft: number }): string {
-  return `Reminder: the payment plan for ${e(input.project)} is waiting for your answer. ${input.hoursLeft} hours left before it goes to the consultant.`;
+  return `Reminder: the payment plan for ${e(input.project)} is waiting for your answer. ${countNoun(input.hoursLeft, "hour")} left before it goes to the consultant.`;
 }
 
 /** B-FU-1 */

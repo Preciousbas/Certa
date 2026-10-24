@@ -1,8 +1,9 @@
-import { botSessions, changeRequests, disputes, getDatabase, memberships, parties, payments, projects, stages, users, workspaceMembers } from "@certa/db";
+import { botSessions, changeRequests, disputes, getDatabase, parties, payments, projects, stages, users, workspaceMembers } from "@certa/db";
 import { formatNgnFromKobo, formatUsdc } from "@certa/shared";
-import { and, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { cookies } from "next/headers";
 import { openSession } from "../../../src/server/auth/sessionOpen";
+import { listMemberProjects } from "./member-projects";
 import { displayPair } from "./money-display";
 import { syncEscrow } from "./sync-escrow";
 
@@ -33,12 +34,7 @@ export async function loadProject() {
       const signedIn = (await db.select().from(users).where(eq(users.id, claims.sub)))[0];
       if (signedIn) {
         signedInUser = signedIn;
-        const links = await db
-          .select({ projectId: memberships.projectId })
-          .from(memberships)
-          .where(and(eq(memberships.userId, signedIn.id), eq(memberships.status, "active")));
-        const ids = new Set(links.map((link) => link.projectId));
-        memberProjects = projectRows.filter((row) => ids.has(row.id));
+        memberProjects = (await listMemberProjects(db, signedIn.id)).map((row) => row.project);
         const bot = (await db.select().from(botSessions).where(eq(botSessions.telegramId, signedIn.telegramId)))[0];
         activeId = bot?.activeProjectId ?? null;
       }

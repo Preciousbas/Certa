@@ -1,5 +1,5 @@
-import { getDatabase, telegramUpdates, type Database } from "@certa/db";
-import { eq } from "drizzle-orm";
+import { getDatabase, jobs, telegramUpdates, type Database } from "@certa/db";
+import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { enqueueJob } from "../jobs/enqueue.js";
 import { tokensMatch } from "./http.js";
@@ -31,11 +31,24 @@ export function requireWebhookSecret(request: Request): Response | null {
   return null;
 }
 
+export async function finishQueuedTelegramUpdate(db: Database, updateId: number): Promise<void> {
+  await db
+    .update(jobs)
+    .set({ status: "succeeded", updatedAt: new Date() })
+    .where(and(eq(jobs.dedupeKey, `telegram.update:${updateId}`), eq(jobs.status, "queued")));
+  await db
+    .update(telegramUpdates)
+    .set({ processedAt: new Date() })
+    .where(eq(telegramUpdates.updateId, BigInt(updateId)));
+}
+
 export async function acceptTelegramUpdate(
   request: Request,
   deps?: {
     db?: Database;
     dispatch?: (update: TelegramUpdate) => Promise<void>;
+    quickMs?: number;
+    onSlow?: (done: Promise<void>) => void;
   },
 ): Promise<Response> {
   const denied = requireWebhookSecret(request);
@@ -64,7 +77,7 @@ export async function acceptTelegramUpdate(
   const result = await Promise.race([
     done,
     new Promise<"timeout">((resolve) => {
-      timeoutId = setTimeout(() => resolve("timeout"), QUICK_MS);
+      timeoutId = setTimeout(() => resolve("timeout"), deps?.quickMs ?? QUICK_MS);
     }),
   ]);
   if (timeoutId) clearTimeout(timeoutId);
@@ -76,6 +89,10 @@ export async function acceptTelegramUpdate(
       dedupeKey: `telegram.update:${parsed.data.update_id}`,
       payload,
     });
+    const slow = done.then(async (outcome) => {
+      if (outcome === "ok") await finishQueuedTelegramUpdate(db, parsed.data.update_id);
+    });
+    deps?.onSlow?.(slow);
     return new Response(null, { status: 200 });
   }
   if (result === "ok") {
