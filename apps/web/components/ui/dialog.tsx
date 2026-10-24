@@ -1,7 +1,9 @@
 "use client";
 
+import { usePathname } from "next/navigation";
 import { useEffect, useId, useRef, useState } from "react";
 import type { ReactNode } from "react";
+import { selectedProjectId } from "../../lib/selected-project";
 
 export function ConfirmDialog({
   open,
@@ -86,11 +88,9 @@ export function ProjectSwitcher({
   projects: { id: string; name: string }[];
   currentId: string | null;
 }) {
+  const path = usePathname();
   const [listed, setListed] = useState(projects);
-  const [pathId, setPathId] = useState<string | null>(null);
   useEffect(() => {
-    const match = window.location.pathname.match(/\/app\/p\/([^/]+)/);
-    setPathId(match?.[1] ?? null);
     let stop = false;
     async function loadMemberships() {
       const initData = window.Telegram?.WebApp?.initData;
@@ -114,7 +114,7 @@ export function ProjectSwitcher({
     };
   }, []);
   if (listed.length === 0) return null;
-  const selected = pathId && listed.some((project) => project.id === pathId) ? pathId : (currentId ?? listed[0]?.id);
+  const selected = selectedProjectId(listed, path, currentId);
   return (
     <label className="switcher">
       <span className="nav-label">Project</span>
