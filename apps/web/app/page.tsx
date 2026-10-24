@@ -20,7 +20,8 @@ export default async function LandingPage() {
     }
   }
   const factory = process.env.ESCROW_FACTORY_ADDRESS || PUBLISHED_FACTORY;
-  const support = process.env.SUPPORT_EMAIL || "support@example.com";
+  const configured = process.env.SUPPORT_EMAIL?.trim();
+  const support = configured && configured !== "support@example.com" ? configured : "";
   const video = process.env.DEMO_VIDEO_URL;
   const year = new Date().getFullYear();
   return (
@@ -95,7 +96,7 @@ export default async function LandingPage() {
           <a href={explorerAddress(SEPOLIA_CHAIN_ID, factory)}>
             {factory.slice(0, 6)}…{factory.slice(-4)} ↗
           </a>{" "}
-          · Support: {support} · <a href="/terms">Terms</a> · <a href="/privacy">Privacy</a>
+          {support ? ` · Support: ${support}` : ""} · <a href="/terms">Terms</a> · <a href="/privacy">Privacy</a>
         </p>
         <p>© {year} Certa</p>
       </footer>

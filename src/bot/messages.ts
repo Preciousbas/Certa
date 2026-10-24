@@ -469,16 +469,22 @@ export function bGe2(input: { requestId: string }): string {
 }
 
 /** B-GE-3 */
-export function bGe3(input: { supportEmail: string }): string {
-  return [
+export function bGe3(input: { supportEmail?: string | null }): string {
+  const lines = [
     "Here's what I can do:",
     "/menu \u2014 your options for this project",
     "/projects \u2014 switch project",
     "/photos \u2014 send stage photos",
     "/review \u2014 things waiting for you",
     "/wallet \u2014 your payments",
-    `Need a person? Email ${e(input.supportEmail)}.`,
-  ].join("\n");
+  ];
+  const email = input.supportEmail?.trim();
+  if (email && email !== "support@example.com") lines.push(`Need a person? Email ${e(email)}.`);
+  return lines.join("\n");
+}
+
+export function bUnknown(): string {
+  return "I don't know that command. Send /menu or /help.";
 }
 
 /** B-GE-4 Unknown or expired callback. */

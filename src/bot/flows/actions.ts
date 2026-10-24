@@ -39,6 +39,7 @@ import {
   manualStagesKeyboard,
   retryPhotosKeyboard,
   photoListKeyboard,
+  readingKeyboard,
   uploadDoneKeyboard,
   variationReplyKeyboard,
   variationSendKeyboard,
@@ -140,7 +141,7 @@ export async function retryDocuments(db: Database, actor: Actor): Promise<Outbou
     }
   }
   await enqueueExtraction(db, actor.project.id);
-  return say(bUp2());
+  return say(bUp2(), readingKeyboard());
 }
 
 export async function finishUpload(db: Database, actor: Actor, now: Date): Promise<Outbound> {
@@ -148,7 +149,7 @@ export async function finishUpload(db: Database, actor: Actor, now: Date): Promi
   if (denied || !actor.project) return denied ?? say(bUp2());
   await enqueueExtraction(db, actor.project.id);
   await writeSession(db, actor.telegramId, { step: null, projectId: actor.project.id }, now);
-  return say(bUp2());
+  return say(bUp2(), readingKeyboard());
 }
 
 export async function takeDocument(db: Database, actor: Actor, fileName: string, bytes: Uint8Array, deps: EngineDeps): Promise<Outbound> {

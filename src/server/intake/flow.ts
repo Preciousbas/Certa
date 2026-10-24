@@ -25,6 +25,7 @@ import { docModelSupportsImages, proposeWithModel } from "./model.js";
 import { notifyFigures, notifyPlanShared, notifyReadFailed } from "./notify.js";
 import { parseBytes, type Transcriber } from "./parse.js";
 import { detectFile, failureMessage, UPLOAD_MAX_BYTES } from "./detect.js";
+import { documentOpenForResend } from "./status.js";
 import { validateDraft, type ValidatedPlan } from "./validate.js";
 
 async function readStored(storageKey: string): Promise<Uint8Array | null> {
@@ -71,10 +72,14 @@ export async function ingestDocument(
   if (!detected.ok) return { ok: false, message: failureMessage(detected.failure, input.fileName) };
   const digest = sha256Hex(input.bytes);
   const existing = (await db.select().from(documents).where(and(eq(documents.projectId, input.projectId), eq(documents.sha256, digest))))[0];
-  if (existing?.fileName && existing.id !== input.documentId) {
+  if (existing?.fileName && existing.id !== input.documentId && !documentOpenForResend(existing)) {
     if (input.documentId) await db.delete(documents).where(eq(documents.id, input.documentId));
     const message = input.documentId ? webDuplicate(existing.fileName, watStamp(existing.createdAt)) : duplicateUpload(existing.fileName, watStamp(existing.createdAt));
     return { ok: false, message };
+  }
+  if (existing && existing.id !== input.documentId && documentOpenForResend(existing)) {
+    if (input.documentId) await db.delete(documents).where(eq(documents.id, input.documentId));
+    input = { ...input, documentId: existing.id };
   }
   const storageKey = `${input.workspaceId}/${input.projectId}/${digest}`;
   await putObject({ bucket: "documents", key: storageKey, bytes: input.bytes, contentType: detected.mime, sha256: digest }).catch(async () => {
@@ -99,9 +104,19 @@ export async function ingestDocument(
   else {
     await db.insert(documents).values({ id: documentId, projectId: input.projectId, workspaceId: input.workspaceId, ...base });
   }
-  await enqueueJob(db, { kind: "parse_document", payload: { documentId }, dedupeKey: `parse:${documentId}` });
+  await requeueParse(db, documentId);
   const pagesOrSheets = detected.kind === "csv" || detected.kind === "xlsx" || detected.kind === "xls" ? "1 sheet" : "1 page";
   return { ok: true, documentId, pagesOrSheets };
+}
+
+async function requeueParse(db: Database, documentId: string): Promise<void> {
+  const dedupeKey = `parse:${documentId}`;
+  const existing = (await db.select().from(jobs).where(eq(jobs.dedupeKey, dedupeKey)))[0];
+  if (existing && existing.status !== "running") {
+    await db.update(jobs).set({ status: "queued", attempts: 0, lastError: null, runAt: new Date(), updatedAt: new Date() }).where(eq(jobs.id, existing.id));
+    return;
+  }
+  if (!existing) await enqueueJob(db, { kind: "parse_document", payload: { documentId }, dedupeKey });
 }
 
 export async function parseDocumentJob(db: Database, documentId: string, transcribe?: Transcriber): Promise<void> {

@@ -1,5 +1,6 @@
 import { changeRequests, disputes, getDatabase, parties, payments, projects, stages, users, workspaceMembers } from "@certa/db";
-import { formatMoneyPair, formatNgnFromKobo, formatUsdc } from "@certa/shared";
+import { formatNgnFromKobo, formatUsdc } from "@certa/shared";
+import { displayPair } from "./money-display";
 import { eq } from "drizzle-orm";
 import { syncEscrow } from "./sync-escrow";
 
@@ -45,10 +46,7 @@ export async function loadProject() {
     payments: paymentRows,
     workspaceRole: membership?.role,
     isDemo: project.termsHash === "seeded-terms",
-    pair:
-      project.fxRateLocked > 0n
-        ? formatMoneyPair(project.contractSumKobo, project.fxRateLocked)
-        : formatNgnFromKobo(project.contractSumKobo),
+    pair: displayPair(project.contractSumKobo, project.fxRateLocked),
     ngn: formatNgnFromKobo(project.contractSumKobo),
     usdc: formatUsdc(project.contractSumUsdc),
   };

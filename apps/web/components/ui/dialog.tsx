@@ -124,7 +124,8 @@ export function AppFooter({
       {fxLine ? <p>{fxLine}</p> : null}
       <p>
         Network: Ethereum Sepolia (test network) · Escrow factory{" "}
-        <a href={factoryHref}>{factory} ↗</a> · Support: {supportEmail} · <a href="/terms">Terms</a> · <a href="/privacy">Privacy</a>
+        <a href={factoryHref}>{factory} ↗</a>
+        {supportEmail ? ` · Support: ${supportEmail}` : ""} · <a href="/terms">Terms</a> · <a href="/privacy">Privacy</a>
       </p>
       <p>© {year} Certa</p>
     </footer>

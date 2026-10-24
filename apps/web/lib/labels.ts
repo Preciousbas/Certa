@@ -60,7 +60,7 @@ export function changeSummary(
     return {
       title: `${kind}: ${titled.data.title}`,
       kobo: signed.toString(),
-      usdc: usdcFromNgnKobo(abs, fxRateKoboPerUsdc).toString(),
+      usdc: fxRateKoboPerUsdc > 0n ? usdcFromNgnKobo(abs, fxRateKoboPerUsdc).toString() : "0",
     };
   }
   if (type !== "new_stage" && type !== "stage_amount" && type !== "terms") return null;
@@ -72,7 +72,7 @@ export function changeSummary(
   return {
     title: `${kind}: ${parsed.data.name}`,
     kobo: kobo.toString(),
-    usdc: usdcFromNgnKobo(kobo, fxRateKoboPerUsdc).toString(),
+    usdc: fxRateKoboPerUsdc > 0n ? usdcFromNgnKobo(kobo, fxRateKoboPerUsdc).toString() : "0",
   };
 }
 

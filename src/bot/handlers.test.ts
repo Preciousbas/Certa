@@ -149,11 +149,15 @@ describe("bot handlers", () => {
     const asClient = await send({ type: "command", command: "menu", arg: "", from: client });
     expect(textOf(asClient)).toContain("Welcome back, Ada");
     expect(textOf(asClient)).toContain("Plot 14 Lekki");
-    expect(labels(asClient)).toEqual(["Upload contract or BoQ", "Review figures", "Fund", "Waiting for me (1)", "Invite people", "Project report", "Switch project"]);
+    expect(labels(asClient)).toEqual(["Upload contract or BoQ", "Review figures", "Fund", "Waiting for me (1)", "Invite people", "Project report", "New project", "Switch project"]);
     const asContractor = await send({ type: "command", command: "menu", arg: "", from: contractor });
-    expect(labels(asContractor)).toEqual(["Submit stage photos", "My stages", "Payments", "Propose change", "Switch project"]);
+    expect(labels(asContractor)).toEqual(["Submit stage photos", "My stages", "Payments", "Propose change", "New project", "Switch project"]);
     const asSub = await send({ type: "command", command: "menu", arg: "", from: sub });
-    expect(labels(asSub)).toEqual(["Submit stage photos", "My stages", "Payments"]);
+    expect(labels(asSub)).toEqual(["Submit stage photos", "My stages", "Payments", "New project"]);
+    const again = await send({ type: "command", command: "newproject", arg: "", from: client });
+    expect(textOf(again)).toContain("What's the project called?");
+    const unknown = await send({ type: "command", command: "nope", arg: "", from: client });
+    expect(textOf(unknown)).toBe("I don't know that command. Send /menu or /help.");
     const asConsultant = await send({ type: "command", command: "menu", arg: "", from: consultant });
     expect(labels(asConsultant)).toContain("Disputes");
     expect(labels(asConsultant)).toContain("Switch project");
@@ -403,7 +407,8 @@ describe("bot handlers", () => {
     const details = await send({ type: "callback", data: callbackData("wt", "show"), from: contractor });
     expect(textOf(details)).toContain("0x1111111111111111111111111111111111111111");
     const help = await send({ type: "command", command: "help", arg: "", from: client });
-    expect(textOf(help)).toContain("support@example.com");
+    expect(textOf(help)).toContain("/menu");
+    expect(textOf(help)).not.toContain("support@example.com");
     const denied = await send({ type: "command", command: "wallet", arg: "", from: client });
     expect(textOf(denied)).toContain("Only the contractor can do this");
   });
