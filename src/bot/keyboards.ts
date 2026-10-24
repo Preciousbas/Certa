@@ -31,36 +31,41 @@ export function roleSideKeyboard(): BotKeyboard {
   return [[tap("Client", "sd", "client")], [tap("Contractor", "sd", "contractor")]];
 }
 
-export function roleMenu(role: string, waiting: number, appUrl: string, projectId: string): BotKeyboard {
+function withRetry(rows: BotKeyboard, retry: boolean): BotKeyboard {
+  if (!retry) return rows;
+  return [...rows, [tap("Retry", "rx")]];
+}
+
+export function roleMenu(role: string, waiting: number, appUrl: string, projectId: string, retry = false): BotKeyboard {
   const base = appUrl.replace(/\/$/, "");
   if (role === "contractor") {
-    return [
+    return withRetry([
       [tap("Submit stage photos", "go", "photos")],
       [tap("My stages", "go", "stages")],
       [tap("Payments", "go", "wallet")],
       [tap("Propose change", "go", "change")],
       [tap("New project", "go", "create")],
       [tap("Switch project", "go", "switch")],
-    ];
+    ], retry);
   }
   if (role === "subcontractor") {
-    return [
+    return withRetry([
       [tap("Submit stage photos", "go", "photos")],
       [tap("My stages", "go", "stages")],
       [tap("Payments", "go", "wallet")],
       [tap("New project", "go", "create")],
-    ];
+    ], retry);
   }
   if (role === "consultant") {
-    return [
+    return withRetry([
       [tap(`Waiting for me (${waiting})`, "go", "review")],
       [tap("Project report", "go", "report")],
       [tap("Disputes", "go", "disputes")],
       [tap("New project", "go", "create")],
       [tap("Switch project", "go", "switch")],
-    ];
+    ], retry);
   }
-  return [
+  return withRetry([
     [tap("Upload contract or BoQ", "go", "upload")],
     [{ kind: "web_app", text: "Review figures", url: `${base}/mini/contract?project=${projectId}` }],
     [tap("Fund", "go", "fund")],
@@ -69,7 +74,7 @@ export function roleMenu(role: string, waiting: number, appUrl: string, projectI
     [tap("Project report", "go", "report")],
     [tap("New project", "go", "create")],
     [tap("Switch project", "go", "switch")],
-  ];
+  ], retry);
 }
 
 export function inviteRoleKeyboard(): BotKeyboard {
