@@ -1,6 +1,7 @@
 import { extractions, type Database } from "@certa/db";
 import { desc, eq } from "drizzle-orm";
 import { moneyKobo } from "./amounts.js";
+import { stageCountPhrase } from "./messages.js";
 import { formatNaira } from "../../lib/money/kobo.js";
 import { koboToMicro } from "../../lib/money/fx.js";
 import type { Issue } from "./validate.js";
@@ -17,9 +18,12 @@ type SavedStage = {
   number?: number;
 };
 
+type SavedItem = { itemRef?: string; description?: string; amountKobo?: string };
+
 type Saved = {
   contractSumKobo?: string | null;
   stages?: SavedStage[];
+  items?: SavedItem[];
   koboPerUsdc?: string;
   issues?: Issue[];
   source?: string;
@@ -40,8 +44,10 @@ export type ReviewPayload = {
   empty: false;
   contractSumLabel: string;
   stageTotalLabel: string;
+  stageCountLabel: string;
   match: boolean;
   source: string;
+  items: { label: string }[];
   issues: ReviewRow[];
 };
 
@@ -73,12 +79,17 @@ function payload(saved: Saved): ReviewPayload {
   const stages = saved.stages ?? [];
   const contract = saved.contractSumKobo ? BigInt(saved.contractSumKobo) : null;
   const total = stageTotal(stages);
+  const items = (saved.items ?? []).map((item, index) => ({
+    label: `${index + 1}. ${item.description || item.itemRef || "Item"} — ${formatNaira(BigInt(item.amountKobo ?? "0"))}`,
+  }));
   return {
     empty: false,
     contractSumLabel: contract === null ? "Not found" : formatNaira(contract),
     stageTotalLabel: formatNaira(total),
+    stageCountLabel: stageCountPhrase(stages.length),
     match: contract !== null && contract === total,
     source: saved.source ?? "parser",
+    items,
     issues: rowsFrom(saved.issues ?? []),
   };
 }

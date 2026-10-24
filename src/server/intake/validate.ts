@@ -83,6 +83,7 @@ function billNet(bill: DraftBill): bigint {
 }
 
 function renumber(built: Omit<StagePlan, "number" | "amountMicro">[], rate: bigint): StagePlan[] {
+  if (rate <= 0n) return built.map((stage, index) => ({ ...stage, number: index + 1, amountMicro: 0n }));
   const micros = allocateMicro(built.map((stage) => stage.amountKobo), rate);
   return built.map((stage, index) => ({ ...stage, number: index + 1, amountMicro: micros[index] ?? 0n }));
 }
