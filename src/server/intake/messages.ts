@@ -1,3 +1,5 @@
+import { countNoun } from "../../lib/count-noun.js";
+
 export function gotFile(fileName: string, pagesOrSheets: string): string {
   return `Got it: ${fileName} (${pagesOrSheets}). Send more files, or tap Done when you've sent everything.`;
 }
@@ -38,7 +40,7 @@ export function webDuplicate(fileName: string, date: string): string {
 export const UPLOAD_DROPPED = "Upload failed: the connection dropped. Your file wasn't saved. Try again.";
 
 export function totalsBlocked(count: number): string {
-  return `Totals don't reconcile yet: fix the ${count} red items before sending.`;
+  return `Totals don't reconcile yet: fix the ${countNoun(count, "red item")} before sending.`;
 }
 
 export const AGREED_LOCKED =
@@ -61,7 +63,7 @@ export function acceptDeepLink(projectId: string): string {
 }
 
 export function stageCountPhrase(count: number): string {
-  return `${count} ${count === 1 ? "stage" : "stages"}`;
+  return countNoun(count, "stage");
 }
 
 export function figuresReady(input: {
@@ -78,8 +80,8 @@ export function figuresReady(input: {
   return [
     `Figures ready for ${input.project}:`,
     `Contract sum: ${input.sum} (VAT ${input.vatPct}% included)`,
-    `Stages: ${stageCountPhrase(input.stages)} · Retention: ${input.retentionPct}% · Defects period: ${input.months} months`,
-    `${input.warnings} things to check.`,
+    `Stages: ${stageCountPhrase(input.stages)} · Retention: ${input.retentionPct}% · Defects period: ${countNoun(input.months, "month")}`,
+    `${countNoun(input.warnings, "thing")} to check.`,
     ...(input.lines ?? []),
     "Tap Review figures to check each one against your documents.",
     input.link,
@@ -99,14 +101,14 @@ export function planShared(input: {
     `${input.clientName} has shared the payment plan for ${input.project}.`,
     `Contract sum: ${input.sum}`,
     input.stageLines,
-    `Retention: ${input.retentionPct}% until ${input.months} months after completion.`,
+    `Retention: ${input.retentionPct}% until ${countNoun(input.months, "month")} after completion.`,
     "Please check it carefully. Tap Review plan to see each figure and where it came from.",
     input.link,
   ].join("\n");
 }
 
 export function replyReminder(project: string, hoursLeft: number): string {
-  return `Reminder: the payment plan for ${project} is waiting for your answer. ${hoursLeft} hours left before it goes to the consultant.`;
+  return `Reminder: the payment plan for ${project} is waiting for your answer. ${countNoun(hoursLeft, "hour")} left before it goes to the consultant.`;
 }
 
 export function watStamp(date: Date): string {
