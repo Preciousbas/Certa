@@ -19,7 +19,7 @@ import {
 import { requireMember } from "../../../src/server/auth/rbac";
 import { sideLabel } from "../../../src/server/projects/selfServe";
 import { copy, formatMoneyPair, formatNgnFromKobo, formatOfficialRate, joinDeepLink, parseStartPayload, type OfficialRate } from "@certa/shared";
-import { handleIncoming, toHtml, bGe2, bGe5, type BotKeyboard, type Inbound } from "../../../src/bot/index.js";
+import { handleIncoming, toHtml, bGe2, bGe5, bUp9, type BotKeyboard, type Inbound } from "../../../src/bot/index.js";
 import { randomUUID } from "node:crypto";
 import { conversations, createConversation, type ConversationFlavor } from "@grammyjs/conversations";
 import { limit } from "@grammyjs/ratelimiter";
@@ -656,8 +656,11 @@ export function createBot(token: string, deps: BotDeps): Bot<BotContext> {
     const who = person(ctx);
     if (!who) return;
     const slow = /^v1:(ap|cf|rj|jn|dp|va|vd|rx)/.test(ctx.callbackQuery.data);
-    if (slow) await ctx.answerCallbackQuery({ text: bGe5() });
-    else await ctx.answerCallbackQuery();
+    const retry = ctx.callbackQuery.data.startsWith("v1:rx");
+    if (!retry) {
+      if (slow) await ctx.answerCallbackQuery({ text: bGe5() });
+      else await ctx.answerCallbackQuery();
+    }
     try {
       const outbound = await handleIncoming(deps.db, { type: "callback", data: ctx.callbackQuery.data, from: who }, {
         paidWeather: deps.paidWeather,
@@ -668,8 +671,17 @@ export function createBot(token: string, deps: BotDeps): Bot<BotContext> {
           return { ok: true as const, explorerLink: hash ? `https://sepolia.etherscan.io/tx/${hash}` : "pending" };
         },
       });
+      if (retry) {
+        const text = outbound.messages[0]?.text ?? "";
+        if (text === bUp9()) {
+          await ctx.answerCallbackQuery({ text: bUp9() });
+          return;
+        }
+        await ctx.answerCallbackQuery({ text: bGe5() });
+      }
       await speak(ctx, outbound);
     } catch (error) {
+      if (retry) await ctx.answerCallbackQuery().catch(() => undefined);
       const requestId = requestIds.get(ctx) ?? "none";
       console.error(JSON.stringify({
         msg: "bot callback",

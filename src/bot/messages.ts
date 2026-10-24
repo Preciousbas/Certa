@@ -147,6 +147,10 @@ export function bUp1(input: { fileName: string; pagesOrSheets: string }): string
 }
 
 /** B-UP-2 */
+export function bUp9(): string {
+  return "Already reading";
+}
+
 export function bUp2(): string {
   return "Reading your documents now. This usually takes 1\u20133 minutes for a contract and BoQ. I'll message you when the figures are ready.";
 }

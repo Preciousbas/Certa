@@ -82,6 +82,7 @@ import {
   bSt6,
   bUp1,
   bUp2,
+  bUp9,
   bUp8,
   bVa1,
   bVa1Amount,
@@ -130,14 +131,20 @@ export async function beginUpload(db: Database, actor: Actor, now: Date): Promis
 export async function retryDocuments(db: Database, actor: Actor): Promise<Outbound> {
   if (!actor.project) return say(bUp2());
   const files = await db.select().from(documents).where(eq(documents.projectId, actor.project.id));
-  for (const file of files) {
-    if (file.status === "parsed" && file.parseStatus === "parsed") continue;
+  const unfinished = files.filter((file) => !(file.status === "parsed" && file.parseStatus === "parsed"));
+  const openJobs = await db.select().from(jobs);
+  const idle = unfinished.filter((file) => {
+    const existing = openJobs.find((job) => job.dedupeKey === `parse:${file.id}`);
+    return !existing || (existing.status !== "queued" && existing.status !== "running");
+  });
+  if (unfinished.length > 0 && idle.length === 0) return say(bUp9());
+  for (const file of idle) {
     await db.update(documents).set({ status: "uploaded", parseStatus: "pending", failureCode: null }).where(eq(documents.id, file.id));
     const dedupeKey = `parse:${file.id}`;
-    const existing = (await db.select().from(jobs).where(eq(jobs.dedupeKey, dedupeKey)))[0];
-    if (existing && existing.status !== "running") {
+    const existing = openJobs.find((job) => job.dedupeKey === dedupeKey);
+    if (existing) {
       await db.update(jobs).set({ status: "queued", attempts: 0, lastError: null, runAt: new Date(), updatedAt: new Date() }).where(eq(jobs.id, existing.id));
-    } else if (!existing) {
+    } else {
       await enqueueJob(db, { kind: "parse_document", payload: { documentId: file.id }, dedupeKey });
     }
   }
