@@ -67,7 +67,7 @@ export function roleMenu(role: string, waiting: number, appUrl: string, projectI
   }
   return withRetry([
     [tap("Upload contract or BoQ", "go", "upload")],
-    [{ kind: "web_app", text: "Review figures", url: `${base}/mini/contract?project=${projectId}` }],
+    [{ kind: "web_app", text: "Review figures", url: `${base}/app/p/${projectId}/contract/review` }],
     [tap("Fund", "go", "fund")],
     [tap(`Waiting for me (${waiting})`, "go", "review")],
     [tap("Invite people", "go", "invite")],
@@ -101,9 +101,9 @@ export function readingKeyboard(): BotKeyboard {
   return [[tap("Retry", "rx")]];
 }
 
-export function reviewFiguresKeyboard(appUrl: string, versionId: string): BotKeyboard {
+export function reviewFiguresKeyboard(appUrl: string, projectId: string): BotKeyboard {
   const base = appUrl.replace(/\/$/, "");
-  return [[{ kind: "web_app", text: "Review figures", url: `${base}/mini/contract?v=${versionId}` }]];
+  return [[{ kind: "web_app", text: "Review figures", url: `${base}/app/p/${projectId}/contract/review` }]];
 }
 
 export function manualStagesKeyboard(appUrl: string, projectId: string): BotKeyboard {

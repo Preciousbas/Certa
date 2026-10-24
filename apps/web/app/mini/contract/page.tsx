@@ -1,14 +1,11 @@
-import { MiniGo } from "../../../components/mini-go";
+import { redirect } from "next/navigation";
 import { loadProject } from "../../../lib/data";
 
-export default async function MiniContractPage() {
+export default async function MiniContractPage({ searchParams }: { searchParams: Promise<{ project?: string }> }) {
+  const query = await searchParams;
+  const requested = query.project?.trim();
+  if (requested) redirect(`/app/p/${requested}/contract/review`);
   const data = await loadProject();
-  return (
-    <div>
-      <p className="eyebrow">Agreement</p>
-      <h1>Review plan</h1>
-      <p>By accepting, you agree that these stages and amounts are the payment plan. Any later change needs both of you to accept again.</p>
-      {data ? <MiniGo href={`/app/p/${data.project.id}/contract`} label="Open the agreement" /> : <p>No agreement is open.</p>}
-    </div>
-  );
+  if (!data) return <p>No agreement is open.</p>;
+  redirect(`/app/p/${data.project.id}/contract/review`);
 }
