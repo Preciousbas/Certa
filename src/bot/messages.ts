@@ -81,8 +81,9 @@ export function bPrRole(): string {
 }
 
 /** B-PR-5 */
-export function bPr5(input: { project: string }): string {
-  return `\u2705 Project created: **${e(input.project)}**.\nNext: upload the signed contract and the priced BoQ.`;
+export function bPr5(input: { project: string; start?: string }): string {
+  const when = input.start ? `\nWork starts ${e(input.start)}.` : "";
+  return `\u2705 Project created: **${e(input.project)}**.${when}\nNext: upload the signed contract and the priced BoQ.`;
 }
 
 /** B-IN-1 */
