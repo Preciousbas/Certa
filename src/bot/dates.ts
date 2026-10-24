@@ -40,9 +40,9 @@ function iso(year: number, month: number, day: number): string | null {
 export function formatIsoDate(iso: string): string {
   const parsed = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
   if (!parsed) return iso;
-  const month = MONTHS[Number(parsed[2]) - 1];
+  const month = MONTHS[+(parsed[2] ?? "1") - 1];
   if (!month) return iso;
-  return `${Number(parsed[3])} ${month} ${parsed[1]}`;
+  return `${+(parsed[3] ?? "1")} ${month} ${parsed[1]}`;
 }
 
 export function formatWatDate(date: Date): string {
