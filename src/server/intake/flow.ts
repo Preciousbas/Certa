@@ -14,6 +14,7 @@ import {
   type Database,
 } from "@certa/db";
 import { and, desc, eq, inArray } from "drizzle-orm";
+import { fetchCbnRate } from "@certa/shared";
 import { audit } from "../audit.js";
 import { enqueueJob } from "../jobs/enqueue.js";
 import { createSignedUploadUrl, getObject, putObject } from "../storage.js";
@@ -29,6 +30,17 @@ import { detectFile, failureMessage, UPLOAD_MAX_BYTES } from "./detect.js";
 import { documentOpenForResend } from "./status.js";
 import { formatNaira } from "../../lib/money/kobo.js";
 import { validateDraft, type ValidatedPlan } from "./validate.js";
+
+async function lockLiveRate(db: Database, project: { id: string; fxRateLocked: bigint }): Promise<bigint> {
+  if (project.fxRateLocked > 0n) return project.fxRateLocked;
+  const live = await fetchCbnRate();
+  if (!live) return project.fxRateLocked;
+  await db
+    .update(projects)
+    .set({ fxRateLocked: live.koboPerUsdc, fxSource: `Central Bank of Nigeria ${live.asOf}`, fxLockedAt: new Date() })
+    .where(and(eq(projects.id, project.id), eq(projects.fxRateLocked, 0n)));
+  return live.koboPerUsdc;
+}
 
 async function readStored(storageKey: string): Promise<Uint8Array | null> {
   const remote = await getObject("documents", storageKey).catch(() => null);
@@ -277,7 +289,8 @@ async function extractProject(db: Database, projectId: string): Promise<Validate
     if (parsed?.rows) rows.push(...parsed.rows);
   }
   const draft = interpretGrid(rows);
-  const plan = validateDraft(draft, project.fxRateLocked);
+  const rate = await lockLiveRate(db, project);
+  const plan = validateDraft(draft, rate);
   const held = await db.select().from(documentChunks).where(inArray(documentChunks.documentId, files.map((file) => file.id)));
   plan.issues.push(...citationIssues(draft, held.map((chunk) => ({ anchor: chunk.anchor, content: chunk.content }))));
   const images: { mime: string; base64: string; filename: string }[] = [];
