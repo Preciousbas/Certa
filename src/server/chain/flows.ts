@@ -30,7 +30,8 @@ import { assertRolesDistinct, ConsultantRequired, getOrCreateWallet, type RoleWa
 
 export { ConsultantRequired };
 
-const GAS_FLOOR = 10_000_000_000_000_000n;
+const GAS_FLOOR = 1_000_000_000_000_000n;
+const GAS_TOPUP = 2_000_000_000_000_000n;
 const DAY_SECONDS = 86_400n;
 
 export class ChainRejected extends Error {
@@ -345,8 +346,8 @@ export async function topUpIfLow(db: Database, address: Hex, projectId: string, 
     to: address,
     data: "0x",
     projectId,
-    valueWei: GAS_FLOOR,
-    valueMicro: GAS_FLOOR,
+    valueWei: GAS_TOPUP,
+    valueMicro: GAS_TOPUP,
     intent: { event: "NativeTransfer" },
   }, port);
   if (project) {
