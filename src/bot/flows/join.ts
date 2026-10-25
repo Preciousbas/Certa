@@ -30,7 +30,8 @@ export async function joinWithCode(db: Database, actor: Actor, code: string, now
       const wallet = await getOrCreateWallet(db, { purpose, userId: party.userId ?? undefined, projectId: result.projectId });
       return { address: wallet.address, walletId: wallet.accountRef, mock: wallet.mock };
     });
-  } catch {
+  } catch (error) {
+    console.error(JSON.stringify({ msg: "join wallet", message: error instanceof Error ? error.message : "failed" }));
     return say(`${result.role === "consultant" ? bIn5({ project: result.projectName }) : bIn4({ project: result.projectName })}\n${bIn10()}`);
   }
   const clients = await memberUsers(db, result.projectId, "client");

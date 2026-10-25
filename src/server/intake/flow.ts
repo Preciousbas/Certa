@@ -26,7 +26,7 @@ import { contentHash, sha256Hex } from "./hash.js";
 import { interpretGrid, type BoqDraft, type GridRow } from "./interpret.js";
 import { badType, duplicateUpload, SCAN_V13, watStamp, webDuplicate } from "./messages.js";
 import { docModelSupportsImages, proposeWithModel } from "./model.js";
-import { notifyFigures, notifyPlanShared, notifyReadFailed } from "./notify.js";
+import { notifyFigures, notifyOnce, notifyPlanShared, notifyReadFailed } from "./notify.js";
 import { parseBytes, type Transcriber } from "./parse.js";
 import { detectFile, failureMessage, UPLOAD_MAX_BYTES } from "./detect.js";
 import { documentOpenForResend } from "./status.js";
@@ -436,6 +436,33 @@ export async function sendPlan(
     retention: String(saved.retentionBps ?? 0),
     document_hashes: hashes,
   });
+  const stageLines = saved.stages.map((stage, index) => `${index + 1}. ${stage.name}: ${formatNaira(BigInt(stage.amountKobo))}`).join("\n");
+  const named = extraction?.validatedJson as { clientName?: string | null } | null;
+  const sumKobo = BigInt(saved.contractSumKobo);
+  const share = (versionId: string) =>
+    notifyPlanShared(db, {
+      projectId: input.projectId,
+      versionId,
+      clientName: named?.clientName || "The client",
+      projectName: project.name,
+      sumKobo,
+      stageLines,
+      retentionBps: saved.retentionBps ?? 0,
+      defectsMonths: Math.round((saved.defectsPeriodDays ?? 180) / 30),
+    });
+  const latest = (await db.select().from(contractVersions).where(eq(contractVersions.projectId, input.projectId)).orderBy(desc(contractVersions.version)))[0];
+  if (latest?.status === "pending_acceptance" && latest.contentHash === hash) {
+    const existingStages = (await db.select().from(stages).where(eq(stages.contractVersionId, latest.id))).sort((a, b) => a.stageIndex - b.stageIndex);
+    for (const [index, stage] of existingStages.entries()) {
+      await db.update(stages).set({ stageIndex: index, onChainIdx: index }).where(eq(stages.id, stage.id));
+    }
+    await share(latest.id);
+    return { ok: true, versionId: latest.id, hash };
+  }
+  const rate = BigInt(saved.koboPerUsdc ?? project.fxRateLocked.toString());
+  if (rate <= 0n || saved.stages.some((stage) => BigInt(stage.amountMicro) === 0n)) {
+    return { ok: false, message: "The exchange rate is missing, so the USDC amounts are zero. Re-open Review figures and try again." };
+  }
   const previous = await db.select().from(contractVersions).where(eq(contractVersions.projectId, input.projectId));
   const version = previous.reduce((max, row) => Math.max(max, row.version), 0) + 1;
   const [created] = await db.insert(contractVersions).values({
@@ -463,7 +490,7 @@ export async function sendPlan(
   await db.insert(stages).values(saved.stages.map((stage, index) => ({
     projectId: input.projectId,
     workspaceId: project.workspaceId,
-    stageIndex: index + 1,
+    stageIndex: index,
     name: stage.name,
     description: stage.acceptanceCriteria.join(" "),
     amountNgnKobo: BigInt(stage.amountKobo),
@@ -500,17 +527,7 @@ export async function sendPlan(
   await enqueueJob(db, { kind: "contract_reply", payload: { projectId: input.projectId, versionId: created.id, hoursLeft: 24 }, dedupeKey: `reply:${created.id}:48`, runAt: new Date(replyAt + 48 * 3600_000) });
   await enqueueJob(db, { kind: "contract_reply", payload: { projectId: input.projectId, versionId: created.id, hoursLeft: 0 }, dedupeKey: `reply:${created.id}:72`, runAt: new Date(replyAt + 72 * 3600_000) });
   await audit(db, { action: "contract.sent", entity: "contract_version", entityId: created.id, projectId: input.projectId, workspaceId: project.workspaceId, actor: input.userId, after: { hash } });
-  const named = extraction?.validatedJson as { clientName?: string | null } | null;
-  await notifyPlanShared(db, {
-    projectId: input.projectId,
-    versionId: created.id,
-    clientName: named?.clientName || "The client",
-    projectName: project.name,
-    sumKobo: BigInt(saved.contractSumKobo),
-    stageLines: saved.stages.map((stage, index) => `${index + 1}. ${stage.name}: ${stage.amountKobo}`).join("\n"),
-    retentionBps: saved.retentionBps ?? 0,
-    defectsMonths: Math.round((saved.defectsPeriodDays ?? 180) / 30),
-  });
+  await share(created.id);
   return { ok: true, versionId: created.id, hash };
 }
 
@@ -545,6 +562,25 @@ export async function acceptPlan(
   await db.update(projects).set({ status: "active", currentContractVersionId: version.id, termsHash: version.contentHash }).where(eq(projects.id, input.projectId));
   await enqueueJob(db, { kind: "accept_terms_deferred", payload: { projectId: input.projectId, versionId: version.id, contentHash: version.contentHash }, dedupeKey: `accept-terms:${version.id}` });
   await audit(db, { action: "contract.accepted", entity: "contract_version", entityId: version.id, projectId: input.projectId, actor: input.userId, after: { hash: version.contentHash } });
+  const agreed = (await db.select().from(projects).where(eq(projects.id, input.projectId)))[0];
+  const clientMembers = await db
+    .select()
+    .from(memberships)
+    .where(and(eq(memberships.projectId, input.projectId), eq(memberships.role, "client"), eq(memberships.status, "active")));
+  if (clientMembers.length > 0) {
+    const people = await db.select().from(users).where(inArray(users.id, clientMembers.map((row) => row.userId)));
+    const base = (process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || "http://localhost:3000").replace(/\/$/, "");
+    for (const person of people) {
+      await notifyOnce(db, {
+        userId: person.id,
+        chatId: person.telegramId.toString(),
+        kind: "plan_agreed",
+        dedupeKey: `agreed:${version.id}:${person.id}`,
+        text: `Both sides agreed the plan for ${agreed?.name ?? "this project"}. Tap Open Fund to lock the money.`,
+        markup: { inline_keyboard: [[{ text: "Open Fund", web_app: { url: `${base}/mini/fund?project=${input.projectId}` } }]] },
+      });
+    }
+  }
   return { ok: true, both: true, hash: version.contentHash };
 }
 

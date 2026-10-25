@@ -11,6 +11,8 @@ import { rejectIfPaused } from "../../../../../../src/server/projects/pause";
 import { apiError, apiJson, fundInput, fundOutput } from "../../../../lib/schemas";
 import { withAuth } from "../../../../lib/with-auth";
 
+export const maxDuration = 300;
+
 export const POST = withAuth(
   async ({ db, project, json, userId }) => {
     const paused = rejectIfPaused(project.status);
@@ -22,6 +24,7 @@ export const POST = withAuth(
       .filter((stage) => stage.stageIndex <= input.data.upToStage)
       .sort((a, b) => a.stageIndex - b.stageIndex);
     if (rows.length === 0) return apiError(400, "No stages fall in that range.");
+    const chainUpTo = Math.max(rows.filter((stage) => stage.kind !== "mobilisation").length - 1, 0);
     const versions = await db.select().from(contractVersions).where(eq(contractVersions.projectId, project.id));
     if (versions.length > 0) {
       const current = versions.find((row) => row.id === project.currentContractVersionId) ?? versions.find((row) => row.status === "accepted");
@@ -35,34 +38,37 @@ export const POST = withAuth(
         return apiError(409, "Both sides accept the schedule before money can be locked.");
       }
     }
-    const rate = { koboPerUsdc: project.fxRateLocked };
     const quoted = await chainFundLines(
       project.escrowAddress ?? "",
       rows.map((stage) => ({ name: stage.name, stageIndex: stage.stageIndex })),
-      rate.koboPerUsdc,
+      project.fxRateLocked,
     ).catch(() => null);
     const priced = quoted ?? rows.map((stage) => ({ name: stage.name, usdc: stage.amountUsdc, kobo: stage.amountNgnKobo }));
     let amountUsdc = priced.reduce((sum, stage) => sum + stage.usdc, 0n);
-    let amountNgnKobo = rate ? koboFromUsdc(amountUsdc, rate.koboPerUsdc) : priced.reduce((sum, stage) => sum + stage.kobo, 0n);
+    const acceptedRate = versions.find((row) => row.status === "accepted");
+    const rateKobo = project.fxRateLocked > 0n ? project.fxRateLocked : (acceptedRate?.koboPerUsdc ?? 0n);
+    const summedKobo = priced.reduce((sum, stage) => sum + stage.kobo, 0n);
+    const nairaOf = (units: bigint) => (rateKobo > 0n ? koboFromUsdc(units, rateKobo) : summedKobo);
+    let amountNgnKobo = nairaOf(amountUsdc);
     let sentHash: Hex | null = null;
     let escrowFromChain = "";
     let locked: "pending" | "confirmed" = "pending";
     const escrow = project.escrowAddress ?? "";
     const payInNaira = input.data.currency === "ngn";
-    const accepted = versions.find((row) => row.status === "accepted");
+    const accepted = acceptedRate;
     if (!payInNaira && accepted) {
       if (!cdpConfigured()) return apiError(503, "The payment account is not configured.");
       try {
         const sent = await fundAccepted(db, {
           projectId: project.id,
-          upToStage: input.data.upToStage,
+          upToStage: chainUpTo,
           idempotencyKey: input.data.idempotencyKey,
         });
         sentHash = (sent.tx.txHash as Hex | null) ?? null;
         escrowFromChain = sent.escrow;
         locked = sent.tx.status === "confirmed" ? "confirmed" : "pending";
         amountUsdc = sent.amount;
-        if (rate) amountNgnKobo = koboFromUsdc(sent.amount, rate.koboPerUsdc);
+        amountNgnKobo = nairaOf(sent.amount);
       } catch (error) {
         const message = error instanceof Error ? error.message : "The fund transaction reverted.";
         const status = error instanceof ConsultantRequired ? 409 : error instanceof ChainRejected ? 400 : 502;
@@ -84,11 +90,11 @@ export const POST = withAuth(
       }
     } else if (!payInNaira && /^0x[a-fA-F0-9]{40}$/.test(escrow) && process.env.DEPLOYER_PRIVATE_KEY) {
       try {
-        const sent = await broadcastClientFund(escrow as Hex, input.data.upToStage);
+        const sent = await broadcastClientFund(escrow as Hex, chainUpTo);
         sentHash = sent.hash;
         locked = "confirmed";
         amountUsdc = sent.amount;
-        if (rate) amountNgnKobo = koboFromUsdc(sent.amount, rate.koboPerUsdc);
+        amountNgnKobo = nairaOf(sent.amount);
       } catch (error) {
         const message = error instanceof Error ? error.message : "";
         const plainReason = message === "The client wallet does not hold enough USDC." || message === "That range has nothing left to fund." ? message : "The fund transaction reverted.";

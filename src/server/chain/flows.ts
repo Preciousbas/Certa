@@ -1,5 +1,6 @@
 import {
   encodeCall,
+  ensureOperatorPolicy,
   erc20Abi,
   escrowFactoryAbi,
   certaEscrowFullAbi,
@@ -15,12 +16,13 @@ import {
   memberships,
   projects,
   stages,
+  submissions,
   usageLedger,
   type Database,
 } from "@certa/db";
-import { and, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
+import { formatUsdc } from "../../lib/money/usdc.js";
 import { audit } from "../audit.js";
-import { enqueueJob } from "../jobs/enqueue.js";
 import { SEPOLIA_CHAIN_ID } from "./networks.js";
 import { defaultPort, type ChainPort } from "./port.js";
 import { sendTx, waitForTx } from "./tx.js";
@@ -84,6 +86,20 @@ async function requireTx(db: Database, sent: { status: string; error: string | n
   return done;
 }
 
+async function ensureGas(db: Database, projectId: string, wallets: RoleWallet[], port: ChainPort) {
+  const rows = await Promise.all(wallets.map((wallet) => topUpIfLow(db, wallet.address, projectId, port)));
+  for (const row of rows) {
+    if (row) await requireTx(db, row, port);
+  }
+}
+
+async function allowOperator(db: Database, operator: RoleWallet) {
+  const rows = await db.select({ escrowAddress: projects.escrowAddress }).from(projects);
+  const escrows = rows.flatMap((row) => (row.escrowAddress && /^0x[a-fA-F0-9]{40}$/.test(row.escrowAddress) ? [row.escrowAddress as Hex] : []));
+  const result = await ensureOperatorPolicy(operator.address, [factory(), usdc(), ...escrows]);
+  console.info(result.note);
+}
+
 export async function ensureEscrow(db: Database, projectId: string, port: ChainPort = defaultPort()) {
   const project = (await db.select().from(projects).where(eq(projects.id, projectId)))[0];
   if (!project) throw new Error("That project is not available.");
@@ -97,6 +113,10 @@ export async function ensureEscrow(db: Database, projectId: string, port: ChainP
     .filter((stage) => stage.contractVersionId === version.id && stage.kind !== "mobilisation")
     .sort((a, b) => a.stageIndex - b.stageIndex);
   if (work.length === 0) throw new ChainRejected("This contract has no payment stages.");
+  for (const [index, stage] of work.entries()) {
+    stage.onChainIdx = index;
+    await db.update(stages).set({ onChainIdx: index }).where(eq(stages.id, stage.id));
+  }
   const mobilisation = (await db.select().from(stages).where(eq(stages.projectId, projectId)))
     .filter((stage) => stage.contractVersionId === version.id && stage.kind === "mobilisation")
     .reduce((sum, stage) => sum + stage.amountUsdc, 0n);
@@ -110,7 +130,7 @@ export async function ensureEscrow(db: Database, projectId: string, port: ChainP
       token: usdc(),
       stageAmounts: work.map((stage) => stage.amountUsdc),
       retentionBps: version.retentionBps,
-      mobilisationAmount: mobilisation > 0n ? mobilisation : (version.advanceKobo * 1_000_000n) / version.koboPerUsdc,
+      mobilisationAmount: mobilisation > 0n ? mobilisation : version.advanceKobo > 0n && version.koboPerUsdc > 0n ? (version.advanceKobo * 1_000_000n) / version.koboPerUsdc : 0n,
       spendingCap: version.spendingCapMicro,
       termsHash: termsBytes32(version.contentHash),
       defectsPeriodSeconds: BigInt(version.defectsPeriodDays) * DAY_SECONDS,
@@ -166,14 +186,30 @@ export async function fundAccepted(db: Database, input: { projectId: string; upT
   if (!project) throw new Error("That project is not available.");
   if (project.status === "paused") throw new Error("This project is paused.");
   const roles = await projectRoleWallets(db, input.projectId);
-  await enqueueJob(db, { kind: "gas_topup", payload: { address: roles.client.address, projectId: input.projectId }, dedupeKey: `gas:${roles.client.address}` });
+  await ensureGas(db, input.projectId, [roles.operator, roles.client, roles.contractor], port);
   const escrow = await ensureEscrow(db, input.projectId, port);
+  await allowOperator(db, roles.operator);
   const version = (await db.select().from(contractVersions).where(eq(contractVersions.projectId, input.projectId))).find((row) => row.status === "accepted");
   if (!version) throw new ChainRejected("Both sides accept the schedule before money can be locked.");
   await acceptIfNeeded(db, input.projectId, escrow, version.id, roles.client, "client", port);
   await acceptIfNeeded(db, input.projectId, escrow, version.id, roles.contractor, "contractor", port);
   const amount = await port.quoteFund(escrow, input.upToStage);
   if (amount === 0n) throw new ChainRejected("That range has nothing left to fund.");
+  let held = await port.erc20Balance(usdc(), roles.client.address);
+  if (held < amount) {
+    if (process.env.CERTA_ENV !== "production") {
+      try {
+        const topped = await addTestUsdc(db, input.projectId, amount - held, port);
+        await waitForTx(db, topped.id, port);
+      } catch {
+        // The faucet transfer can fail. The balance is checked again below.
+      }
+    }
+    held = await port.erc20Balance(usdc(), roles.client.address);
+    if (held < amount) {
+      throw new ChainRejected(`The client payment account holds ${formatUsdc(held)} and needs ${formatUsdc(amount)}. Add test USDC to ${roles.client.address} and tap Lock again.`);
+    }
+  }
   const allowance = await port.allowance(usdc(), roles.client.address, escrow);
   if (allowance < amount) {
     const approved = await sendTx(db, {
@@ -206,7 +242,9 @@ export async function fundAccepted(db: Database, input: { projectId: string; upT
 
 export async function submitStageTx(db: Database, input: { projectId: string; stageId: string; submissionId: string; evidenceHash: Hex; stageIndex: number }, port: ChainPort = defaultPort()) {
   const roles = await projectRoleWallets(db, input.projectId);
+  await ensureGas(db, input.projectId, [roles.operator], port);
   const escrow = await ensureEscrow(db, input.projectId, port);
+  await allowOperator(db, roles.operator);
   const sent = await sendTx(db, {
     kind: "submit_stage",
     idempotencyKey: `submit_stage:${input.submissionId}`,
@@ -229,7 +267,24 @@ export async function releaseStageTx(
   const project = (await db.select().from(projects).where(eq(projects.id, input.projectId)))[0];
   if (project?.status === "paused") throw new Error("This project is paused.");
   const roles = await projectRoleWallets(db, input.projectId);
+  await ensureGas(db, input.projectId, [roles.operator, roles.client], port);
   const escrow = await ensureEscrow(db, input.projectId, port);
+  await allowOperator(db, roles.operator);
+  const view = await port.escrowSnapshot(escrow);
+  const onChain = view.stages.find((stage) => stage.index === input.stageIndex);
+  if (onChain?.status === 1) {
+    const latest = (
+      await db.select().from(submissions).where(eq(submissions.stageId, input.stageId)).orderBy(desc(submissions.createdAt))
+    ).find((row) => row.evidenceHash?.startsWith("0x"));
+    if (!latest?.evidenceHash) throw new ChainRejected("This stage has no photo set on chain yet.");
+    await submitStageTx(db, {
+      projectId: input.projectId,
+      stageId: input.stageId,
+      submissionId: latest.id,
+      evidenceHash: latest.evidenceHash as Hex,
+      stageIndex: input.stageIndex,
+    }, port);
+  }
   if (input.amountMicro > input.capMicro) {
     const approval = await sendTx(db, {
       kind: "client_approve",

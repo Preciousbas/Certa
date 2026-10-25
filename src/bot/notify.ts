@@ -117,6 +117,14 @@ export async function notify(db: Database, input: NotifyInput): Promise<"queued"
     const user = (await db.select().from(users).where(eq(users.id, input.userId)))[0];
     chatId = user ? user.telegramId.toString() : "";
   }
+  if (process.env.TELEGRAM_BOT_TOKEN && !process.env.VITEST && chatId) {
+    const delivered = await deliverNotification(
+      db,
+      { notificationId: row.id, chatId, text: input.text, userId: input.userId },
+      { keyboard: input.keyboard },
+    );
+    if (delivered === "sent" || delivered === "blocked") return "queued";
+  }
   await enqueueJob(db, {
     kind: "notify_telegram",
     dedupeKey: `notify:${input.dedupeKey}`,

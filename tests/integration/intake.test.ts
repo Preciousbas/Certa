@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import { createMemoryDatabase } from "../../packages/db/src/client.js";
-import { contractVersions, memberships, projects, users, workspaces } from "../../packages/db/src/schema.js";
+import { contractVersions, jobs, memberships, notifications, projects, stages, users, workspaces } from "../../packages/db/src/schema.js";
 import { acceptPlan, extractDocumentJob, ingestDocument, parseDocumentJob, sendPlan } from "../../src/server/intake/flow.js";
 
 describe("intake acceptance", () => {
@@ -47,6 +47,20 @@ describe("intake acceptance", () => {
     const sent = await sendPlan(db, { projectId: project!.id, userId: client!.id });
     expect(sent.ok).toBe(true);
     if (!sent.ok) return;
+    const again = await sendPlan(db, { projectId: project!.id, userId: client!.id });
+    expect(again.ok).toBe(true);
+    if (!again.ok) return;
+    expect(again.versionId).toBe(sent.versionId);
+    const versions = await db.select().from(contractVersions).where(eq(contractVersions.projectId, project!.id));
+    expect(versions).toHaveLength(1);
+    const stageRows = (await db.select().from(stages).where(eq(stages.projectId, project!.id))).sort((a, b) => a.stageIndex - b.stageIndex);
+    expect(stageRows[0]?.stageIndex).toBe(0);
+    expect(stageRows.every((row, index) => row.stageIndex === index && row.onChainIdx === index)).toBe(true);
+    const notes = await db.select().from(notifications).where(eq(notifications.kind, "contract_accept"));
+    expect(notes.map((row) => row.userId).sort()).toEqual([client!.id, contractor!.id].sort());
+    expect(notes.every((row) => JSON.stringify(row.payload).includes("₦"))).toBe(true);
+    const replyJobs = await db.select().from(jobs).where(eq(jobs.kind, "contract_reply"));
+    expect(replyJobs).toHaveLength(3);
     const clientAccept = await acceptPlan(db, { projectId: project!.id, userId: client!.id, role: "client", decision: "accepted" });
     const both = await acceptPlan(db, { projectId: project!.id, userId: contractor!.id, role: "contractor", decision: "accepted" });
     expect(clientAccept.ok && both.ok && both.both).toBe(true);

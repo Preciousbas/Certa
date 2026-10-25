@@ -14,7 +14,7 @@ import {
   type Database,
 } from "@certa/db";
 import { koboFromUsdc, usdcFromNgnKobo } from "@certa/shared";
-import { and, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { parseNaira, formatNaira } from "../../lib/money/kobo.js";
 import { InvalidMoney } from "../../lib/money/kobo.js";
 import { readSucceeded } from "../../server/intake/choose.js";
@@ -205,9 +205,13 @@ function botName(deps: EngineDeps): string {
 
 export async function showPlan(db: Database, actor: Actor, deps: EngineDeps): Promise<Outbound> {
   if (!actor.project) return say(bGe4());
-  const version = (await db.select().from(contractVersions).where(eq(contractVersions.projectId, actor.project.id)))[0];
+  const version = (
+    await db.select().from(contractVersions).where(eq(contractVersions.projectId, actor.project.id)).orderBy(desc(contractVersions.version))
+  )[0];
   if (!version) return say(bEx3(), manualStagesKeyboard(appUrl(deps), actor.project.id));
-  const stageRows = (await db.select().from(stages).where(eq(stages.projectId, actor.project.id))).sort((a, b) => a.stageIndex - b.stageIndex);
+  const stageRows = (
+    await db.select().from(stages).where(and(eq(stages.projectId, actor.project.id), eq(stages.contractVersionId, version.id)))
+  ).sort((a, b) => a.stageIndex - b.stageIndex);
   const lines = stageRows.map((stage) => `${stage.stageIndex + 1}. ${escapeHtml(stage.name)} \u2014 ${naira(stage.amountNgnKobo)}`).join("\n");
   const client = (await memberUsers(db, actor.project.id, "client"))[0];
   return say(
@@ -363,7 +367,7 @@ export async function reviewQueue(db: Database, actor: Actor, deps: EngineDeps):
   return say(bCf1({ n: stage.stageIndex + 1 }), certifyKeyboard(appUrl(deps), stage.id));
 }
 
-export async function certify(db: Database, actor: Actor, stageId: string, _deps: EngineDeps): Promise<Outbound> {
+export async function certify(db: Database, actor: Actor, stageId: string, deps: EngineDeps): Promise<Outbound> {
   const denied = forbid(actor, ["consultant"], "consultant");
   if (denied || !actor.project) return denied ? replace(denied.messages[0]?.text ?? bGe4()) : replace(bGe4());
   const stage = (await db.select().from(stages).where(eq(stages.id, stageId)))[0];
@@ -403,6 +407,7 @@ export async function certify(db: Database, actor: Actor, stageId: string, _deps
       text: prompt,
       dedupeKey: `bap:${stage.id}:${client.id}`,
       chatId: client.telegramId.toString(),
+      keyboard: approveKeyboard(appUrl(deps), stage.id),
     });
   }
   return replace(bCf1({ n: stage.stageIndex + 1 }));
@@ -489,32 +494,45 @@ export async function approve(db: Database, actor: Actor, stageId: string, deps:
   if (existing?.status === "confirmed") {
     return replace(bAp4({ amount: naira(stage.amountNgnKobo), contractor: contractorName, n: stage.stageIndex + 1, stage: stage.name, explorerLink: existing.txHash ?? "" }));
   }
-  if (existing) return replace(bAp3({ amount: naira(stage.amountNgnKobo), n: stage.stageIndex + 1 }));
-  if (stage.status !== "awaiting_client_approval" && stage.status !== "approved") return replace(bGe4());
-  const approvalId = randomUUID();
-  await db.insert(approvals).values({
-    id: approvalId,
-    projectId: actor.project.id,
-    workspaceId: actor.project.workspaceId,
-    stageId: stage.id,
-    byUserId: actor.userId,
-    decision: "approved",
-  });
-  const inserted = await db
-    .insert(payments)
-    .values({
-      stageId: stage.id,
+  let approvalId: string;
+  let paymentId: string;
+  if (existing?.status === "failed") {
+    const prior = (
+      await db.select().from(approvals).where(and(eq(approvals.stageId, stage.id), eq(approvals.decision, "approved")))
+    ).sort((a, b) => b.at.getTime() - a.at.getTime())[0];
+    if (!prior) return replace(bAp3({ amount: naira(stage.amountNgnKobo), n: stage.stageIndex + 1 }));
+    approvalId = prior.id;
+    paymentId = existing.id;
+  } else if (existing) {
+    return replace(bAp3({ amount: naira(stage.amountNgnKobo), n: stage.stageIndex + 1 }));
+  } else {
+    if (stage.status !== "awaiting_client_approval" && stage.status !== "approved") return replace(bGe4());
+    approvalId = randomUUID();
+    await db.insert(approvals).values({
+      id: approvalId,
       projectId: actor.project.id,
       workspaceId: actor.project.workspaceId,
-      kind: "release",
-      amountUsdc: stage.amountUsdc,
-      amountNgnKobo: stage.amountNgnKobo,
-      status: "pending",
-      idempotencyKey: key,
-    })
-    .onConflictDoNothing({ target: payments.idempotencyKey })
-    .returning();
-  if (!inserted[0]) return replace(bAp3({ amount: naira(stage.amountNgnKobo), n: stage.stageIndex + 1 }));
+      stageId: stage.id,
+      byUserId: actor.userId,
+      decision: "approved",
+    });
+    const inserted = await db
+      .insert(payments)
+      .values({
+        stageId: stage.id,
+        projectId: actor.project.id,
+        workspaceId: actor.project.workspaceId,
+        kind: "release",
+        amountUsdc: stage.amountUsdc,
+        amountNgnKobo: stage.amountNgnKobo,
+        status: "pending",
+        idempotencyKey: key,
+      })
+      .onConflictDoNothing({ target: payments.idempotencyKey })
+      .returning();
+    if (!inserted[0]) return replace(bAp3({ amount: naira(stage.amountNgnKobo), n: stage.stageIndex + 1 }));
+    paymentId = inserted[0].id;
+  }
   const released = deps.release
     ? await deps.release({
         projectId: actor.project.id,
@@ -526,7 +544,7 @@ export async function approve(db: Database, actor: Actor, stageId: string, deps:
       })
     : { ok: false as const, reason: "The payment service is not configured." };
   if (!released.ok) {
-    await db.update(payments).set({ status: "failed" }).where(eq(payments.id, inserted[0].id));
+    await db.update(payments).set({ status: "failed" }).where(eq(payments.id, paymentId));
     await enqueueReleaseRetry(db, {
       idempotencyKey: key,
       projectId: actor.project.id,
@@ -538,7 +556,7 @@ export async function approve(db: Database, actor: Actor, stageId: string, deps:
     });
     return replace(bAp6({ n: stage.stageIndex + 1 }));
   }
-  await db.update(payments).set({ status: "confirmed", txHash: released.explorerLink }).where(eq(payments.id, inserted[0].id));
+  await db.update(payments).set({ status: "confirmed", txHash: released.explorerLink }).where(eq(payments.id, paymentId));
   if (stage.status === "awaiting_client_approval") {
     await transitionStage(db, stage.id, "approved").catch(() => undefined);
   }

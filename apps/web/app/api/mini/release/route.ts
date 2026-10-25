@@ -6,6 +6,8 @@ import { rejectIfPaused } from "../../../../../../src/server/projects/pause";
 import { apiError, apiJson, fundOutput, releaseInput } from "../../../../lib/schemas";
 import { withAuth } from "../../../../lib/with-auth";
 
+export const maxDuration = 300;
+
 export const POST = withAuth(
   async ({ db, project, json }) => {
     const paused = rejectIfPaused(project.status);
@@ -33,7 +35,7 @@ export const POST = withAuth(
     if (!cdpConfigured() || !project.escrowAddress) return apiError(409, "Release stays locked until the checks pass.");
     const stage = (await db.select().from(stages).where(and(eq(stages.id, input.data.stageId), eq(stages.projectId, project.id))))[0];
     const approval = (await db.select().from(approvals).where(eq(approvals.stageId, input.data.stageId))).find(
-      (row) => row.decision === "approved_release" || row.decision === "approve",
+      (row) => row.decision === "approved_release" || row.decision === "approve" || row.decision === "approved",
     );
     if (!stage || !approval) return apiError(409, "Release stays locked until the checks pass.");
     try {

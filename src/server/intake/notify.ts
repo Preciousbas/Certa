@@ -1,10 +1,13 @@
 import { memberships, notifications, projects, users, type Database } from "@certa/db";
 import { eq, inArray } from "drizzle-orm";
-import { figuresReady, planShared, readFailed, replyReminder, reviewLink, acceptDeepLink } from "./messages.js";
+import { callbackData } from "../../bot/callbacks.js";
+import { figuresReady, planShared, readFailed, replyReminder, reviewLink } from "./messages.js";
 import { pctFromBps } from "./amounts.js";
 import { formatNaira } from "../../lib/money/kobo.js";
 
-export type TelegramMarkup = { inline_keyboard: { text: string; callback_data: string }[][] };
+export type TelegramButton = { text: string; callback_data: string } | { text: string; web_app: { url: string } };
+
+export type TelegramMarkup = { inline_keyboard: TelegramButton[][] };
 
 export type TelegramSender = (chatId: string, text: string, markup?: TelegramMarkup) => Promise<void>;
 
@@ -127,25 +130,35 @@ export async function notifyPlanShared(
     send?: TelegramSender;
   },
 ): Promise<void> {
-  const members = (await db.select().from(memberships).where(eq(memberships.projectId, input.projectId))).filter((row) => row.role === "contractor");
+  const members = (await db.select().from(memberships).where(eq(memberships.projectId, input.projectId))).filter(
+    (row) => (row.role === "contractor" || row.role === "client") && row.status === "active",
+  );
   if (members.length === 0) return;
+  const roleOf = new Map(members.map((row) => [row.userId, row.role]));
   const people = await db.select().from(users).where(inArray(users.id, members.map((row) => row.userId)));
-  const text = planShared({
-    clientName: input.clientName,
-    project: input.projectName,
-    sum: formatNaira(input.sumKobo),
-    stageLines: input.stageLines,
-    retentionPct: pctFromBps(input.retentionBps),
-    months: input.defectsMonths,
-    link: acceptDeepLink(input.projectId),
-  });
   for (const person of people) {
+    const role = roleOf.get(person.id) ?? "";
+    const text = planShared({
+      clientName: input.clientName,
+      project: input.projectName,
+      sum: formatNaira(input.sumKobo),
+      stageLines: input.stageLines,
+      retentionPct: pctFromBps(input.retentionBps),
+      months: input.defectsMonths,
+      forClient: role === "client",
+    });
+    const keyboard: TelegramMarkup["inline_keyboard"] = [
+      [{ text: "Review plan", web_app: { url: reviewLink(input.projectId) } }],
+      [{ text: "Accept", callback_data: callbackData("ac", input.versionId, "yes") }],
+    ];
+    if (role === "contractor") keyboard.push([{ text: "Ask for a change", callback_data: callbackData("ac", input.versionId, "change") }]);
     await notifyOnce(db, {
       userId: person.id,
       chatId: person.telegramId.toString(),
       kind: "contract_accept",
       dedupeKey: `bac:${input.versionId}:${person.id}`,
       text,
+      markup: { inline_keyboard: keyboard },
       send: input.send,
     });
   }

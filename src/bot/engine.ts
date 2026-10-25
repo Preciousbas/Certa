@@ -47,7 +47,7 @@ import { helpText } from "./flows/help.js";
 import { bGe4, bGe9, bIn11, bIn7, bSt7, bUnknown } from "./messages.js";
 import { writeSession } from "./state.js";
 import { projectSwitchKeyboard } from "./keyboards.js";
-import { memberships, projects, setActiveProject } from "@certa/db";
+import { contractVersions, memberships, projects, setActiveProject, stages } from "@certa/db";
 import { and, eq } from "drizzle-orm";
 
 export type Inbound =
@@ -128,6 +128,32 @@ async function onText(
   return { messages: [] };
 }
 
+async function bindActorProject(db: Database, actor: Awaited<ReturnType<typeof loadActor>>, action: string, id: string): Promise<void> {
+  if (!id) return;
+  let projectId: string | undefined;
+  if (action === "ac") {
+    projectId = (await db.select().from(contractVersions).where(eq(contractVersions.id, id)))[0]?.projectId;
+  } else if (action === "cf" || action === "ap" || action === "rj" || action === "dc") {
+    projectId = (await db.select().from(stages).where(eq(stages.id, id)))[0]?.projectId;
+  } else {
+    return;
+  }
+  if (!projectId) return;
+  const member = (
+    await db
+      .select()
+      .from(memberships)
+      .where(and(eq(memberships.projectId, projectId), eq(memberships.userId, actor.userId), eq(memberships.status, "active")))
+  )[0];
+  if (!member) return;
+  const project = (await db.select().from(projects).where(eq(projects.id, projectId)))[0];
+  if (!project) return;
+  actor.project = project;
+  actor.role = member.role;
+  actor.session = { ...actor.session, projectId };
+  await setActiveProject(db, actor.telegramId, projectId, actor.userId);
+}
+
 async function onCallback(
   db: Database,
   actor: Awaited<ReturnType<typeof loadActor>>,
@@ -137,6 +163,7 @@ async function onCallback(
 ): Promise<Outbound> {
   const parsed = parseCallback(data);
   if (!parsed) return { messages: [], edit: { text: bGe4() } };
+  await bindActorProject(db, actor, parsed.action, parsed.id);
   const { action, id, arg } = parsed;
   if (action === "go" && id === "create") return begin(db, actor, now);
   if (action === "go" && id === "how") return howItWorks();

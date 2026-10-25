@@ -365,7 +365,9 @@ describe("bot handlers", () => {
       second += 1;
       return { ok: true, explorerLink: "https://sepolia.etherscan.io/tx/0xdef" };
     });
-    expect(second).toBe(0);
+    expect(second).toBe(1);
+    const retried = await db.select().from(payments).where(eq(payments.idempotencyKey, `bot-approve:${smallStage}`));
+    expect(retried[0]?.status).toBe("confirmed");
     expect(await db.select().from(jobs).where(eq(jobs.dedupeKey, `bot-approve:${smallStage}`))).toHaveLength(1);
     const blocked = await send({ type: "callback", data: callbackData("ap", smallStage), from: contractor });
     expect(textOf(blocked)).toBe("Only the client can do this on Plot 14 Lekki.");

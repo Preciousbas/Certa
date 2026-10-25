@@ -110,6 +110,14 @@ export async function sendTx(db: Database, input: SendInput, port: ChainPort = d
     .returning();
   let row = inserted[0] ?? (await loadByKey(db, input.idempotencyKey));
   if (!row) throw new Error("The transaction was not recorded.");
+  if (row.status === "failed" && row.txHash === null && row.attempts < 5) {
+    const reset = await db
+      .update(chainTxs)
+      .set({ status: "pending", error: null })
+      .where(eq(chainTxs.id, row.id))
+      .returning();
+    row = reset[0] ?? row;
+  }
   if (OPEN.has(row.status) || row.status === "failed") return row;
 
   const claimed = await db

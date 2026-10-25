@@ -130,6 +130,29 @@ export default function ReviewPage() {
     setMessage(action === "keep" ? "Kept." : "Corrected. The stage total was checked again.");
   }
 
+  async function confirmAccept() {
+    await waitForInitData();
+    const headers = authHeaders();
+    headers.set("content-type", "application/json");
+    try {
+      const response = await fetch(`/api/projects/${projectIdFromPath()}/contract`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ decision: "accepted" }),
+      });
+      const body = (await response.json()) as { message?: string };
+      setConfirming(false);
+      if (!response.ok) {
+        setMessage(body.message ?? "The plan was not accepted.");
+        return;
+      }
+      setMessage(body.message ?? "Accepted.");
+    } catch {
+      setConfirming(false);
+      setMessage("The plan was not accepted.");
+    }
+  }
+
   async function send() {
     await waitForInitData();
     const headers = authHeaders();
@@ -207,6 +230,7 @@ export default function ReviewPage() {
           {confirming ? (
             <div className="card">
               <p>{CONFIRM}</p>
+              <button type="button" className="btn-block" onClick={() => void confirmAccept()}>Confirm</button>
               <button type="button" onClick={() => setConfirming(false)}>Cancel</button>
             </div>
           ) : null}

@@ -2,7 +2,6 @@ import { agentRouterContract, studyUpload, type ParsedContract } from "@certa/ai
 import { createPartyWallet } from "@certa/chain";
 import { getOrCreateWallet } from "../../../src/server/chain/wallets.js";
 import {
-  acceptContractSide,
   ensureWallet,
   getActiveProjectId,
   loadPrincipal,
@@ -475,24 +474,10 @@ export function createBot(token: string, deps: BotDeps): Bot<BotContext> {
 
   bot.command("accept", async (ctx) => {
     if (!(await gate(ctx, true))) return;
-    const row = ctx.from ? await active(deps.db, BigInt(ctx.from.id)) : null;
-    if (!row?.project || !row.user) {
-      await say(ctx, copy.noProjects);
-      return;
-    }
-    const partyRows = await deps.db.select().from(parties).where(eq(parties.userId, row.user.id));
-    const party = partyRows.find((item) => item.projectId === row.project?.id);
-    const side = party?.role === "main_contractor" ? "contractor" : party?.role === "client" ? "client" : null;
-    if (!side) {
-      await say(ctx, "You are not the client or the contractor on this project.");
-      return;
-    }
-    const result = await acceptContractSide(deps.db, { projectId: row.project.id, side });
-    if (!result.ok) {
-      await say(ctx, result.reason);
-      return;
-    }
-    await say(ctx, result.both ? "Both sides have accepted this schedule. Money can be locked from it." : "You accepted. The other side still has to accept.");
+    const who = person(ctx);
+    if (!who) return;
+    const outbound = await handleIncoming(deps.db, { type: "callback", data: "v1:plan", from: who }, { paidWeather: deps.paidWeather });
+    await speak(ctx, outbound);
   });
 
   bot.command("help", async (ctx) => {
@@ -665,10 +650,14 @@ export function createBot(token: string, deps: BotDeps): Bot<BotContext> {
       const outbound = await handleIncoming(deps.db, { type: "callback", data: ctx.callbackQuery.data, from: who }, {
         paidWeather: deps.paidWeather,
         release: async (input) => {
-          const { releaseStageTx } = await import("../../../src/server/chain/flows.js");
-          const tx = await releaseStageTx(deps.db, input);
-          const hash = tx.txHash ?? "";
-          return { ok: true as const, explorerLink: hash ? `https://sepolia.etherscan.io/tx/${hash}` : "pending" };
+          try {
+            const { releaseStageTx } = await import("../../../src/server/chain/flows.js");
+            const tx = await releaseStageTx(deps.db, input);
+            const hash = tx.txHash ?? "";
+            return { ok: true as const, explorerLink: hash ? `https://sepolia.etherscan.io/tx/${hash}` : "pending" };
+          } catch (error) {
+            return { ok: false as const, reason: error instanceof Error ? error.message : "The payment did not go through." };
+          }
         },
       });
       if (retry) {

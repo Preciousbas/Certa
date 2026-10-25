@@ -73,11 +73,12 @@ export function FundForm({ projectId, defaultUpTo, stages, rateLabel }: Props) {
           projectId,
           upToStage: limit,
           idempotencyKey: key.current,
-          currency: money.unit,
+          currency: "usdc",
         }),
       });
       const body = (await response.json()) as Partial<FundReceipt> & { error?: string; message?: string };
       if (!response.ok || !body.amountNgnKobo || !body.amountUsdc || !body.stages) {
+        if (!response.ok) key.current = null;
         window.Telegram?.WebApp?.HapticFeedback?.notificationOccurred("error");
         setMessage(`The payment didn't go through: ${body.message ?? body.error ?? "the network did not confirm it"}. No money was moved.`);
         return;
@@ -96,6 +97,7 @@ export function FundForm({ projectId, defaultUpTo, stages, rateLabel }: Props) {
         created: Boolean(body.created),
       });
     } catch {
+      key.current = null;
       setMessage("The payment didn't go through: the connection dropped. No money was moved.");
     } finally {
       setPending(false);

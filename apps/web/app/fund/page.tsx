@@ -3,8 +3,9 @@ import { formatNgnFromKobo } from "@certa/shared";
 import { loadProject } from "../../lib/data";
 import { chainFundLines } from "../../lib/escrow-quote";
 
-export default async function FundPage() {
-  const data = await loadProject();
+export default async function FundPage({ searchParams }: { searchParams: Promise<{ project?: string }> }) {
+  const query = await searchParams;
+  const data = await loadProject(query.project);
   if (!data) return <p>Nothing has happened on this project yet. Upload the contract or BoQ to begin.</p>;
   const escrow = data.project.escrowAddress ?? "";
   const chain = await chainFundLines(
