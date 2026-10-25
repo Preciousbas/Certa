@@ -99,7 +99,7 @@ describe("transaction service", () => {
     const second = await sendTx(db, input, mocked.chain);
     expect(first.id).toBe(second.id);
     expect(first.txHash).toBe(second.txHash);
-    expect(mocked.sends).toEqual(["release_stage:stage:approval"]);
+    expect(mocked.sends).toEqual(["release_stage:stage:approval:a1"]);
     await close();
   });
 
@@ -123,7 +123,7 @@ describe("transaction service", () => {
     const retried = await sendTx(db, input, mocked.chain);
     expect(retried.status).toBe("submitted");
     expect(retried.txHash).toBeTruthy();
-    expect(mocked.sends).toEqual(["create_escrow:version"]);
+    expect(mocked.sends).toEqual(["create_escrow:version:a2"]);
     await close();
   });
 

@@ -143,7 +143,7 @@ export async function sendTx(db: Database, input: SendInput, port: ChainPort = d
     to: input.to,
     data: input.data,
     valueWei: input.valueWei,
-    idempotencyKey: input.idempotencyKey,
+    idempotencyKey: `${input.idempotencyKey}:a${row.attempts}`,
     feeBps: 10_000,
   });
   const submitted = await db
@@ -276,7 +276,7 @@ async function replaceOrFail(db: Database, row: typeof chainTxs.$inferSelect, po
     accountName: intentAccount(row),
     to: row.toAddress as Hex,
     data: (row.calldata ?? "0x") as Hex,
-    idempotencyKey: `${row.idempotencyKey}:retry:${attempts}`,
+    idempotencyKey: `${row.idempotencyKey}:a${attempts}`,
     nonce: countFromBigint(row.nonce),
     feeBps: 10_000 + attempts * 2_000,
     valueWei: BigInt((JSON.parse(row.intent ?? "{}") as { valueWei?: string }).valueWei ?? "0"),
