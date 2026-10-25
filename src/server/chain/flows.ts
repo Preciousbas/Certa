@@ -87,8 +87,8 @@ async function requireTx(db: Database, sent: { status: string; error: string | n
 }
 
 async function ensureGas(db: Database, projectId: string, wallets: RoleWallet[], port: ChainPort) {
-  const rows = await Promise.all(wallets.map((wallet) => topUpIfLow(db, wallet.address, projectId, port)));
-  for (const row of rows) {
+  for (const wallet of wallets) {
+    const row = await topUpIfLow(db, wallet.address, projectId, port);
     if (row) await requireTx(db, row, port);
   }
 }
