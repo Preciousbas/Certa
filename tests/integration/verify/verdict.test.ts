@@ -84,12 +84,7 @@ describe("verify stage job", () => {
         text: JSON.stringify({
           schema_version: "3",
           stage_number_claimed: 1,
-          items: [
-            { id: "s1-cleared", answer: "yes", reason: "The plot is cleared in the photos." },
-            { id: "s1-lines", answer: "yes", reason: "Setting-out lines are visible." },
-            { id: "s1-ground", answer: "yes", reason: "Bare ground is visible." },
-            { id: "s1-no-concrete", answer: "yes", reason: "No foundation concrete has been cast." },
-          ],
+          items: [{ id: "c1", answer: "yes", reason: "Blinding covers the excavation." }],
         }),
         latencyMs: 4,
         costMicro: null,

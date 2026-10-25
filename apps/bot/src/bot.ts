@@ -461,7 +461,7 @@ export function createBot(token: string, deps: BotDeps): Bot<BotContext> {
   bot.callbackQuery("go-join", async (ctx) => {
     if (!(await gate(ctx, false))) return;
     await ctx.answerCallbackQuery();
-    await ctx.conversation.enter("joinConversation");
+    await ctx.conversation.enter("join");
   });
 
   bot.command("join", async (ctx) => {

@@ -16,7 +16,7 @@ import { DEFAULT_PASS_THRESHOLD, type VerifyDecision, type VerifyNext, type Veri
 import { CHECK_UNAVAILABLE } from "./messages.js";
 import { notifyVerdict } from "./notify.js";
 import { agreeChecklistRuns, alignAnswers, scoreChecklist, type ChecklistScore, type ItemAnswer } from "./checklistScore.js";
-import { checklistUserMessage, findChecklist } from "./checklists.js";
+import { checklistUserMessageFor, findChecklist, type StageChecklist } from "./checklists.js";
 import { askChecklist, visionModels, VISION_TIMEOUT_MS, type VisionClient } from "./vision.js";
 import type { StageVerdict } from "../../lib/validation/stageVerdict.js";
 import { getObject } from "../storage.js";
@@ -144,7 +144,14 @@ export async function runVerifyStage(
   let raw: unknown = existing?.rawJson ?? {};
   let latency = existing?.latencyMs ?? 0;
   if (!existing) {
-    const checklist = findChecklist(claimed);
+    const ownCriteria = Array.isArray(stage.acceptanceCriteria) && stage.acceptanceCriteria.length > 0;
+    const checklist: StageChecklist | undefined = ownCriteria
+      ? {
+          stage: claimed,
+          name: stage.name,
+          items: criteria.map((item, index) => ({ id: item.id || `c${index + 1}`, text: item.text })),
+        }
+      : findChecklist(claimed);
     const images: Uint8Array[] = [];
     for (const photo of photoRows) {
       const bytes = await readStored(photo.originalKey || photo.storageKey);
@@ -154,7 +161,7 @@ export async function runVerifyStage(
       verdict = { ...unavailable(criteria, "This stage has no photo checklist."), stage_number_claimed: claimed };
       raw = { error: "no checklist" };
     } else {
-      const user = checklistUserMessage(claimed);
+      const user = checklistUserMessageFor(checklist);
       const request = {
         system: deps?.system ?? STAGE_VERIFY_SYSTEM_V3,
         user,

@@ -71,6 +71,8 @@ const RECIPES: Recipe[] = [
 const FALLBACK: Recipe = { order: 9, test: /.*/, name: "Measured work", kind: "work", tags: ["external"], criteria: ["The measured work for this stage is visible on site", "The area named in the stage is complete enough to photograph", "Materials for this stage are fixed, not only stacked"] };
 
 function recipeFor(title: string): Recipe {
+  const trimmed = title.trim();
+  if (!trimmed || /^(boq|b\.o\.q\.?|bill of quantities|sheet\s*\d*)$/i.test(trimmed)) return FALLBACK;
   return RECIPES.find((recipe) => recipe.test.test(title)) ?? { ...FALLBACK, name: title.slice(0, 80) };
 }
 
