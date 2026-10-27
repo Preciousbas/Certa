@@ -1,12 +1,34 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+
+const LABELS: Record<string, string> = {
+  client: "Client",
+  contractor: "Contractor",
+  consultant: "Consultant",
+  subcontractor: "Subcontractor",
+};
 
 export function InviteForm({ projectId }: { projectId: string }) {
-  const [role, setRole] = useState("consultant");
+  const [roles, setRoles] = useState<string[] | null>(null);
+  const [role, setRole] = useState("");
   const [link, setLink] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+
+  useEffect(() => {
+    const headers = new Headers();
+    const initData = window.Telegram?.WebApp?.initData;
+    if (initData) headers.set("authorization", `tma ${initData}`);
+    void fetch(`/api/projects/${projectId}/invites`, { headers })
+      .then(async (response) => {
+        const body = (await response.json()) as { roles?: string[] };
+        const list = body.roles ?? [];
+        setRoles(list);
+        setRole(list[0] ?? "");
+      })
+      .catch(() => setRoles([]));
+  }, [projectId]);
 
   async function send() {
     setPending(true);
@@ -31,6 +53,9 @@ export function InviteForm({ projectId }: { projectId: string }) {
     setMessage("Join link ready.");
   }
 
+  if (!roles) return null;
+  if (roles.length === 0) return <p className="muted">Everyone is already in.</p>;
+
   return (
     <form
       className="card stack"
@@ -43,11 +68,14 @@ export function InviteForm({ projectId }: { projectId: string }) {
       <label>
         Role
         <select value={role} onChange={(event) => setRole(event.target.value)} aria-label="Invite role">
-          <option value="consultant">Consultant</option>
-          <option value="subcontractor">Subcontractor</option>
+          {roles.map((item) => (
+            <option key={item} value={item}>
+              {LABELS[item] ?? item}
+            </option>
+          ))}
         </select>
       </label>
-      <button className="ui-btn ui-btn-secondary" type="submit" disabled={pending}>
+      <button className="ui-btn ui-btn-secondary" type="submit" disabled={pending || !role}>
         {pending ? "Working…" : "Create join link"}
       </button>
       {link ? (
