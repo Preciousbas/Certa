@@ -25,7 +25,10 @@ const serverSchema = z.object({
   LLM_API_KEY: required,
   SESSION_SECRET: z.string().min(32),
   ADMIN_TELEGRAM_IDS: required,
-  SUPPORT_EMAIL: z.string().email(),
+  SUPPORT_EMAIL: z.preprocess(
+    (value) => (value === "" || value === undefined || value === null ? undefined : value),
+    z.string().email().optional(),
+  ),
   FX_SOURCE: z.enum(["manual", "api"]),
   FX_MANUAL_KOBO_PER_USDC: z.string().regex(/^\d+$/),
   FX_MANUAL_AS_OF: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
