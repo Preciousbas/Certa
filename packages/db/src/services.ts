@@ -190,8 +190,8 @@ export async function issueJoinCode(
 }
 
 export type RedeemResult =
-  | { ok: true; projectId: string; partyId: string; role: string; projectName: string }
-  | { ok: false; reason: "invalid" | "expired" | "rate_limited" | "revoked" | "taken" };
+  | { ok: true; already?: boolean; projectId: string; partyId: string; role: string; projectName: string }
+  | { ok: false; reason: "invalid" | "expired" | "rate_limited" | "revoked" | "taken" | "other_role"; currentRole?: string; projectName?: string };
 
 export async function redeemJoinCode(
   db: Database,
@@ -212,12 +212,48 @@ export async function redeemJoinCode(
     await db.insert(joinAttempts).values({ telegramId: input.telegramId, createdAt: now });
     return { ok: false, reason };
   };
-  if (!code || code.useCount >= code.maxUses) return fail("invalid");
-  if (code.revokedAt) return fail("revoked");
-  if (code.expiresAt.getTime() < now.getTime()) return fail("expired");
+  if (!code) return fail("invalid");
   if (input.projectId && input.projectId !== code.projectId) return fail("invalid");
 
   const membershipRole = membershipRoleFor(code.role);
+  const project = (await db.select().from(projects).where(eq(projects.id, code.projectId)))[0];
+  const known = (await db.select().from(users).where(eq(users.telegramId, input.telegramId)))[0];
+  if (known) {
+    const mine = await db
+      .select()
+      .from(memberships)
+      .where(and(eq(memberships.projectId, code.projectId), eq(memberships.userId, known.id), eq(memberships.status, "active")));
+    const same = mine.find((row) => row.role === membershipRole);
+    if (same) {
+      const party = (
+        await db.select().from(parties).where(and(eq(parties.projectId, code.projectId), eq(parties.userId, known.id)))
+      ).find((row) => membershipRoleFor(row.role) === membershipRole);
+      await db
+        .insert(botSessions)
+        .values({ telegramId: input.telegramId, activeProjectId: code.projectId })
+        .onConflictDoUpdate({
+          target: botSessions.telegramId,
+          set: { activeProjectId: code.projectId, updatedAt: now },
+        });
+      return {
+        ok: true,
+        already: true,
+        projectId: code.projectId,
+        partyId: party?.id ?? "",
+        role: membershipRole,
+        projectName: project?.name ?? "",
+      };
+    }
+    const other = mine[0];
+    if (other) {
+      return { ok: false, reason: "other_role", currentRole: other.role, projectName: project?.name ?? "" };
+    }
+  }
+
+  if (code.useCount >= code.maxUses) return fail("invalid");
+  if (code.revokedAt) return fail("revoked");
+  if (code.expiresAt.getTime() < now.getTime()) return fail("expired");
+
   const filled = await db
     .select()
     .from(memberships)
@@ -225,24 +261,30 @@ export async function redeemJoinCode(
   if (filled.length > 0) return { ok: false, reason: "taken" };
 
   const user = await upsertTelegramUser(db, input.telegramId, input.name);
-  const [party] = await db
-    .insert(parties)
-    .values({
-      projectId: code.projectId,
-      workspaceId: code.workspaceId,
-      userId: user.id,
-      role: code.role,
-    })
-    .returning();
-  if (!party) throw new Error("party insert failed");
-  const joinedRole = membershipRoleFor(party.role);
-  if (["client", "consultant", "contractor", "subcontractor", "viewer"].includes(joinedRole)) {
-    await db.insert(memberships).values({ projectId: code.projectId, userId: user.id, role: joinedRole }).onConflictDoNothing();
-  }
-  await db
-    .update(joinCodes)
-    .set({ useCount: code.useCount + 1, updatedAt: now })
-    .where(eq(joinCodes.id, code.id));
+  const joined = await db.transaction(async (tx) => {
+    const taken = await tx
+      .select()
+      .from(memberships)
+      .where(and(eq(memberships.projectId, code.projectId), eq(memberships.role, membershipRole), eq(memberships.status, "active")));
+    if (taken.length > 0) return null;
+    const [party] = await tx
+      .insert(parties)
+      .values({
+        projectId: code.projectId,
+        workspaceId: code.workspaceId,
+        userId: user.id,
+        role: code.role,
+      })
+      .returning();
+    if (!party) throw new Error("party insert failed");
+    const joinedRole = membershipRoleFor(party.role);
+    if (["client", "consultant", "contractor", "subcontractor", "viewer"].includes(joinedRole)) {
+      await tx.insert(memberships).values({ projectId: code.projectId, userId: user.id, role: joinedRole }).onConflictDoNothing();
+    }
+    await tx.update(joinCodes).set({ useCount: code.useCount + 1, updatedAt: now }).where(eq(joinCodes.id, code.id));
+    return { partyId: party.id, role: joinedRole };
+  });
+  if (!joined) return { ok: false, reason: "taken" };
   await db
     .insert(botSessions)
     .values({ telegramId: input.telegramId, activeProjectId: code.projectId })
@@ -250,8 +292,26 @@ export async function redeemJoinCode(
       target: botSessions.telegramId,
       set: { activeProjectId: code.projectId, updatedAt: now },
     });
-  const project = (await db.select().from(projects).where(eq(projects.id, code.projectId)))[0];
-  return { ok: true, projectId: code.projectId, partyId: party.id, role: joinedRole, projectName: project?.name ?? "" };
+  return { ok: true, projectId: code.projectId, partyId: joined.partyId, role: joined.role, projectName: project?.name ?? "" };
+}
+
+/** Revoke unused, unrevoked codes for one project role. Plaintext is not stored, so this writes revokedAt the same way as revokeJoinCode. */
+export async function revokeOpenJoinCodes(
+  db: Database,
+  input: { projectId: string; role: string; now?: Date },
+): Promise<number> {
+  const now = input.now ?? new Date();
+  const rows = await db
+    .select()
+    .from(joinCodes)
+    .where(and(eq(joinCodes.projectId, input.projectId), eq(joinCodes.role, input.role)));
+  let count = 0;
+  for (const code of rows) {
+    if (code.revokedAt || code.useCount >= code.maxUses) continue;
+    await db.update(joinCodes).set({ revokedAt: now, updatedAt: now }).where(eq(joinCodes.id, code.id));
+    count += 1;
+  }
+  return count;
 }
 
 export async function revokeJoinCode(db: Database, input: { projectId: string; code: string; now?: Date }): Promise<boolean> {
