@@ -1,8 +1,8 @@
 import { allocateMicro } from "../../lib/money/fx.js";
 import { formatNaira } from "../../lib/money/kobo.js";
 import { applyBps } from "../../lib/money/percent.js";
-import { absDiff, formatQty, grossUp, itemAmount, mulDivRound, pctFromBps } from "./amounts.js";
-import { billGap, worstItem, type BoqDraft, type DraftBill } from "./interpret.js";
+import { absDiff, digits, formatQty, grossUp, itemAmount, mulDivRound, pctFromBps } from "./amounts.js";
+import { billGap, worstItem, type BoqDraft, type DraftBill, type DraftItem } from "./interpret.js";
 
 export type Severity = "blocking" | "warning" | "info";
 export type Issue = {
@@ -30,6 +30,10 @@ export type StagePlan = {
   amountMicro: bigint;
   acceptanceCriteria: string[];
   tags: StageTag[];
+  expectedFinish: string | null;
+  itemIds: string[];
+  boqKobo: bigint | null;
+  source: "document" | "model";
 };
 
 export type ValidatedPlan = {
@@ -74,6 +78,184 @@ function recipeFor(title: string): Recipe {
   const trimmed = title.trim();
   if (!trimmed || /^(boq|b\.o\.q\.?|bill of quantities|sheet\s*\d*)$/i.test(trimmed)) return FALLBACK;
   return RECIPES.find((recipe) => recipe.test.test(title)) ?? { ...FALLBACK, name: title.slice(0, 80) };
+}
+
+function matchingRecipe(title: string): Recipe | null {
+  const trimmed = title.trim();
+  if (!trimmed) return null;
+  return RECIPES.find((recipe) => recipe.test.test(title)) ?? null;
+}
+
+export function stageRecipe(name: string): { kind: StageKind; acceptanceCriteria: string[]; tags: StageTag[] } {
+  const recipe = recipeFor(name);
+  return { kind: /mobil/i.test(name) ? "mobilisation" : recipe.kind, acceptanceCriteria: recipe.criteria, tags: recipe.tags };
+}
+
+function itemId(item: DraftItem): string {
+  return `${item.billRef}:${item.itemRef}:${item.line}`;
+}
+
+function pricedItems(bill: DraftBill): DraftItem[] {
+  return bill.items.filter((item) => item.rowKind === "item" && item.statedKobo !== null);
+}
+
+function markerNumber(text: string): number | null {
+  const match = /\b(?:stage|phase)\s*(\d+)\b/i.exec(text);
+  return match?.[1] ? digits(match[1]) : null;
+}
+
+function stripMarker(text: string): string {
+  return text.replace(/\s*\((?:stage|phase)\s*\d+\)\s*/gi, " ").replace(/\b(?:stage|phase)\s*\d+\b/gi, " ").replace(/\s+/g, " ").trim();
+}
+
+function keywords(text: string): string[] {
+  return text.toLowerCase().split(/[^a-z0-9]+/).filter((word) => word.length > 3);
+}
+
+function overlapCount(left: string, right: string): number {
+  const words = new Set(keywords(right));
+  return keywords(left).filter((word) => words.has(word)).length;
+}
+
+type Built = Omit<StagePlan, "number" | "amountMicro">;
+
+function stageFrom(input: Omit<Built, "expectedFinish" | "itemIds" | "boqKobo" | "source"> & Partial<Pick<Built, "expectedFinish" | "itemIds" | "boqKobo" | "source">>): Built {
+  return { expectedFinish: null, itemIds: [], boqKobo: null, source: "document", ...input };
+}
+
+function markerStages(bill: DraftBill, items: DraftItem[]): Built[] {
+  const numbers = [...new Set(items.map((item) => markerNumber(`${item.description} ${item.itemRef}`)).filter((value): value is number => value !== null))].sort((left, right) => left - right);
+  const groups = new Map<number, DraftItem[]>(numbers.map((number) => [number, []]));
+  let current = numbers[0] ?? 1;
+  for (const item of items) {
+    const marker = markerNumber(`${item.description} ${item.itemRef}`);
+    if (marker !== null) current = marker;
+    (groups.get(current) ?? groups.get(numbers[0] ?? current))?.push(item);
+  }
+  return numbers.map((number) => {
+    const group = groups.get(number) ?? [];
+    const amount = group.reduce((sum, item) => sum + (item.statedKobo ?? 0n), 0n);
+    const joined = group.map((item) => stripMarker(item.description)).join(" ");
+    const name = (group.length === 1 ? stripMarker(group[0]?.description ?? "") : matchingRecipe(joined)?.name ?? `Stage ${number}`) || `Stage ${number}`;
+    const recipe = stageRecipe(name);
+    return stageFrom({
+      name: name.slice(0, 80),
+      kind: recipe.kind,
+      billRefs: [bill.billRef],
+      netKobo: amount,
+      amountKobo: amount,
+      acceptanceCriteria: recipe.acceptanceCriteria,
+      tags: recipe.tags,
+      itemIds: group.map(itemId),
+    });
+  });
+}
+
+function recipeStages(items: DraftItem[]): Built[] | null {
+  const buckets = new Map<string, { recipe: Recipe; items: DraftItem[] }>();
+  let unmatched = 0;
+  for (const item of items) {
+    const recipe = matchingRecipe(`${item.description} ${item.itemRef}`);
+    if (!recipe) {
+      unmatched += 1;
+      continue;
+    }
+    const bucket = buckets.get(recipe.name) ?? { recipe, items: [] };
+    bucket.items.push(item);
+    buckets.set(recipe.name, bucket);
+  }
+  const recipes = [...buckets.values()];
+  const clear = recipes.filter((bucket) => bucket.items.length >= 2).length >= 2 || (unmatched === 0 && recipes.length >= 2);
+  if (!clear || recipes.length < 2) return null;
+  const ordered = recipes.sort((left, right) => left.recipe.order - right.recipe.order);
+  const stages = ordered.map((bucket) => stageFrom({
+    name: bucket.recipe.name,
+    kind: bucket.recipe.kind,
+    billRefs: [...new Set(bucket.items.map((item) => item.billRef))],
+    netKobo: 0n,
+    amountKobo: 0n,
+    acceptanceCriteria: bucket.recipe.criteria,
+    tags: bucket.recipe.tags,
+  }));
+  const byName = new Map(ordered.map((bucket, index) => [bucket.recipe.name, stages[index]!]));
+  let current = stages[0] ?? null;
+  for (const item of items) {
+    const recipe = matchingRecipe(`${item.description} ${item.itemRef}`);
+    const stage = (recipe ? byName.get(recipe.name) : null) ?? current;
+    if (!stage) continue;
+    current = stage;
+    stage.itemIds.push(itemId(item));
+    stage.amountKobo += item.statedKobo ?? 0n;
+    stage.netKobo += item.statedKobo ?? 0n;
+    if (!stage.billRefs.includes(item.billRef)) stage.billRefs.push(item.billRef);
+  }
+  return stages;
+}
+
+function stagesFromSingle(bill: DraftBill, issues: Issue[]): Built[] {
+  const items = pricedItems(bill);
+  if (items.some((item) => markerNumber(`${item.description} ${item.itemRef}`) !== null)) return markerStages(bill, items);
+  const split = recipeStages(items);
+  if (split && split.length >= 2) return split;
+  const recipe = recipeFor(bill.title);
+  const amount = billNet(bill);
+  issues.push(issue("single_stage", "single_stage", "info", "Your file has one priced section, so Certa made 1 stage. You can split it into more stages on the Review page before you send it.", bill.anchor));
+  return [stageFrom({
+    name: recipe.name,
+    kind: recipe.kind,
+    billRefs: [bill.billRef],
+    netKobo: amount,
+    amountKobo: amount,
+    acceptanceCriteria: recipe.criteria,
+    tags: recipe.tags,
+    itemIds: items.map(itemId),
+  })];
+}
+
+function matchStage(label: string, stages: Built[]): Built | null {
+  const work = stages.filter((stage) => stage.kind !== "reserve");
+  const recipe = matchingRecipe(label);
+  if (recipe) {
+    const same = work.filter((stage) => matchingRecipe(stage.name)?.name === recipe.name);
+    if (same.length === 1) return same[0] ?? null;
+    if (same.length > 1) return same.slice().sort((left, right) => overlapCount(label, right.name) - overlapCount(label, left.name))[0] ?? null;
+  }
+  return work
+    .map((stage) => ({ stage, score: overlapCount(label, stage.name) }))
+    .filter((entry) => entry.score > 0)
+    .sort((left, right) => right.score - left.score)[0]?.stage ?? null;
+}
+
+function linkBoq(stages: Built[], bills: DraftBill[], issues: Issue[]): void {
+  const pricedBills = bills.filter((bill) => pricedItems(bill).length > 0);
+  if (pricedBills.length === 0 || stages.length === 0) return;
+  const units = pricedBills.length === 1
+    ? pricedBills.flatMap((bill) => pricedItems(bill).map((item) => ({
+      label: `${item.description} ${item.itemRef}`,
+      amount: item.statedKobo ?? 0n,
+      billRef: bill.billRef,
+      ids: [itemId(item)],
+    })))
+    : pricedBills.map((bill) => ({
+      label: bill.title,
+      amount: billNet(bill),
+      billRef: bill.billRef,
+      ids: pricedItems(bill).map(itemId),
+    }));
+  const unlinked: string[] = [];
+  for (const unit of units) {
+    const stage = matchStage(unit.label, stages);
+    if (!stage) {
+      unlinked.push(unit.label.trim() || unit.billRef);
+      continue;
+    }
+    stage.boqKobo = (stage.boqKobo ?? 0n) + unit.amount;
+    if (!stage.billRefs.includes(unit.billRef)) stage.billRefs.push(unit.billRef);
+    stage.itemIds.push(...unit.ids);
+  }
+  if (unlinked.length > 0) {
+    issues.push(issue("unlinked", "unlinked", "info", `Not linked to a stage: ${unlinked.join("; ")}.`, null));
+  }
 }
 
 function issue(code: string, rule: string, severity: Severity, message: string, anchor: string | null): Issue {
@@ -157,80 +339,140 @@ export function validateDraft(draft: BoqDraft, koboPerUsdc: bigint): ValidatedPl
     }
   }
   const computed = draft.includesVat ? net + recomputedVat : net;
-  if (draft.contractSumKobo !== null && absDiff(computed, draft.contractSumKobo) > TOLERANCE) {
-    issues.push(issue(
-      "V04",
-      "contract_sum",
-      "blocking",
-      `The items, sums and correctly calculated VAT add up to ${formatNaira(computed)}, but the contract sum says ${formatNaira(draft.contractSumKobo)} (difference ${formatNaira(absDiff(computed, draft.contractSumKobo))}).`,
-      draft.contractSumAnchor,
-    ));
-  }
-  const basis: ValidatedPlan["basis"] = draft.bills.length > 0 ? "boq_grouping" : "contract_milestones";
-  const target = computed > 0n ? computed : draft.contractSumKobo;
-  const built: Omit<StagePlan, "number" | "amountMicro">[] = [];
-  if (basis === "boq_grouping") {
-    const grouped = new Map<string, { order: number; stage: Omit<StagePlan, "number" | "amountMicro"> }>();
-    for (const bill of draft.bills) {
-      const recipe = recipeFor(bill.title);
-      const existing = grouped.get(recipe.name);
-      const netKobo = billNet(bill);
-      if (existing) {
-        existing.stage.netKobo += netKobo;
-        existing.stage.billRefs.push(bill.billRef);
-      } else {
-        grouped.set(recipe.name, {
-          order: recipe.order,
-          stage: { name: recipe.name, kind: recipe.kind, billRefs: [bill.billRef], netKobo, amountKobo: netKobo, acceptanceCriteria: recipe.criteria, tags: recipe.tags },
-        });
+  const priced = draft.bills.some((bill) => pricedItems(bill).length > 0);
+  if (priced && draft.contractSumKobo !== null) {
+    const boqTotal = draft.milestones.length > 0 && draft.boqStatedKobo !== null ? draft.boqStatedKobo : computed;
+    if (absDiff(boqTotal, draft.contractSumKobo) > TOLERANCE) {
+      if (draft.milestones.length > 0) {
+        const gap = absDiff(boqTotal, draft.contractSumKobo);
+        issues.push(issue(
+          "V19",
+          "contract_boq_mismatch",
+          "warning",
+          `The BoQ adds up to ${formatNaira(boqTotal)} but the contract sum is ${formatNaira(draft.contractSumKobo)} (difference ${formatNaira(gap)}). Certa used the contract's payment schedule for the stages. Check this before you send the plan.`,
+          draft.contractSumAnchor,
+        ));
+      } else if (absDiff(computed, draft.contractSumKobo) > TOLERANCE) {
+        issues.push(issue(
+          "V04",
+          "contract_sum",
+          "blocking",
+          `The items, sums and correctly calculated VAT add up to ${formatNaira(computed)}, but the contract sum says ${formatNaira(draft.contractSumKobo)} (difference ${formatNaira(absDiff(computed, draft.contractSumKobo))}).`,
+          draft.contractSumAnchor,
+        ));
       }
     }
-    const ordered = [...grouped.values()].sort((a, b) => a.order - b.order).map((entry) => entry.stage);
-    built.push(...ordered);
+  }
+  for (const line of draft.summaryChecks) {
+    const number = /bill\s+(\d+)/i.exec(line.label)?.[1] ?? (/^(\d+)\b/.exec(line.label)?.[1] ?? null);
+    const bill = (number ? draft.bills.find((item) => item.billRef === number) : null)
+      ?? draft.bills.find((item) => item.title.length > 2 && line.label.toLowerCase().includes(item.title.toLowerCase()));
+    if (!bill) continue;
+    const netBill = billNet(bill);
+    if (absDiff(netBill, line.kobo) > TOLERANCE) {
+      issues.push(issue("V03", "summary_total", "blocking", `Bill ${bill.billRef} items add up to ${formatNaira(netBill)}, but the summary says ${formatNaira(line.kobo)} (difference ${formatNaira(absDiff(netBill, line.kobo))}).`, line.anchor));
+    }
+  }
+  for (const note of draft.notices) {
+    issues.push(issue("unheaded_row", "unheaded_row", "info", note.message, note.anchor));
+  }
+  const basis: ValidatedPlan["basis"] = draft.milestones.length > 0 ? "contract_milestones" : "boq_grouping";
+  const target = draft.milestones.length > 0 ? (draft.contractSumKobo ?? (computed > 0n ? computed : null)) : (computed > 0n ? computed : draft.contractSumKobo);
+  const built: Built[] = [];
+  const liveBills = draft.bills.filter((bill) => bill.items.length > 0 || bill.statedSubtotalKobo !== null);
+  if (basis === "boq_grouping") {
+    if (liveBills.length === 1 && liveBills[0]) {
+      built.push(...stagesFromSingle(liveBills[0], issues));
+    } else {
+      const grouped = new Map<string, { order: number; stage: Built }>();
+      for (const bill of liveBills) {
+        const recipe = recipeFor(bill.title);
+        const existing = grouped.get(recipe.name);
+        const netKobo = billNet(bill);
+        const ids = pricedItems(bill).map(itemId);
+        if (existing) {
+          existing.stage.netKobo += netKobo;
+          existing.stage.amountKobo += netKobo;
+          existing.stage.billRefs.push(bill.billRef);
+          existing.stage.itemIds.push(...ids);
+        } else {
+          grouped.set(recipe.name, {
+            order: recipe.order,
+            stage: stageFrom({ name: recipe.name, kind: recipe.kind, billRefs: [bill.billRef], netKobo, amountKobo: netKobo, acceptanceCriteria: recipe.criteria, tags: recipe.tags, itemIds: ids }),
+          });
+        }
+      }
+      built.push(...[...grouped.values()].sort((left, right) => left.order - right.order).map((entry) => entry.stage));
+    }
     if (provisional + prime + contingency > 0n) {
-      const reserveName = provisional > 0n && contingency > 0n && prime === 0n
-        ? "Reserve: provisional sum + contingency (variations only)"
-        : "Reserve: provisional sum + contingency (variations only)";
-      built.push({
-        name: reserveName,
+      built.push(stageFrom({
+        name: "Reserve: provisional sum + contingency (variations only)",
         kind: "reserve",
         billRefs: [],
         netKobo: provisional + prime + contingency,
         amountKobo: provisional + prime + contingency,
         acceptanceCriteria: ["A signed variation names the reserve item being spent", "The physical work for that variation is visible on site", "The variation amount is written on the sheet the client signed"],
         tags: ["external"],
-      });
+      }));
     }
     if (draft.includesVat && vatBps > 0) {
       for (const stage of built) stage.amountKobo = grossUp(stage.netKobo, vatBps);
     }
-  } else if (draft.milestones.length > 0) {
-    for (const milestone of draft.milestones) {
-      const amount = milestone.amountKobo ?? (target !== null && milestone.pctBps !== null ? mulDivRound(target, BigInt(milestone.pctBps), 10_000n) : null);
-      if (amount === null) continue;
-      const recipe = recipeFor(milestone.name);
-      built.push({
-        name: milestone.name,
-        kind: /mobil/i.test(milestone.name) ? "mobilisation" : "work",
+  } else {
+    draft.milestones.forEach((milestone, index) => {
+      const name = (milestone.name || `Stage ${index + 1}`).trim().slice(0, 80) || `Stage ${index + 1}`;
+      const fromPct = target !== null && milestone.pctBps !== null ? mulDivRound(target, BigInt(milestone.pctBps), 10_000n) : null;
+      let amount = milestone.amountKobo ?? fromPct;
+      if (amount === null) {
+        amount = 0n;
+        issues.push(issue("V21", "milestone_amount", "blocking", `Stage ${index + 1} (${name}) has no amount or percentage. Enter it on the Review page.`, milestone.anchor));
+      } else if (milestone.amountKobo !== null && fromPct !== null && milestone.pctBps !== null && absDiff(milestone.amountKobo, fromPct) > TOLERANCE) {
+        issues.push(issue("V22", "milestone_pct_amount", "warning", `Stage ${index + 1} (${name}) says ${formatNaira(milestone.amountKobo)} but ${pctFromBps(milestone.pctBps)}% of the contract sum is ${formatNaira(fromPct)}.`, milestone.anchor));
+      }
+      const recipe = stageRecipe(name);
+      built.push(stageFrom({
+        name,
+        kind: recipe.kind,
         billRefs: [],
         netKobo: amount,
         amountKobo: amount,
-        acceptanceCriteria: recipe.criteria,
+        acceptanceCriteria: recipe.acceptanceCriteria,
         tags: recipe.tags,
-      });
-    }
+        expectedFinish: milestone.dueDate,
+        source: draft.scheduleSource,
+      }));
+    });
+    linkBoq(built, liveBills, issues);
+  }
+  const foundStages = built.filter((stage) => stage.kind !== "reserve").length;
+  if (draft.statedStageCount !== null && draft.statedStageCount !== foundStages) {
+    issues.push(issue("V20", "stage_count", "warning", `The document says ${draft.statedStageCount} stages, but Certa found ${foundStages}. Check the stages on the Review page.`, null));
   }
   if (target !== null && built.length > 0) {
     let sum = 0n;
     for (const stage of built) sum += stage.amountKobo;
     const residual = target - sum;
-    if (residual !== 0n) {
+    const room = 100n * BigInt(Math.max(1, foundStages));
+    if (residual !== 0n && absDiff(residual, 0n) <= room) {
       const lastWork = [...built].reverse().find((stage) => stage.kind === "work") ?? built[built.length - 1];
       if (lastWork) lastWork.amountKobo += residual;
       issues.push(issue("V18", "rounding_adjustment", "info", `A rounding remainder of ${formatNaira(residual < 0n ? -residual : residual)} was added to the last work stage so the stages match the contract sum exactly.`, null));
     }
   }
   const stages = renumber(built, koboPerUsdc);
+  for (const bill of draft.bills) {
+    for (const item of bill.items) {
+      const id = itemId(item);
+      item.id = id;
+      item.stageNumber = stages.find((stage) => stage.itemIds.includes(id))?.number ?? null;
+    }
+  }
+  for (const stage of stages) {
+    if (stage.boqKobo === null || stage.kind === "reserve") continue;
+    if (absDiff(stage.boqKobo, stage.amountKobo) > TOLERANCE) {
+      issues.push(issue("boq_stage_gap", "boq_stage_gap", "warning", `${stage.name}: the BoQ items add up to ${formatNaira(stage.boqKobo)} but this stage is ${formatNaira(stage.amountKobo)}.`, null));
+    }
+  }
   let stageSum = 0n;
   for (const stage of stages) stageSum += stage.amountKobo;
   if (target !== null && stages.length > 0 && stageSum !== target) {
@@ -243,7 +485,8 @@ export function validateDraft(draft: BoqDraft, koboPerUsdc: bigint): ValidatedPl
       if (milestone.pctBps === null) complete = false;
       else pct += milestone.pctBps;
     }
-    if (!complete || pct !== 10_000) {
+    const anyPct = draft.milestones.some((milestone) => milestone.pctBps !== null);
+    if (anyPct && (!complete || pct !== 10_000)) {
       issues.push(issue("V08", "milestone_pct", "blocking", `Milestone percentages add up to ${pctFromBps(pct)}%, and they must add up to 100%.`, draft.milestones[0]?.anchor ?? null));
     }
   }
