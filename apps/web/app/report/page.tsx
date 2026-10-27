@@ -1,11 +1,12 @@
 import { isTxHash } from "@certa/chain";
-import { aiVerdicts, chainTxs, getDatabase, x402Spend } from "@certa/db";
+import { aiVerdicts, chainTxs, disputes, getDatabase, x402Spend } from "@certa/db";
 import { formatNaira } from "../../../../src/lib/money/kobo";
 import { usdcPlain } from "../../../../src/server/x402/gate";
 import { desc, eq } from "drizzle-orm";
 import { ReportRange } from "../../components/report-range";
 import { BASE_SEPOLIA_CHAIN_ID, explorerTx } from "../../lib/explorer";
 import { loadProject } from "../../lib/data";
+import { noConsultantDispute } from "../../../../src/server/projects/approvalMode";
 
 function sentence(label: "Today" | "This week", rows: { verdict: string }[], released: string, next: string): string {
   const pass = rows.filter((row) => row.verdict === "pass").length;
@@ -32,6 +33,8 @@ export default async function ReportPage() {
   const weather = calls.find((row) => row.endpoint.includes("weather"));
   const weatherTx = weather?.chainTxId ? feeTxs.find((row) => row.id === weather.chainTxId) : undefined;
   const certificates = data.stages.filter((stage) => stage.status === "released");
+  const openDisputes = (await db.select().from(disputes).where(eq(disputes.projectId, data.project.id))).filter((row) => row.status === "open" && noConsultantDispute(row.resolution));
+  const disputed = data.stages.filter((stage) => openDisputes.some((row) => row.stageId === stage.id));
   return (
     <div>
       <p className="eyebrow">Reports</p>
@@ -50,6 +53,13 @@ export default async function ReportPage() {
           )}
         </p>
       </div>
+      {disputed.length > 0 ? (
+        <ul>
+          {disputed.map((stage) => (
+            <li key={stage.id}>{stage.stageIndex + 1}. {stage.name} — Disputed: no independent reviewer</li>
+          ))}
+        </ul>
+      ) : null}
       <h2>Certificates</h2>
       {certificates.length === 0 ? <p className="muted">No payment certificate yet.</p> : null}
       <ul>

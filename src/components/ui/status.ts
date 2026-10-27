@@ -10,7 +10,7 @@ const CHIPS: Record<string, StageChip> = {
   ai_fail: { label: "Needs work", tone: "danger" },
   needs_more_evidence: { label: "More photos needed", tone: "warning" },
   awaiting_certification: { label: "Waiting for consultant", tone: "warning" },
-  awaiting_client_approval: { label: "Waiting for client approval", tone: "warning" },
+  awaiting_client_approval: { label: "Waiting for the client", tone: "warning" },
   approved: { label: "Paying", tone: "info" },
   releasing: { label: "Paying", tone: "info" },
   released: { label: "Released", tone: "success" },

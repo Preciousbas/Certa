@@ -10,7 +10,7 @@ describe("stage chips", () => {
     expect(stageChip("ai_fail").label).toBe("Needs work");
     expect(stageChip("needs_more_evidence").label).toBe("More photos needed");
     expect(stageChip("awaiting_certification").label).toBe("Waiting for consultant");
-    expect(stageChip("awaiting_client_approval").label).toBe("Waiting for client approval");
+    expect(stageChip("awaiting_client_approval").label).toBe("Waiting for the client");
     expect(stageChip("approved").label).toBe("Paying");
     expect(stageChip("releasing").label).toBe("Paying");
     expect(stageChip("released")).toEqual({ label: "Released", tone: "success" });
