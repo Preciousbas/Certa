@@ -1,14 +1,14 @@
 import { acceptPlan, sendPlan } from "../../../../../../../src/server/intake/flow";
 import { AGREED_LOCKED } from "../../../../../../../src/server/intake/messages";
-import { loadReview, reviewAction } from "../../../../../../../src/server/intake/review";
+import { editStages, loadReview, reviewAction, type StageEdit } from "../../../../../../../src/server/intake/review";
 import { withProject } from "../../../../../lib/project-route";
 
 export const runtime = "nodejs";
 
 export async function GET(request: Request, context: { params: Promise<{ id: string }> }) {
   const { id } = await context.params;
-  return withProject(request, id, ["client", "contractor", "consultant"], async ({ db }) => {
-    const review = await loadReview(db, id);
+  return withProject(request, id, ["client", "contractor", "consultant"], async ({ db, role }) => {
+    const review = await loadReview(db, id, role);
     if (!review) return Response.json({ empty: true });
     return Response.json(review);
   });
@@ -25,11 +25,18 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     anchor?: string | null;
     stageIndex?: number | null;
     value?: string;
+    stageEdit?: StageEdit;
   } | null;
   return withProject(request, id, ["client", "contractor"], async ({ db, userId, role }) => {
+    if (body?.stageEdit) {
+      if (role !== "client") return Response.json({ error: "forbidden", message: "Only the client can correct the figures." }, { status: 403 });
+      const updated = await editStages(db, { projectId: id, edit: body.stageEdit });
+      if (!updated.ok) return Response.json({ error: "blocked", message: updated.message }, { status: 409 });
+      return Response.json({ ...updated.review, message: updated.message });
+    }
     if (body?.action === "correct" || body?.action === "keep") {
       if (role !== "client") return Response.json({ error: "forbidden", message: "Only the client can correct the figures." }, { status: 403 });
-      const updated = await reviewAction(db, { projectId: id, action: body.action, code: body.code, anchor: body.anchor, stageIndex: body.stageIndex, value: body.value });
+      const updated = await reviewAction(db, { projectId: id, action: body.action, code: body.code, anchor: body.anchor, stageIndex: body.stageIndex, value: body.value, role });
       if (!updated.ok) return Response.json({ error: "blocked", message: updated.message }, { status: 409 });
       return Response.json(updated.review);
     }
