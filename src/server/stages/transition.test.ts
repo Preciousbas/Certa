@@ -11,6 +11,7 @@ const LEGAL: Array<[StageStatus, StageStatus]> = [
   ["ai_review", "ai_fail"],
   ["ai_review", "needs_more_evidence"],
   ["ai_review", "awaiting_certification"],
+  ["ai_review", "awaiting_client_approval"],
   ["ai_review", "disputed"],
   ["ai_fail", "submitted"],
   ["ai_fail", "disputed"],

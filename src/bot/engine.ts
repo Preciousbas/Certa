@@ -9,6 +9,7 @@ import {
   beginUpload,
   beginVariation,
   certify,
+  chooseApprovalMode,
   chooseVariationStage,
   declineAsk,
   decideDispute,
@@ -140,6 +141,8 @@ async function bindActorProject(db: Database, actor: Awaited<ReturnType<typeof l
     projectId = (await db.select().from(contractVersions).where(eq(contractVersions.id, id)))[0]?.projectId;
   } else if (action === "cf" || action === "ap" || action === "rj" || action === "dc") {
     projectId = (await db.select().from(stages).where(eq(stages.id, id)))[0]?.projectId;
+  } else if (action === "am") {
+    projectId = id;
   } else {
     return;
   }
@@ -198,6 +201,7 @@ async function onCallback(
     return { messages: [], edit: { text: bGe9() } };
   }
   if (action === "ir") return issueInvite(db, actor, id, now, deps);
+  if (action === "am") return chooseApprovalMode(db, actor, arg || id);
   if (action === "jn" && arg === "later") return { messages: [], edit: { text: bInLater({ project: actor.project?.name ?? "that project" }) } };
   if (action === "jn") return joinWithCode(db, actor, id, now);
   if (action === "sw") return switchProject(db, actor, id, deps);

@@ -242,12 +242,14 @@ export function bAc1(input: {
   stageLines: string;
   retentionPct: string;
   months: number;
+  approvals?: string;
 }): string {
   return [
     `${e(input.clientName)} has shared the payment plan for **${e(input.project)}**.`,
     `Contract sum: ${e(input.sum)}`,
     input.stageLines,
     `Retention: ${e(input.retentionPct)}% until ${countNoun(input.months, "month")} after completion.`,
+    ...(input.approvals ? [e(input.approvals)] : []),
     "Please check it carefully. Tap **Review plan** to see each figure and where it came from.",
   ].join("\n");
 }
@@ -312,7 +314,8 @@ export function bVf2(input: { n: number; stage: string; consultant: string; amou
 }
 
 /** B-VF-3 */
-export function bVf3(input: { n: number }): string {
+export function bVf3(input: { n: number; clientReviews?: boolean }): string {
+  if (input.clientReviews) return `\u2705 Your photos for stage ${input.n} passed the check. The client will now review and approve it.`;
   return `\u2705 Your photos for stage ${input.n} passed the check. The consultant will now certify it.`;
 }
 
@@ -346,6 +349,10 @@ export function bRv2(input: { n: number; consultant: string; reason: string }): 
   return `Stage ${input.n} was not certified by ${e(input.consultant)}: "${e(input.reason)}". The money stays locked. Fix it and send new photos.`;
 }
 
+export function bApClient(input: { n: number; stage: string; check: string }): string {
+  return `Stage ${input.n} \u2014 ${e(input.stage)}: Certa's photo check ${e(input.check)}. This is advice only. There's no consultant on this project, so you decide.`;
+}
+
 /** B-AP-1 */
 export function bAp1(input: { n: number; stage: string; consultant: string; amount: string; retention: string; contractor: string }): string {
   return `Stage ${input.n} \u2014 ${e(input.stage)} is certified by ${e(input.consultant)}.\nPay ${e(input.amount)} to ${e(input.contractor)}? (${e(input.retention)} retention is kept until the defects period ends.)`;
@@ -362,15 +369,17 @@ export function bAp3(input: { amount: string; n: number }): string {
 }
 
 /** B-AP-4 */
-export function bAp4(input: { amount: string; retention?: string; contractor: string; n: number; stage: string; explorerLink: string }): string {
+export function bAp4(input: { amount: string; retention?: string; contractor: string; n: number; stage: string; explorerLink: string; approvedBy?: string }): string {
   const paid = `\u{1F4B8} Paid ${e(input.amount)} to ${e(input.contractor)} for stage ${input.n} \u2014 ${e(input.stage)}.`;
   const kept = input.retention ? `\n${e(input.retention)} is kept as retention until the defects period ends.` : "";
-  return `${paid}${kept}\nProof of payment: ${e(input.explorerLink)}`;
+  const by = input.approvedBy ? `\n${e(input.approvedBy)}.` : "";
+  return `${paid}${kept}\nProof of payment: ${e(input.explorerLink)}${by}`;
 }
 
 /** B-AP-5 */
-export function bAp5(input: { n: number }): string {
-  return `Why are you declining payment for stage ${input.n}? This goes to the contractor and the consultant (at least 10 characters).`;
+export function bAp5(input: { n: number; clientOnly?: boolean }): string {
+  const who = input.clientOnly ? "the contractor" : "the contractor and the consultant";
+  return `Why are you declining payment for stage ${input.n}? This goes to ${who} (at least 10 characters).`;
 }
 
 /** B-AP-6 */
@@ -396,6 +405,10 @@ export function bDi1(input: { n: number }): string {
 /** B-DI-1 opened, the second sentence in the dispute flow. */
 export function bDi1Opened(input: { otherParty: string; consultant: string; decideAfterDate: string }): string {
   return `Dispute opened. ${e(input.otherParty)} and ${e(input.consultant)} have been told. If you can't agree by ${e(input.decideAfterDate)}, ${e(input.consultant)} will decide.`;
+}
+
+export function bDi1NoConsultant(input: { n: number }): string {
+  return `Dispute opened on stage ${input.n}. There's no consultant on this project, so nobody independent can decide it. The money stays locked until you both agree, or a consultant is added.`;
 }
 
 /** B-DI-1 photos step. */

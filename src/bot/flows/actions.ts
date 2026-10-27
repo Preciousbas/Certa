@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import {
+  aiVerdicts,
   approvals,
   changeRequests,
   contractVersions,
@@ -10,6 +11,7 @@ import {
   parties,
   payments,
   photos as photoRows,
+  projects,
   stages,
   type Database,
 } from "@certa/db";
@@ -19,6 +21,7 @@ import { parseNaira, formatNaira } from "../../lib/money/kobo.js";
 import { releaseSplit } from "../../lib/money/release-split.js";
 import { stageStatusLabel } from "../../lib/stageStatus.js";
 import { explorerTx, SEPOLIA_CHAIN_ID } from "../../server/chain/networks.js";
+import { approverLine, canOfferSkip, noConsultantDispute, setApprovalMode, stageReviewer } from "../../server/projects/approvalMode.js";
 import { createInvite, invitableRoles } from "../../server/projects/selfServe.js";
 import { stageLocationNote } from "../../server/site/note.js";
 import { InvalidMoney } from "../../lib/money/kobo.js";
@@ -34,6 +37,7 @@ import { escapeHtml } from "../html.js";
 import {
   acceptPlanKeyboard,
   approveKeyboard,
+  clientApproveKeyboard,
   cameraKeyboard,
   cancelKeyboard,
   certifyKeyboard,
@@ -59,6 +63,7 @@ import {
   bAc5,
   bAc6,
   bAp1,
+  bApClient,
   bAp2,
   bAp3,
   bAp4,
@@ -67,6 +72,7 @@ import {
   bAp8,
   bCf1,
   bDi1,
+  bDi1NoConsultant,
   bDi1Opened,
   bDi1Photos,
   bDi2,
@@ -191,24 +197,43 @@ async function openInviteRoles(db: Database, actor: Actor): Promise<string[]> {
   return invitableRoles(actor.role, new Set(rows.map((row) => row.role)));
 }
 
+async function inviteKeyboard(db: Database, actor: Actor, roles: string[]) {
+  const skip = actor.project ? await canOfferSkip(db, actor.project) : false;
+  return inviteRoleKeyboard(roles, { offerSkip: skip, projectId: actor.project?.id });
+}
+
 export async function beginInvite(db: Database, actor: Actor): Promise<Outbound> {
   const denied = forbid(actor, ["client", "contractor"], "client");
   if (denied) return denied;
   const roles = await openInviteRoles(db, actor);
   if (roles.length === 0) return say("Everyone is already in. Nothing to invite.");
-  return say(bIn1(), inviteRoleKeyboard(roles));
+  return say(bIn1(), await inviteKeyboard(db, actor, roles));
+}
+
+export async function chooseApprovalMode(db: Database, actor: Actor, choice: string): Promise<Outbound> {
+  if (!actor.project) return say(bGe4());
+  if (choice === "keep") return say("A consultant stays on this project. Invite one when you're ready.");
+  const agreed = choice === "agree";
+  const result = await setApprovalMode(db, { userId: actor.userId, projectId: actor.project.id, mode: "client", agreed });
+  if (!result.ok) return say(result.message);
+  if (result.waiting) return say(result.waiting);
+  const line = await nextStep(db, actor.project.id, actor.userId, actor.role ?? "client");
+  return say(withNext(`OK. No consultant on ${escapeHtml(actor.project.name)}. You'll approve each stage yourself after Certa's photo check.`, line));
 }
 
 export async function issueInvite(db: Database, actor: Actor, role: string, now: Date, deps: EngineDeps): Promise<Outbound> {
   const denied = forbid(actor, ["client", "contractor"], "client");
   const roles = actor.project ? await openInviteRoles(db, actor) : [];
-  if (denied || !actor.project) return denied ?? say(bIn1(), inviteRoleKeyboard(roles));
+  const keyboard = roles.length > 0 ? await inviteKeyboard(db, actor, roles) : undefined;
+  if (denied || !actor.project) return denied ?? say(bIn1(), keyboard);
   const issued = await createInvite(db, { userId: actor.userId, projectId: actor.project.id, role, botUsername: botName(deps) });
-  if (!issued.ok) return say(issued.message, roles.length > 0 ? inviteRoleKeyboard(roles) : undefined);
+  if (!issued.ok) return say(issued.message, keyboard);
   const link = issued.link;
   const label = roleLabel(role);
   const line = await nextStep(db, actor.project.id, actor.userId, actor.role ?? "client");
-  return say(withNext(bIn2({ roleLabel: label, date: formatWatDate(issued.expiresAt), link }), line), inviteShareKeyboard(link));
+  const skip = await canOfferSkip(db, actor.project);
+  const hint = role === "contractor" && skip ? "\nInvite a consultant, or skip if there isn't one." : "";
+  return say(withNext(`${bIn2({ roleLabel: label, date: formatWatDate(issued.expiresAt), link })}${hint}`, line), inviteShareKeyboard(link));
 }
 
 function botName(deps: EngineDeps): string {
@@ -240,6 +265,7 @@ export async function showPlan(db: Database, actor: Actor, deps: EngineDeps): Pr
       stageLines: lines,
       retentionPct: String(version.retentionBps / 100),
       months: Math.max(1, Math.round(version.defectsPeriodDays / 30)),
+      approvals: actor.project.approvalMode === "client" ? "Approvals: by the client (no consultant)" : undefined,
     }), line),
     acceptPlanKeyboard(appUrl(deps), version.id),
   );
@@ -367,9 +393,12 @@ export async function photoStage(db: Database, actor: Actor, stageId: string, de
 export async function myStages(db: Database, actor: Actor): Promise<Outbound> {
   if (!actor.project) return say(bSt6({ project: "this project", lines: "" }));
   const rows = (await db.select().from(stages).where(eq(stages.projectId, actor.project.id))).sort((a, b) => a.stageIndex - b.stageIndex);
+  const openDisputes = (await db.select().from(disputes).where(eq(disputes.projectId, actor.project.id))).filter((row) => row.status === "open" && noConsultantDispute(row.resolution));
+  const flagged = new Set(openDisputes.map((row) => row.stageId));
   const lines = rows.map((stage) => {
     const due = stage.expectedFinish ? ` · due ${formatIsoDate(stage.expectedFinish)}` : "";
-    return `${stage.stageIndex + 1}. ${escapeHtml(stage.name)} \u2014 ${escapeHtml(stageStatusLabel(stage.status, stage.funded))}${due}`;
+    const label = flagged.has(stage.id) ? "Disputed: no independent reviewer" : stageStatusLabel(stage.status, stage.funded);
+    return `${stage.stageIndex + 1}. ${escapeHtml(stage.name)} \u2014 ${escapeHtml(label)}${due}`;
   }).join("\n");
   return say(bSt6({ project: actor.project.name, lines }));
 }
@@ -513,8 +542,17 @@ export async function approvalPrompt(db: Database, actor: Actor, stageId: string
   if (denied || !actor.project) return denied ?? replace(bGe4());
   const stage = (await db.select().from(stages).where(eq(stages.id, stageId)))[0];
   if (!stage || stage.projectId !== actor.project.id) return replace(bGe4());
-  const consultants = await memberUsers(db, actor.project.id, "consultant");
   const contractors = await memberUsers(db, actor.project.id, "contractor");
+  if (stageReviewer(actor.project, stage) === "client") {
+    const verdict = (await db.select().from(aiVerdicts).where(eq(aiVerdicts.stageId, stage.id)).orderBy(desc(aiVerdicts.createdAt)))[0];
+    const flagged = verdict?.verdict === "fail" || verdict?.verdict === "unsure";
+    const check = flagged
+      ? `flagged: ${verdict?.reasons[0] ?? "the photos need another look"}`
+      : `passed (${Math.round((verdict?.confidence ?? 0) * 100)}% sure)`;
+    const payout = naira(releaseSplit({ amountUsdc: stage.amountUsdc, amountNgnKobo: stage.amountNgnKobo, retentionBps: stage.retentionBps }).payoutNgnKobo);
+    return say(bApClient({ n: stage.stageIndex + 1, stage: stage.name, check }), clientApproveKeyboard(stage.id, payout));
+  }
+  const consultants = await memberUsers(db, actor.project.id, "consultant");
   const above = stage.amountUsdc > actor.project.spendingCapUsdc;
   const text = above
     ? bAp2({
@@ -546,18 +584,20 @@ export async function approve(db: Database, actor: Actor, stageId: string, deps:
   const contractors = await memberUsers(db, actor.project.id, "contractor");
   const contractorName = contractors[0]?.name ?? "the contractor";
   const split = releaseSplit({ amountUsdc: stage.amountUsdc, amountNgnKobo: stage.amountNgnKobo, retentionBps: stage.retentionBps });
-  const paidCopy = (explorerLink: string) => bAp4({
+  const clientReviews = stageReviewer(actor.project, stage) === "client";
+  const paidCopy = async (explorerLink: string) => bAp4({
     amount: naira(split.payoutNgnKobo),
     retention: split.retentionNgnKobo > 0n ? naira(split.retentionNgnKobo) : undefined,
     contractor: contractorName,
     n: stage.stageIndex + 1,
     stage: stage.name,
     explorerLink,
+    approvedBy: clientReviews ? (await approverLine(db, stage)) || undefined : undefined,
   });
   if (existing?.status === "confirmed") {
     const stored = existing.txHash ?? "";
     const link = /^0x[a-fA-F0-9]{64}$/.test(stored) ? explorerTx(SEPOLIA_CHAIN_ID, stored) : stored;
-    return replace(paidCopy(link));
+    return replace(await paidCopy(link));
   }
   let approvalId: string;
   let paymentId: string;
@@ -571,7 +611,13 @@ export async function approve(db: Database, actor: Actor, stageId: string, deps:
   } else if (existing) {
     return replace(bAp3({ amount: naira(stage.amountNgnKobo), n: stage.stageIndex + 1 }));
   } else {
-    if (stage.status !== "awaiting_client_approval" && stage.status !== "approved") return replace(bGe4());
+    if (stage.status === "disputed" && clientReviews) {
+      await transitionStage(db, stage.id, "approved");
+      const open = (await db.select().from(disputes).where(eq(disputes.stageId, stage.id))).filter((row) => row.status === "open");
+      for (const dispute of open) {
+        await db.update(disputes).set({ status: "resolved", resolution: { pay: true, by: "client" } }).where(eq(disputes.id, dispute.id));
+      }
+    } else if (stage.status !== "awaiting_client_approval" && stage.status !== "approved") return replace(bGe4());
     approvalId = randomUUID();
     await db.insert(approvals).values({
       id: approvalId,
@@ -626,7 +672,7 @@ export async function approve(db: Database, actor: Actor, stageId: string, deps:
   if (stage.status === "awaiting_client_approval") {
     await transitionStage(db, stage.id, "approved").catch(() => undefined);
   }
-  const paid = paidCopy(released.explorerLink);
+  const paid = await paidCopy(released.explorerLink);
   const everyone = [
     ...(await memberUsers(db, actor.project.id, "contractor")),
     ...(await memberUsers(db, actor.project.id, "consultant")),
@@ -648,17 +694,22 @@ export async function declineAsk(db: Database, actor: Actor, stageId: string, no
   const stage = (await db.select().from(stages).where(eq(stages.id, stageId)))[0];
   if (!stage || stage.projectId !== actor.project.id) return replace(bGe4());
   await writeSession(db, actor.telegramId, { step: "decline_reason", projectId: actor.project.id, data: { stageId } }, now);
-  return replace(bAp5({ n: stage.stageIndex + 1 }));
+  const clientOnly = stageReviewer(actor.project, stage) === "client";
+  return replace(bAp5({ n: stage.stageIndex + 1, clientOnly }));
 }
 
 export async function onDeclineReason(db: Database, actor: Actor, text: string, now: Date): Promise<Outbound> {
   const reason = text.trim();
   const stage = actor.session.data.stageId ? (await db.select().from(stages).where(eq(stages.id, actor.session.data.stageId)))[0] : undefined;
   if (!stage) return say(bGe4());
-  if (reason.length < 10) return say(bAp5({ n: stage.stageIndex + 1 }));
+  const project = (await db.select().from(projects).where(eq(projects.id, stage.projectId)))[0];
+  const clientOnly = project ? stageReviewer(project, stage) === "client" : false;
+  if (reason.length < 10) return say(bAp5({ n: stage.stageIndex + 1, clientOnly }));
   if (stage.status === "awaiting_client_approval") await transitionStage(db, stage.id, "in_progress");
   const note = bAp8({ n: stage.stageIndex + 1, client: actor.firstName, reason });
-  const people = [...(await memberUsers(db, stage.projectId, "contractor")), ...(await memberUsers(db, stage.projectId, "consultant"))];
+  const people = clientOnly
+    ? await memberUsers(db, stage.projectId, "contractor")
+    : [...(await memberUsers(db, stage.projectId, "contractor")), ...(await memberUsers(db, stage.projectId, "consultant"))];
   for (const person of people) {
     await notify(db, { userId: person.id, messageId: "B-AP-8", text: note, dedupeKey: `bap8:${stage.id}:${person.id}`, chatId: person.telegramId.toString() });
   }
@@ -708,6 +759,17 @@ export async function finishDispute(db: Database, actor: Actor, now: Date): Prom
   const consultants = await memberUsers(db, actor.project.id, "consultant");
   const otherRole = actor.role === "client" ? "contractor" : "client";
   const others = await memberUsers(db, actor.project.id, otherRole);
+  if (stageReviewer(actor.project, stage) === "client") {
+    if (opened) {
+      await db.update(disputes).set({ resolution: { noConsultant: true } }).where(eq(disputes.id, opened.id));
+    }
+    const note = bDi1NoConsultant({ n: stage.stageIndex + 1 });
+    for (const person of others) {
+      await notify(db, { userId: person.id, messageId: "B-DI-1", text: note, dedupeKey: `bdi1:${opened?.id ?? stage.id}:${person.id}`, chatId: person.telegramId.toString() });
+    }
+    await writeSession(db, actor.telegramId, { step: null, projectId: actor.project.id }, now);
+    return say(note);
+  }
   const consultantName = consultants[0]?.name ?? "the consultant";
   const otherName = others[0]?.name ?? "the other party";
   const note = bDi1Opened({ otherParty: otherName, consultant: consultantName, decideAfterDate: formatWatDate(deadline) });
