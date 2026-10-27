@@ -3,7 +3,8 @@ import { callbackData } from "./callbacks.js";
 export type BotButton =
   | { kind: "callback"; text: string; data: string }
   | { kind: "web_app"; text: string; url: string }
-  | { kind: "switch"; text: string; query: string };
+  | { kind: "switch"; text: string; query: string }
+  | { kind: "location"; text: string };
 
 export type BotKeyboard = BotButton[][];
 
@@ -27,6 +28,14 @@ export function skipLocationKeyboard(): BotKeyboard {
   return [[tap("Skip for now", "go", "skip")]];
 }
 
+export function pinKeyboard(): BotKeyboard {
+  return [[{ kind: "location", text: "Send location" }], [tap("Skip", "go", "skip")]];
+}
+
+export function siteConfirmKeyboard(): BotKeyboard {
+  return [[tap("Yes, use this", "sp", "yes")], [tap("No, skip", "sp", "no")]];
+}
+
 export function roleSideKeyboard(): BotKeyboard {
   return [[tap("Client", "sd", "client")], [tap("Contractor", "sd", "contractor")]];
 }
@@ -36,14 +45,24 @@ function withRetry(rows: BotKeyboard, retry: boolean): BotKeyboard {
   return [...rows, [tap("Retry", "rx")]];
 }
 
-export function roleMenu(role: string, waiting: number, appUrl: string, projectId: string, retry = false): BotKeyboard {
+export function roleMenu(
+  role: string,
+  waiting: number,
+  appUrl: string,
+  projectId: string,
+  retry = false,
+  flags?: { fund?: boolean; sitePin?: boolean },
+): BotKeyboard {
   const base = appUrl.replace(/\/$/, "");
+  const pin = flags?.sitePin ? [tap("Set site pin", "go", "site")] : null;
   if (role === "contractor") {
     return withRetry([
       [tap("Submit stage photos", "go", "photos")],
       [tap("My stages", "go", "stages")],
       [tap("Payments", "go", "wallet")],
       [tap("Propose change", "go", "change")],
+      [tap("Invite people", "go", "invite")],
+      ...(pin ? [pin] : []),
       [tap("New project", "go", "create")],
       [tap("Switch project", "go", "switch")],
     ], retry);
@@ -65,20 +84,29 @@ export function roleMenu(role: string, waiting: number, appUrl: string, projectI
       [tap("Switch project", "go", "switch")],
     ], retry);
   }
+  const fund: BotKeyboard = flags?.fund === false ? [] : [[tap("Fund", "go", "fund")]];
   return withRetry([
     [tap("Upload contract or BoQ", "go", "upload")],
     [{ kind: "web_app", text: "Review figures", url: `${base}/app/p/${projectId}/contract/review` }],
-    [tap("Fund", "go", "fund")],
+    ...fund,
     [tap(`Waiting for me (${waiting})`, "go", "review")],
     [tap("Invite people", "go", "invite")],
+    ...(pin ? [pin] : []),
     [tap("Project report", "go", "report")],
     [tap("New project", "go", "create")],
     [tap("Switch project", "go", "switch")],
   ], retry);
 }
 
-export function inviteRoleKeyboard(): BotKeyboard {
-  return [[tap("Contractor", "ir", "contractor")], [tap("Subcontractor", "ir", "subcontractor")], [tap("Consultant", "ir", "consultant")]];
+const INVITE_LABELS: Record<string, string> = {
+  client: "Client",
+  contractor: "Contractor",
+  consultant: "Consultant",
+  subcontractor: "Subcontractor",
+};
+
+export function inviteRoleKeyboard(roles: readonly string[] = ["contractor", "subcontractor", "consultant"]): BotKeyboard {
+  return roles.map((role) => [tap(INVITE_LABELS[role] ?? role, "ir", role)]);
 }
 
 export function inviteShareKeyboard(link: string): BotKeyboard {
@@ -227,6 +255,7 @@ export function telegramMarkup(keyboard: BotKeyboard): { inline_keyboard: Telegr
       row.map((button) => {
         if (button.kind === "web_app") return { text: button.text, web_app: { url: button.url } };
         if (button.kind === "switch") return { text: button.text, switch_inline_query: button.query };
+        if (button.kind === "location") return { text: button.text, callback_data: "v1:go:skip" };
         return { text: button.text, callback_data: button.data };
       }),
     ),

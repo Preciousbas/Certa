@@ -1,3 +1,5 @@
+import { supportEmailOrEmpty } from "../lib/support.js";
+import { sentence } from "../lib/text.js";
 import { countNoun } from "../lib/count-noun.js";
 import { escapeHtml } from "./html.js";
 
@@ -139,6 +141,10 @@ export function bIn10(): string {
 
 /** B-IN-11 */
 export function bIn11(input: { project: string }): string {
+  return `You're in as client on ${e(input.project)}.`;
+}
+
+export function bInLater(input: { project: string }): string {
   return `You have not joined ${e(input.project)}.`;
 }
 
@@ -278,7 +284,11 @@ export function bFu3(input: { client: string; amount: string; from: number; to: 
 
 /** B-FU-4 */
 export function bFu4(input: { plainReason: string; supportEmail: string }): string {
-  return `The money wasn't locked: ${e(input.plainReason)}. Nothing was taken from your account. Try again, or contact support at ${e(input.supportEmail)}.`;
+  const reason = sentence(input.plainReason);
+  const base = `The money wasn't locked: ${e(reason)}. Nothing was taken from your account.`;
+  const email = supportEmailOrEmpty(input.supportEmail);
+  if (!email) return `${base} Try again.`;
+  return `${base} Try again, or contact support at ${e(email)}.`;
 }
 
 /** B-PH-1 */
@@ -352,8 +362,10 @@ export function bAp3(input: { amount: string; n: number }): string {
 }
 
 /** B-AP-4 */
-export function bAp4(input: { amount: string; contractor: string; n: number; stage: string; explorerLink: string }): string {
-  return `\u{1F4B8} Paid ${e(input.amount)} to ${e(input.contractor)} for stage ${input.n} \u2014 ${e(input.stage)}.\nProof of payment: ${e(input.explorerLink)}`;
+export function bAp4(input: { amount: string; retention?: string; contractor: string; n: number; stage: string; explorerLink: string }): string {
+  const paid = `\u{1F4B8} Paid ${e(input.amount)} to ${e(input.contractor)} for stage ${input.n} \u2014 ${e(input.stage)}.`;
+  const kept = input.retention ? `\n${e(input.retention)} is kept as retention until the defects period ends.` : "";
+  return `${paid}${kept}\nProof of payment: ${e(input.explorerLink)}`;
 }
 
 /** B-AP-5 */
@@ -490,9 +502,10 @@ export function bGe3(input: { supportEmail?: string | null }): string {
     "/photos \u2014 send stage photos",
     "/review \u2014 things waiting for you",
     "/wallet \u2014 your payments",
+    "/site \u2014 set the site pin",
   ];
-  const email = input.supportEmail?.trim();
-  if (email && email !== "support@example.com") lines.push(`Need a person? Email ${e(email)}.`);
+  const email = supportEmailOrEmpty(input.supportEmail);
+  if (email) lines.push(`Need a person? Email ${e(email)}.`);
   return lines.join("\n");
 }
 
@@ -551,6 +564,8 @@ export function bAc5(): string {
 }
 
 /** B-AC-6 One side has accepted. */
-export function bAc6(): string {
-  return "You accepted. The other side still has to accept.";
+export function bAc6(input: { name: string; joined?: boolean } = { name: "the other side" }): string {
+  const line = `You accepted. Waiting for ${e(input.name)} to accept.`;
+  if (input.joined === false) return `${line} They haven't joined yet. Send them the invite link.`;
+  return line;
 }

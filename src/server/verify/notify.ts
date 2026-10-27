@@ -1,5 +1,6 @@
 import { memberships, users, type Database } from "@certa/db";
 import { and, eq, inArray } from "drizzle-orm";
+import { appBaseUrl } from "../../lib/appUrl.js";
 import { formatNaira } from "../../lib/money/kobo.js";
 import { bVf1, bVf2, bVf3, bVf4, bVf5, bVf6, bVf7, bullets } from "../../bot/messages.js";
 import { certifyKeyboard, morePhotosKeyboard, retryPhotosKeyboard, reviewNowKeyboard, type BotKeyboard } from "../../bot/keyboards.js";
@@ -18,7 +19,7 @@ async function roleUsers(db: Database, projectId: string, role: string): Promise
 }
 
 function appUrl(): string {
-  return (process.env.APP_URL || process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000").replace(/\/$/, "");
+  return appBaseUrl();
 }
 
 function textFor(notice: VerifyNotice, input: NoticeInput): { text: string; keyboard?: BotKeyboard } {

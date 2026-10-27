@@ -1,3 +1,4 @@
+import { appBaseUrl } from "../../lib/appUrl.js";
 import { countNoun } from "../../lib/count-noun.js";
 import { formatNaira } from "../../lib/money/kobo.js";
 import { digits } from "./amounts.js";
@@ -54,7 +55,7 @@ export const MODEL_SLOW =
   "Reading the documents is taking longer than usual. I'll keep trying and message you within 30 minutes. Nothing has been lost.";
 
 export function reviewLink(projectId: string): string {
-  const base = (process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || "http://localhost:3000").replace(/\/$/, "");
+  const base = appBaseUrl();
   return `${base}/app/p/${projectId}/contract/review`;
 }
 

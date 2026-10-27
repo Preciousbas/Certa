@@ -6,16 +6,21 @@ import {
   documents,
   disputes,
   jobs,
-  issueJoinCode,
   memberships,
   parties,
   payments,
+  photos as photoRows,
   stages,
   type Database,
 } from "@certa/db";
 import { koboFromUsdc, usdcFromNgnKobo } from "@certa/shared";
 import { and, desc, eq } from "drizzle-orm";
 import { parseNaira, formatNaira } from "../../lib/money/kobo.js";
+import { releaseSplit } from "../../lib/money/release-split.js";
+import { stageStatusLabel } from "../../lib/stageStatus.js";
+import { explorerTx, SEPOLIA_CHAIN_ID } from "../../server/chain/networks.js";
+import { createInvite, invitableRoles } from "../../server/projects/selfServe.js";
+import { stageLocationNote } from "../../server/site/note.js";
 import { InvalidMoney } from "../../lib/money/kobo.js";
 import { readSucceeded } from "../../server/intake/choose.js";
 import { acceptPlan, enqueueExtraction } from "../../server/intake/flow.js";
@@ -53,7 +58,6 @@ import {
   bAc3,
   bAc5,
   bAc6,
-  bIn8,
   bAp1,
   bAp2,
   bAp3,
@@ -113,6 +117,7 @@ import {
   type EngineDeps,
   type Outbound,
 } from "./common.js";
+import { fundMenuOpen, nextStep, withNext } from "./next.js";
 
 function naira(kobo: bigint): string {
   return formatNaira(kobo);
@@ -177,26 +182,33 @@ export async function takeDocument(db: Database, actor: Actor, fileName: string,
   return say(bUp1({ fileName, pagesOrSheets: saved.pagesOrSheets }), uploadDoneKeyboard());
 }
 
-export function beginInvite(actor: Actor): Outbound {
-  const denied = forbid(actor, ["client"], "client");
+async function openInviteRoles(db: Database, actor: Actor): Promise<string[]> {
+  if (!actor.project || !actor.role) return [];
+  const rows = await db
+    .select()
+    .from(memberships)
+    .where(and(eq(memberships.projectId, actor.project.id), eq(memberships.status, "active")));
+  return invitableRoles(actor.role, new Set(rows.map((row) => row.role)));
+}
+
+export async function beginInvite(db: Database, actor: Actor): Promise<Outbound> {
+  const denied = forbid(actor, ["client", "contractor"], "client");
   if (denied) return denied;
-  return say(bIn1(), inviteRoleKeyboard());
+  const roles = await openInviteRoles(db, actor);
+  if (roles.length === 0) return say("Everyone is already in. Nothing to invite.");
+  return say(bIn1(), inviteRoleKeyboard(roles));
 }
 
 export async function issueInvite(db: Database, actor: Actor, role: string, now: Date, deps: EngineDeps): Promise<Outbound> {
-  const denied = forbid(actor, ["client"], "client");
-  if (denied || !actor.project) return denied ?? say(bIn1(), inviteRoleKeyboard());
-  if (role !== "contractor" && role !== "subcontractor" && role !== "consultant") return say(bIn1(), inviteRoleKeyboard());
-  const filled = await db
-    .select()
-    .from(memberships)
-    .where(and(eq(memberships.projectId, actor.project.id), eq(memberships.role, role), eq(memberships.status, "active")));
-  if (filled.length > 0) return say(bIn8());
-  const partyRole = role === "contractor" ? "main_contractor" : role;
-  const issued = await issueJoinCode(db, { projectId: actor.project.id, workspaceId: actor.project.workspaceId, role: partyRole });
-  const link = `https://t.me/${botName(deps)}?start=join_${issued.code}`;
+  const denied = forbid(actor, ["client", "contractor"], "client");
+  const roles = actor.project ? await openInviteRoles(db, actor) : [];
+  if (denied || !actor.project) return denied ?? say(bIn1(), inviteRoleKeyboard(roles));
+  const issued = await createInvite(db, { userId: actor.userId, projectId: actor.project.id, role, botUsername: botName(deps) });
+  if (!issued.ok) return say(issued.message, roles.length > 0 ? inviteRoleKeyboard(roles) : undefined);
+  const link = issued.link;
   const label = roleLabel(role);
-  return say(bIn2({ roleLabel: label, date: formatWatDate(issued.expiresAt), link }), inviteShareKeyboard(link));
+  const line = await nextStep(db, actor.project.id, actor.userId, actor.role ?? "client");
+  return say(withNext(bIn2({ roleLabel: label, date: formatWatDate(issued.expiresAt), link }), line), inviteShareKeyboard(link));
 }
 
 function botName(deps: EngineDeps): string {
@@ -208,7 +220,10 @@ export async function showPlan(db: Database, actor: Actor, deps: EngineDeps): Pr
   const version = (
     await db.select().from(contractVersions).where(eq(contractVersions.projectId, actor.project.id)).orderBy(desc(contractVersions.version))
   )[0];
-  if (!version) return say(bEx3(), manualStagesKeyboard(appUrl(deps), actor.project.id));
+  const line = await nextStep(db, actor.project.id, actor.userId, actor.role ?? "client");
+  if (!version || version.status !== "pending_acceptance") {
+    return say(withNext(version ? "There's no plan waiting for agreement." : bEx3(), line), version ? undefined : manualStagesKeyboard(appUrl(deps), actor.project.id));
+  }
   const stageRows = (
     await db.select().from(stages).where(and(eq(stages.projectId, actor.project.id), eq(stages.contractVersionId, version.id)))
   ).sort((a, b) => a.stageIndex - b.stageIndex);
@@ -218,19 +233,26 @@ export async function showPlan(db: Database, actor: Actor, deps: EngineDeps): Pr
   }).join("\n");
   const client = (await memberUsers(db, actor.project.id, "client"))[0];
   return say(
-    bAc1({
+    withNext(bAc1({
       clientName: client?.name ?? "The client",
       project: actor.project.name,
       sum: naira(version.contractSumKobo),
       stageLines: lines,
       retentionPct: String(version.retentionBps / 100),
       months: Math.max(1, Math.round(version.defectsPeriodDays / 30)),
-    }),
+    }), line),
     acceptPlanKeyboard(appUrl(deps), version.id),
   );
 }
 
-export async function acceptOrChange(db: Database, actor: Actor, versionId: string, arg: string, now: Date, _deps: EngineDeps): Promise<Outbound> {
+async function waitingParty(db: Database, projectId: string, actorRole: string): Promise<{ name: string; joined: boolean }> {
+  const other = actorRole === "client" ? "contractor" : "client";
+  const people = await memberUsers(db, projectId, other);
+  if (!people[0]) return { name: other === "client" ? "the client" : "the contractor", joined: false };
+  return { name: people[0].name, joined: true };
+}
+
+export async function acceptOrChange(db: Database, actor: Actor, versionId: string, arg: string, now: Date, deps: EngineDeps): Promise<Outbound> {
   if (!actor.project) return replace(bGe4());
   if (arg === "change") {
     const denied = forbid(actor, ["contractor"], "contractor");
@@ -248,14 +270,25 @@ export async function acceptOrChange(db: Database, actor: Actor, versionId: stri
       userId: actor.userId,
       role: actor.role === "client" ? "client" : "contractor",
       decision: "accepted",
+      versionId,
     });
   } catch {
     return replace(bGe4());
   }
-  if (!result.ok) return replace(result.message);
-  if (!result.both) return replace(bAc6());
+  const line = await nextStep(db, actor.project.id, actor.userId, actor.role);
+  if (!result.ok) {
+    if (result.stale) {
+      const plan = await showPlan(db, actor, deps);
+      return { messages: [{ text: result.message }, ...plan.messages] };
+    }
+    return replace(withNext(result.message, line));
+  }
+  if (!result.both) {
+    const waiting = await waitingParty(db, actor.project.id, actor.role);
+    return replace(withNext(bAc6(waiting), line));
+  }
   const clients = await memberUsers(db, actor.project.id, "client");
-  return replace(bAc3({ dateTimeWat: watStamp(now), clientName: clients[0]?.name ?? "The client" }));
+  return replace(withNext(bAc3({ dateTimeWat: watStamp(now), clientName: clients[0]?.name ?? "The client" }), line));
 }
 
 export async function onChangeReason(db: Database, actor: Actor, text: string, now: Date, deps: EngineDeps): Promise<Outbound> {
@@ -284,10 +317,12 @@ export async function onChangeReason(db: Database, actor: Actor, text: string, n
   return say(note, editPlanKeyboard(appUrl(deps), actor.project.id));
 }
 
-export function fund(actor: Actor, deps: EngineDeps): Outbound {
+export async function fund(db: Database, actor: Actor, deps: EngineDeps): Promise<Outbound> {
   const denied = forbid(actor, ["client"], "client");
   if (denied || !actor.project) return denied ?? say(bFu1({ project: "this project" }));
-  return say(bFu1({ project: actor.project.name }), fundKeyboard(appUrl(deps), actor.project.id));
+  const line = await nextStep(db, actor.project.id, actor.userId, actor.role ?? "client");
+  if (!(await fundMenuOpen(db, actor.project.id))) return say(line || "Nothing to lock yet.");
+  return say(withNext(bFu1({ project: actor.project.name }), line), fundKeyboard(appUrl(deps), actor.project.id));
 }
 
 const PHOTO_OPEN = new Set(["not_started", "in_progress", "ai_fail", "needs_more_evidence"]);
@@ -334,7 +369,7 @@ export async function myStages(db: Database, actor: Actor): Promise<Outbound> {
   const rows = (await db.select().from(stages).where(eq(stages.projectId, actor.project.id))).sort((a, b) => a.stageIndex - b.stageIndex);
   const lines = rows.map((stage) => {
     const due = stage.expectedFinish ? ` · due ${formatIsoDate(stage.expectedFinish)}` : "";
-    return `${stage.stageIndex + 1}. ${escapeHtml(stage.name)}${due}`;
+    return `${stage.stageIndex + 1}. ${escapeHtml(stage.name)} \u2014 ${escapeHtml(stageStatusLabel(stage.status, stage.funded))}${due}`;
   }).join("\n");
   return say(bSt6({ project: actor.project.name, lines }));
 }
@@ -369,8 +404,20 @@ export async function reviewQueue(db: Database, actor: Actor, deps: EngineDeps):
     return say(bRv3({ project: actor.project.name }));
   }
   const stage = waiting[0];
-  if (actor.role === "client") return approvalPrompt(db, actor, stage.id, deps);
-  return say(bCf1({ n: stage.stageIndex + 1 }), certifyKeyboard(appUrl(deps), stage.id));
+  const note = await locationLine(db, stage.id);
+  if (actor.role === "client") {
+    const prompt = await approvalPrompt(db, actor, stage.id, deps);
+    return note ? { ...prompt, messages: prompt.messages.map((message) => ({ ...message, text: withNext(message.text, note) })), edit: prompt.edit ? { ...prompt.edit, text: withNext(prompt.edit.text, note) } : prompt.edit } : prompt;
+  }
+  return say(withNext(bCf1({ n: stage.stageIndex + 1 }), note), certifyKeyboard(appUrl(deps), stage.id));
+}
+
+async function locationLine(db: Database, stageId: string): Promise<string> {
+  const shots = await db.select().from(photoRows).where(eq(photoRows.stageId, stageId));
+  return stageLocationNote(shots.map((shot) => ({
+    distanceFromSiteM: shot.distanceFromSiteM,
+    checks: shot.checksJson as { site_pin?: boolean; in_radius?: boolean },
+  })));
 }
 
 export async function certify(db: Database, actor: Actor, stageId: string, deps: EngineDeps): Promise<Outbound> {
@@ -416,7 +463,8 @@ export async function certify(db: Database, actor: Actor, stageId: string, deps:
       keyboard: approveKeyboard(appUrl(deps), stage.id),
     });
   }
-  return replace(bCf1({ n: stage.stageIndex + 1 }));
+  const line = await nextStep(db, actor.project.id, actor.userId, actor.role ?? "consultant");
+  return replace(withNext(bCf1({ n: stage.stageIndex + 1 }), line));
 }
 
 function capNaira(project: { spendingCapUsdc: bigint; fxRateLocked: bigint }): string {
@@ -497,8 +545,19 @@ export async function approve(db: Database, actor: Actor, stageId: string, deps:
   const existing = (await db.select().from(payments).where(eq(payments.idempotencyKey, key)))[0];
   const contractors = await memberUsers(db, actor.project.id, "contractor");
   const contractorName = contractors[0]?.name ?? "the contractor";
+  const split = releaseSplit({ amountUsdc: stage.amountUsdc, amountNgnKobo: stage.amountNgnKobo, retentionBps: stage.retentionBps });
+  const paidCopy = (explorerLink: string) => bAp4({
+    amount: naira(split.payoutNgnKobo),
+    retention: split.retentionNgnKobo > 0n ? naira(split.retentionNgnKobo) : undefined,
+    contractor: contractorName,
+    n: stage.stageIndex + 1,
+    stage: stage.name,
+    explorerLink,
+  });
   if (existing?.status === "confirmed") {
-    return replace(bAp4({ amount: naira(stage.amountNgnKobo), contractor: contractorName, n: stage.stageIndex + 1, stage: stage.name, explorerLink: existing.txHash ?? "" }));
+    const stored = existing.txHash ?? "";
+    const link = /^0x[a-fA-F0-9]{64}$/.test(stored) ? explorerTx(SEPOLIA_CHAIN_ID, stored) : stored;
+    return replace(paidCopy(link));
   }
   let approvalId: string;
   let paymentId: string;
@@ -562,26 +621,25 @@ export async function approve(db: Database, actor: Actor, stageId: string, deps:
     });
     return replace(bAp6({ n: stage.stageIndex + 1 }));
   }
-  await db.update(payments).set({ status: "confirmed", txHash: released.explorerLink }).where(eq(payments.id, paymentId));
+  const txHash = released.txHash && /^0x[a-fA-F0-9]{64}$/.test(released.txHash) ? released.txHash : null;
+  await db.update(payments).set({ status: "confirmed", txHash }).where(eq(payments.id, paymentId));
   if (stage.status === "awaiting_client_approval") {
     await transitionStage(db, stage.id, "approved").catch(() => undefined);
   }
-  const paid = bAp4({
-    amount: naira(stage.amountNgnKobo),
-    contractor: contractorName,
-    n: stage.stageIndex + 1,
-    stage: stage.name,
-    explorerLink: released.explorerLink,
-  });
+  const paid = paidCopy(released.explorerLink);
   const everyone = [
     ...(await memberUsers(db, actor.project.id, "contractor")),
     ...(await memberUsers(db, actor.project.id, "consultant")),
     ...(await memberUsers(db, actor.project.id, "subcontractor")),
   ];
+  const memberRows = await db.select().from(memberships).where(eq(memberships.projectId, actor.project.id));
   for (const person of everyone) {
-    await notify(db, { userId: person.id, messageId: "B-AP-4", text: paid, dedupeKey: `bap4:${stage.id}:${person.id}`, chatId: person.telegramId.toString() });
+    const role = memberRows.find((row) => row.userId === person.id)?.role ?? "contractor";
+    const note = await nextStep(db, actor.project.id, person.id, role);
+    await notify(db, { userId: person.id, messageId: "B-AP-4", text: withNext(paid, note), dedupeKey: `bap4:${stage.id}:${person.id}`, chatId: person.telegramId.toString() });
   }
-  return replace(paid);
+  const mine = await nextStep(db, actor.project.id, actor.userId, actor.role ?? "client");
+  return replace(withNext(paid, mine));
 }
 
 export async function declineAsk(db: Database, actor: Actor, stageId: string, now: Date): Promise<Outbound> {
@@ -830,15 +888,13 @@ export async function wallet(db: Database, actor: Actor): Promise<Outbound> {
   if (denied || !actor.project) return denied ?? say(bWa1({ project: "this project", lines: "None yet.", total: naira(0n), retention: naira(0n) }));
   const rows = (await db.select().from(payments).where(eq(payments.projectId, actor.project.id))).filter((row) => row.status === "confirmed" && row.kind === "release");
   const stageRows = await db.select().from(stages).where(eq(stages.projectId, actor.project.id));
-  const lines = rows.map((row) => {
+  const splits = rows.map((row) => {
     const stage = stageRows.find((item) => item.id === row.stageId);
-    return paymentLine({ n: (stage?.stageIndex ?? 0) + 1, amount: naira(row.amountNgnKobo), date: formatWatDate(row.createdAt) });
+    return { stage, at: row.createdAt, split: releaseSplit({ amountUsdc: row.amountUsdc, amountNgnKobo: row.amountNgnKobo, retentionBps: stage?.retentionBps ?? 0 }) };
   });
-  const total = rows.reduce((sum, row) => sum + row.amountNgnKobo, 0n);
-  const retention = rows.reduce((sum, row) => {
-    const stage = stageRows.find((item) => item.id === row.stageId);
-    return sum + retentionKobo(row.amountNgnKobo, stage?.retentionBps ?? 0);
-  }, 0n);
+  const lines = splits.map(({ stage, at, split }) => paymentLine({ n: (stage?.stageIndex ?? 0) + 1, amount: naira(split.payoutNgnKobo), date: formatWatDate(at) }));
+  const total = splits.reduce((sum, row) => sum + row.split.payoutNgnKobo, 0n);
+  const retention = splits.reduce((sum, row) => sum + row.split.retentionNgnKobo, 0n);
   return say(
     bWa1({
       project: actor.project.name,

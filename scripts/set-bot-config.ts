@@ -26,8 +26,8 @@ const shared = [
 ];
 
 const roleLists = {
-  client: [...shared, { command: "upload", description: "Upload a contract or BoQ" }, { command: "review", description: "Items waiting for you" }, { command: "fund", description: "Lock money for this project" }],
-  contractor: [...shared, { command: "photos", description: "Send stage photos" }, { command: "wallet", description: "Payments you have received" }],
+  client: [...shared, { command: "upload", description: "Upload a contract or BoQ" }, { command: "review", description: "Items waiting for you" }, { command: "fund", description: "Lock money for this project" }, { command: "site", description: "Set the site pin" }, { command: "accept", description: "Accept the plan" }, { command: "stages", description: "See the stages" }],
+  contractor: [...shared, { command: "photos", description: "Send stage photos" }, { command: "wallet", description: "Payments you have received" }, { command: "site", description: "Set the site pin" }, { command: "accept", description: "Accept the plan" }, { command: "stages", description: "See the stages" }],
   subcontractor: [...shared, { command: "photos", description: "Send stage photos" }, { command: "wallet", description: "Payments you have received" }],
   consultant: [...shared, { command: "upload", description: "Upload a contract or BoQ" }, { command: "review", description: "Items waiting for you" }],
 };

@@ -23,9 +23,12 @@ import { handleIncoming, toHtml, bGe2, bGe5, bUp9, type BotKeyboard, type Inboun
 import { randomUUID } from "node:crypto";
 import { conversations, createConversation, type ConversationFlavor } from "@grammyjs/conversations";
 import { limit } from "@grammyjs/ratelimiter";
-import { Bot, InlineKeyboard, session, type Context, type SessionFlavor } from "grammy";
+import { Bot, InlineKeyboard, Keyboard, session, type Context, type SessionFlavor } from "grammy";
 import { eq } from "drizzle-orm";
-import { parties, projects, stages, users } from "@certa/db";
+import { memberships, parties, projects, stages, users } from "@certa/db";
+import { explorerTx, SEPOLIA_CHAIN_ID } from "../../../src/server/chain/networks.js";
+import { bUp1 } from "../../../src/bot/messages.js";
+import { uploadDoneKeyboard } from "../../../src/bot/keyboards.js";
 import { awaitingProject, enqueueExtraction, ingestDocument, setAwaitingDocuments } from "../../../src/server/intake/flow.js";
 import { gotFile, READING, telegramTooBig } from "../../../src/server/intake/messages.js";
 import { applyGapAnswer, contractGaps, contractNote, filenameOf, MAX_CONTRACT_STAGES, readFailure, savedContractMessage } from "./intake.js";
@@ -76,23 +79,41 @@ export function createBot(token: string, deps: BotDeps): Bot<BotContext> {
 
   function toMarkup(keyboard?: BotKeyboard) {
     if (!keyboard || keyboard.length === 0) return undefined;
+    if (keyboard.some((row) => row.some((button) => button.kind === "location"))) {
+      const reply = new Keyboard();
+      for (const row of keyboard) {
+        for (const button of row) {
+          if (button.kind === "location") reply.requestLocation(button.text);
+          else reply.text(button.text);
+        }
+        reply.row();
+      }
+      return reply.resized().oneTime();
+    }
     const markup = new InlineKeyboard();
     for (const row of keyboard) {
       for (const button of row) {
         if (button.kind === "callback") markup.text(button.text, button.data);
         else if (button.kind === "web_app") markup.webApp(button.text, button.url);
-        else markup.switchInline(button.text, button.query);
+        else if (button.kind === "switch") markup.switchInline(button.text, button.query);
       }
       markup.row();
     }
     return markup;
   }
 
+  function released(hash: string) {
+    const txHash = /^0x[a-fA-F0-9]{64}$/.test(hash) ? hash : undefined;
+    return { ok: true as const, txHash, explorerLink: txHash ? explorerTx(SEPOLIA_CHAIN_ID, txHash) : "pending" };
+  }
+
   async function speak(ctx: Context, outbound: Awaited<ReturnType<typeof handleIncoming>>) {
     if (outbound.edit && ctx.callbackQuery) {
       await ctx.editMessageText(toHtml(outbound.edit.text), {
         parse_mode: "HTML",
-        reply_markup: toMarkup(outbound.edit.keyboard) ?? { inline_keyboard: [] },
+        reply_markup: outbound.edit.keyboard?.some((row) => row.some((button) => button.kind === "location"))
+          ? undefined
+          : (toMarkup(outbound.edit.keyboard) as InlineKeyboard | undefined) ?? { inline_keyboard: [] },
       });
     }
     for (const message of outbound.messages) {
@@ -112,8 +133,7 @@ export function createBot(token: string, deps: BotDeps): Bot<BotContext> {
         try {
           const { releaseStageTx } = await import("../../../src/server/chain/flows.js");
           const tx = await releaseStageTx(deps.db, input);
-          const hash = tx.txHash ?? "";
-          return { ok: true as const, explorerLink: hash ? `https://sepolia.etherscan.io/tx/${hash}` : "pending" };
+          return released(tx.txHash ?? "");
         } catch (error) {
           return { ok: false as const, reason: error instanceof Error ? error.message : "The payment did not go through." };
         }
@@ -393,15 +413,25 @@ export function createBot(token: string, deps: BotDeps): Bot<BotContext> {
       await ctx.reply(text, duplicate ? undefined : { reply_markup: new InlineKeyboard().text("Retry", `v1:rx:${project.id}`) });
       return;
     }
-    if (!document || !filenameOf(document)) {
-      await say(ctx, "Send the contract as a PDF, Word, Excel, CSV, or text file.");
+    const row = ctx.from ? await active(deps.db, BigInt(ctx.from.id)) : null;
+    const member = row?.project && row.user
+      ? (await deps.db.select().from(memberships).where(eq(memberships.projectId, row.project.id))).find((item) => item.userId === row.user?.id && item.status === "active")
+      : undefined;
+    if (document && row?.project && row.user && (member?.role === "client" || member?.role === "consultant")) {
+      await setAwaitingDocuments(deps.db, BigInt(ctx.from?.id ?? 0), row.project.id);
+      const bytes = deps.loadDocument ? await deps.loadDocument(document.file_id) : await telegramFile(document.file_id);
+      const saved = await ingestDocument(deps.db, {
+        projectId: row.project.id,
+        workspaceId: row.project.workspaceId,
+        userId: row.user.id,
+        fileName: filenameOf(document) ?? document.file_name ?? "file",
+        bytes,
+      });
+      const text = saved.ok ? bUp1({ fileName: filenameOf(document) ?? document.file_name ?? "file", pagesOrSheets: saved.pagesOrSheets }) : saved.message;
+      await ctx.reply(text, saved.ok ? { reply_markup: toMarkup(uploadDoneKeyboard()) } : undefined);
       return;
     }
-    if ((document.file_size ?? 0) > MAX_CONTRACT_BYTES) {
-      await say(ctx, "That file is too large. Send a file under 8 MB.");
-      return;
-    }
-    await ctx.conversation.enter("contract");
+    await ctx.reply("Start or open a project first.", { reply_markup: new InlineKeyboard().text("New project", "v1:go:create") });
   });
 
   bot.command("done", async (ctx) => {
@@ -456,13 +486,17 @@ export function createBot(token: string, deps: BotDeps): Bot<BotContext> {
   bot.callbackQuery("go-start", async (ctx) => {
     if (!(await gate(ctx, false))) return;
     await ctx.answerCallbackQuery();
-    await ctx.conversation.enter("startProject");
+    const who = person(ctx);
+    if (!who) return;
+    await runEngine(ctx, { type: "callback", data: "v1:go:create", from: who });
   });
 
   bot.callbackQuery("go-join", async (ctx) => {
     if (!(await gate(ctx, false))) return;
     await ctx.answerCallbackQuery();
-    await ctx.conversation.enter("join");
+    const who = person(ctx);
+    if (!who) return;
+    await runEngine(ctx, { type: "callback", data: "v1:go:code", from: who });
   });
 
   bot.command("join", async (ctx) => {
@@ -477,8 +511,7 @@ export function createBot(token: string, deps: BotDeps): Bot<BotContext> {
     if (!(await gate(ctx, true))) return;
     const who = person(ctx);
     if (!who) return;
-    const outbound = await handleIncoming(deps.db, { type: "callback", data: "v1:plan", from: who }, { paidWeather: deps.paidWeather });
-    await speak(ctx, outbound);
+    await runEngine(ctx, { type: "command", command: "accept", arg: "", from: who });
   });
 
   bot.command("help", async (ctx) => {
@@ -506,17 +539,9 @@ export function createBot(token: string, deps: BotDeps): Bot<BotContext> {
 
   bot.command("stages", async (ctx) => {
     if (!(await gate(ctx, true))) return;
-    const row = ctx.from ? await active(deps.db, BigInt(ctx.from.id)) : null;
-    if (!row?.project) {
-      await say(ctx, copy.noProjects, "Stages");
-      return;
-    }
-    await syncEscrowProject(deps.db, row.project).catch(() => undefined);
-    const stageRows = await deps.db.select().from(stages).where(eq(stages.projectId, row.project.id));
-    const lines = stageRows
-      .sort((a, b) => a.stageIndex - b.stageIndex)
-      .map((stage) => `${stage.stageIndex + 1}. ${stage.name} — ${stage.status}`);
-    await say(ctx, lines.join("\n"), "Stages");
+    const who = person(ctx);
+    if (!who) return;
+    await runEngine(ctx, { type: "command", command: "stages", arg: "", from: who });
   });
 
   bot.command("switch", async (ctx) => {
@@ -551,8 +576,16 @@ export function createBot(token: string, deps: BotDeps): Bot<BotContext> {
 
   bot.command("submit", async (ctx) => {
     if (!(await gate(ctx, false))) return;
-    const url = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
-    await say(ctx, `Take the photo in the camera page.\n${url}/capture`, "Submit");
+    const who = person(ctx);
+    if (!who) return;
+    await runEngine(ctx, { type: "command", command: "submit", arg: "", from: who });
+  });
+
+  bot.command("site", async (ctx) => {
+    if (!(await gate(ctx, true))) return;
+    const who = person(ctx);
+    if (!who) return;
+    await runEngine(ctx, { type: "command", command: "site", arg: "", from: who });
   });
 
   bot.command("wallet", async (ctx) => {
@@ -654,8 +687,7 @@ export function createBot(token: string, deps: BotDeps): Bot<BotContext> {
           try {
             const { releaseStageTx } = await import("../../../src/server/chain/flows.js");
             const tx = await releaseStageTx(deps.db, input);
-            const hash = tx.txHash ?? "";
-            return { ok: true as const, explorerLink: hash ? `https://sepolia.etherscan.io/tx/${hash}` : "pending" };
+            return released(tx.txHash ?? "");
           } catch (error) {
             return { ok: false as const, reason: error instanceof Error ? error.message : "The payment did not go through." };
           }

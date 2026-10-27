@@ -1,6 +1,7 @@
 import { memberships, notifications, projects, users, type Database } from "@certa/db";
 import { eq, inArray } from "drizzle-orm";
 import { callbackData } from "../../bot/callbacks.js";
+import { nextStep, withNext } from "../../bot/flows/next.js";
 import { figuresReady, planShared, readFailed, replyReminder, reviewLink } from "./messages.js";
 import { pctFromBps } from "./amounts.js";
 import { formatNaira } from "../../lib/money/kobo.js";
@@ -132,17 +133,18 @@ export async function notifyPlanShared(
     retentionBps: number;
     defectsMonths: number;
     send?: TelegramSender;
+    onlyUserId?: string;
   },
 ): Promise<void> {
   const members = (await db.select().from(memberships).where(eq(memberships.projectId, input.projectId))).filter(
-    (row) => (row.role === "contractor" || row.role === "client") && row.status === "active",
+    (row) => (row.role === "contractor" || row.role === "client") && row.status === "active" && (!input.onlyUserId || row.userId === input.onlyUserId),
   );
   if (members.length === 0) return;
   const roleOf = new Map(members.map((row) => [row.userId, row.role]));
   const people = await db.select().from(users).where(inArray(users.id, members.map((row) => row.userId)));
   for (const person of people) {
     const role = roleOf.get(person.id) ?? "";
-    const text = planShared({
+    const text = withNext(planShared({
       clientName: input.clientName,
       project: input.projectName,
       sum: formatNaira(input.sumKobo),
@@ -150,7 +152,7 @@ export async function notifyPlanShared(
       retentionPct: pctFromBps(input.retentionBps),
       months: input.defectsMonths,
       forClient: role === "client",
-    });
+    }), await nextStep(db, input.projectId, person.id, role));
     const keyboard: TelegramMarkup["inline_keyboard"] = [
       [{ text: "Review plan", web_app: { url: reviewLink(input.projectId) } }],
       [{ text: "Accept", callback_data: callbackData("ac", input.versionId, "yes") }],

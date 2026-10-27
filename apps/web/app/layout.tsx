@@ -4,6 +4,7 @@ import { Shell } from "../components/shell";
 import { fxLineFor } from "../lib/money-display";
 import { SEPOLIA_CHAIN_ID, explorerAddress } from "../lib/explorer";
 import { loadProject } from "../lib/data";
+import { supportEmailOrEmpty } from "../../../src/lib/support";
 import { PUBLISHED_FACTORY } from "../lib/published-chain";
 import "./globals.css";
 
@@ -24,8 +25,7 @@ export const viewport: Viewport = {
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const data = await loadProject();
   const factory = process.env.ESCROW_FACTORY_ADDRESS || PUBLISHED_FACTORY;
-  const configured = process.env.SUPPORT_EMAIL?.trim();
-  const supportEmail = configured && configured !== "support@example.com" ? configured : "";
+  const supportEmail = supportEmailOrEmpty();
   const fxLine = data ? fxLineFor(data.project) : null;
   return (
     <html lang="en">

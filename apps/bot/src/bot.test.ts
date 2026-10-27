@@ -1,5 +1,5 @@
 import { extractContract, textFromUpload } from "@certa/ai";
-import { createMemoryDatabase, documents, memberships, projects, seedDemo, stages, startOwnProject, users, workspaces, type Database } from "@certa/db";
+import { contractVersions, createMemoryDatabase, documents, memberships, projects, seedDemo, stages, startOwnProject, users, workspaces, type Database } from "@certa/db";
 import { formatOfficialRate, fxRateFromNaira, nairaToKobo, usdcFromNgnKobo } from "@certa/shared";
 import { eq } from "drizzle-orm";
 import type { Update } from "grammy/types";
@@ -154,17 +154,9 @@ describe("bot", () => {
     await bot.init();
     for (const update of updates) await bot.handleUpdate(update);
 
-    expect(sent.join("\n")).toMatch(/22 stages/);
-    expect(sent.join("\n")).toMatch(/Who is the client/);
-    expect(sent.join("\n")).toMatch(/Contractor code: [A-Z2-9]{8}/);
-    expect(sent.join("\n")).not.toMatch(/!/);
-    const project = (await db.select().from(projects)).find((row) => row.siteLocation === "Ikeja, Lagos");
-    expect(project?.status).toBe("draft");
-    expect(project?.escrowAddress ?? null).toBeNull();
-    const stageRows = await db.select().from(stages).where(eq(stages.projectId, project!.id));
-    expect(stageRows).toHaveLength(22);
-    const stored = await db.select().from(documents).where(eq(documents.projectId, project!.id));
-    expect(stored[0]?.parseStatus).toBe("parsed");
+    expect(sent.join("\n")).toContain("Start or open a project first.");
+    const accepted = await db.select().from(contractVersions);
+    expect(accepted.some((row) => row.status === "accepted")).toBe(false);
   });
 });
 

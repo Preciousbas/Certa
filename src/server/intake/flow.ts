@@ -17,6 +17,7 @@ import {
 } from "@certa/db";
 import { and, asc, desc, eq, inArray } from "drizzle-orm";
 import { fetchCbnRate } from "@certa/shared";
+import { appBaseUrl } from "../../lib/appUrl.js";
 import { audit } from "../audit.js";
 import { enqueueJob } from "../jobs/enqueue.js";
 import { createSignedUploadUrl, getObject, putObject } from "../storage.js";
@@ -575,13 +576,31 @@ export async function sendPlan(
 
 export async function acceptPlan(
   db: Database,
-  input: { projectId: string; userId: string; role: "client" | "contractor"; decision: "accepted" | "change_requested"; reason?: string },
-): Promise<{ ok: true; both: boolean; hash: string } | { ok: false; message: string }> {
+  input: { projectId: string; userId: string; role: "client" | "contractor"; decision: "accepted" | "change_requested"; reason?: string; versionId?: string },
+): Promise<{ ok: true; both: boolean; hash: string } | { ok: false; message: string; stale?: boolean; already?: boolean }> {
   if (input.decision === "change_requested" && (input.reason ?? "").trim().length < 10) {
     return { ok: false, message: "Say what should change, in at least 10 characters." };
   }
   const version = (await db.select().from(contractVersions).where(eq(contractVersions.projectId, input.projectId)).orderBy(desc(contractVersions.version)))[0];
   if (!version || version.status !== "pending_acceptance") return { ok: false, message: "There is no plan waiting for agreement." };
+  if (input.versionId && input.versionId !== version.id) {
+    return { ok: false, stale: true, message: "This plan changed after that message. Here's the latest one." };
+  }
+  if (input.decision === "accepted") {
+    const prior = await db.select().from(contractAcceptances).where(eq(contractAcceptances.contractVersionId, version.id));
+    const mine = prior.find((row) => row.userId === input.userId && row.role === input.role && row.decision === "accepted");
+    if (mine) {
+      const other = input.role === "client" ? "contractor" : "client";
+      const otherMembers = await db
+        .select()
+        .from(memberships)
+        .where(and(eq(memberships.projectId, input.projectId), eq(memberships.role, other), eq(memberships.status, "active")));
+      const otherUser = otherMembers[0] ? (await db.select().from(users).where(eq(users.id, otherMembers[0].userId)))[0] : undefined;
+      const name = otherUser?.name ?? (other === "client" ? "the client" : "the contractor");
+      const label = other === "client" ? "client" : "contractor";
+      return { ok: false, already: true, message: `You've already accepted. Waiting for ${name} (${label}).` };
+    }
+  }
   await db.insert(contractAcceptances).values({
     contractVersionId: version.id,
     userId: input.userId,
@@ -611,7 +630,7 @@ export async function acceptPlan(
     .where(and(eq(memberships.projectId, input.projectId), eq(memberships.role, "client"), eq(memberships.status, "active")));
   if (clientMembers.length > 0) {
     const people = await db.select().from(users).where(inArray(users.id, clientMembers.map((row) => row.userId)));
-    const base = (process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || "http://localhost:3000").replace(/\/$/, "");
+    const base = appBaseUrl();
     for (const person of people) {
       await notifyOnce(db, {
         userId: person.id,
