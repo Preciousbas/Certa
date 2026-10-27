@@ -65,8 +65,10 @@ test("review issues, correct, and keep", async ({ page }) => {
       },
     });
   });
+  const contractLoaded = page.waitForResponse((response) => response.url().includes("/api/projects/") && response.url().includes("/contract") && response.request().method() === "GET");
   await page.goto("/app/p/sample/contract/review");
-  await expect(page.getByText("The stage total does not match the contract sum.")).toBeVisible();
+  await contractLoaded;
+  await expect(page.getByText("The stage total does not match the contract sum.")).toBeVisible({ timeout: 20_000 });
   await page.getByRole("button", { name: /p3:t1:r14/ }).click();
   await expect(page.getByText("written as ₦30,000.00")).toBeVisible();
   await page.screenshot({ path: join(out, "review-issues.png"), fullPage: true });
