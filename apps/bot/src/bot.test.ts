@@ -155,8 +155,9 @@ describe("bot", () => {
     for (const update of updates) await bot.handleUpdate(update);
 
     expect(sent.join("\n")).toContain("Start or open a project first.");
-    const accepted = await db.select().from(contractVersions);
-    expect(accepted.some((row) => row.status === "accepted")).toBe(false);
+    const accepted = (await db.select().from(contractVersions)).filter((row) => row.status === "accepted");
+    expect(accepted).toHaveLength(1);
+    expect(accepted[0]?.contentHash).toBe("seeded-terms");
   });
 });
 

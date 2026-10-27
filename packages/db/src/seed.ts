@@ -17,7 +17,9 @@ import type { Database } from "./client.js";
 import { appendAudit, encryptEmail } from "./services.js";
 import {
   changeRequests,
+  contractAcceptances,
   contractSummaries,
+  contractVersions,
   disputes,
   memberships,
   parties,
@@ -43,6 +45,7 @@ export async function seedDemo(db: Database) {
   const rate = fxRateFromNaira(DEMO_FX_NAIRA_PER_USDC);
   const sumKobo = nairaToKobo(DEMO_CONTRACT_NAIRA);
   const sumUsdc = usdcFromNgnKobo(sumKobo, rate);
+  const capMicro = usdcFromNgnKobo(nairaToKobo(DEMO_CAP_NAIRA), rate);
 
   const [client] = await db
     .insert(users)
@@ -110,7 +113,7 @@ export async function seedDemo(db: Database) {
       escrowAddress: /^0x[a-fA-F0-9]{40}$/.test(process.env.ESCROW_ADDRESS ?? "")
         ? process.env.ESCROW_ADDRESS
         : null,
-      spendingCapUsdc: usdcFromNgnKobo(nairaToKobo(DEMO_CAP_NAIRA), rate),
+      spendingCapUsdc: capMicro,
       retentionBps: DEMO_RETENTION_BPS,
       defectsPeriodDays: DEMO_DEFECTS_DAYS,
       mobilisationBps: DEMO_MOBILISATION_BPS,
@@ -120,6 +123,32 @@ export async function seedDemo(db: Database) {
     })
     .returning();
   if (!project) throw new Error("seed project failed");
+
+  const [agreed] = await db
+    .insert(contractVersions)
+    .values({
+      projectId: project.id,
+      version: 1,
+      status: "accepted",
+      contractSumKobo: sumKobo,
+      retentionBps: DEMO_RETENTION_BPS,
+      defectsPeriodDays: DEMO_DEFECTS_DAYS,
+      koboPerUsdc: rate,
+      fxSource: "contract acceptance",
+      fxAsOf: "2026-08-01",
+      spendingCapMicro: capMicro,
+      terms: { retention_bps: DEMO_RETENTION_BPS },
+      documentHashes: [],
+      contentHash: "seeded-terms",
+      createdBy: client.id,
+    })
+    .returning();
+  if (!agreed) throw new Error("seed contract failed");
+  await db.insert(contractAcceptances).values([
+    { contractVersionId: agreed.id, userId: client.id, role: "client", decision: "accepted", contentHash: agreed.contentHash },
+    { contractVersionId: agreed.id, userId: main.id, role: "contractor", decision: "accepted", contentHash: agreed.contentHash },
+  ]);
+  await db.update(projects).set({ currentContractVersionId: agreed.id, termsHash: agreed.contentHash }).where(eq(projects.id, project.id));
 
   const partyRows = await db
     .insert(parties)
