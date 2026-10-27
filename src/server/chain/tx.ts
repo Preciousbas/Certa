@@ -21,6 +21,7 @@ export const TX_KINDS = [
   "refund",
   "x402_payment",
   "gas_topup",
+  "test_usdc",
 ] as const;
 
 export type TxKind = (typeof TX_KINDS)[number];
@@ -165,13 +166,26 @@ export async function sendTx(db: Database, input: SendInput, port: ChainPort = d
   return saved;
 }
 
-export async function waitForTx(db: Database, chainTxId: string, port: ChainPort = defaultPort(), timeoutMs = 180_000) {
+function waitBudget(passed?: number): number {
+  if (passed !== undefined) return passed;
+  const raw = process.env.CERTA_TX_WAIT_MS ?? "";
+  if (/^\d+$/.test(raw)) return parseInt(raw, 10);
+  return 180_000;
+}
+
+function pollPause(): number {
+  const raw = process.env.CERTA_TX_POLL_MS ?? "";
+  if (/^\d+$/.test(raw)) return parseInt(raw, 10);
+  return 4_000;
+}
+
+export async function waitForTx(db: Database, chainTxId: string, port: ChainPort = defaultPort(), timeoutMs = waitBudget()) {
   const started = Date.now();
   let row = (await db.select().from(chainTxs).where(eq(chainTxs.id, chainTxId)))[0];
   while (row && row.status !== "confirmed" && row.status !== "failed" && Date.now() - started < timeoutMs) {
     row = (await confirmTx(db, chainTxId, port)) ?? row;
     if (row.status === "confirmed" || row.status === "failed") return row;
-    await new Promise((resolve) => setTimeout(resolve, 4_000));
+    await new Promise((resolve) => setTimeout(resolve, pollPause()));
   }
   return row;
 }

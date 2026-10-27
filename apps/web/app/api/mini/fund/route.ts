@@ -1,15 +1,21 @@
 import { cdpConfigured } from "@certa/chain";
-import { contractSummaries, contractVersions, recordPayment, stages, users } from "@certa/db";
+import { contractSummaries, contractVersions, getDatabase, recordPayment, stages, users } from "@certa/db";
 import { koboFromUsdc } from "@certa/shared";
 import { eq } from "drizzle-orm";
 import type { Hex } from "viem";
+import { chainUpToIndex } from "../../../../../../src/lib/fund-range";
+import { supportEmailOrEmpty } from "../../../../../../src/lib/support";
 import { notifyFundOutcome } from "../../../../../../src/bot/fundNotice";
 import { ChainRejected, ConsultantRequired, fundAccepted } from "../../../../../../src/server/chain/flows";
 import { broadcastClientFund } from "../../../../lib/chain-fund";
 import { chainFundLines } from "../../../../lib/escrow-quote";
 import { rejectIfPaused } from "../../../../../../src/server/projects/pause";
 import { apiError, apiJson, fundInput, fundOutput } from "../../../../lib/schemas";
-import { withAuth } from "../../../../lib/with-auth";
+import { attachCookies } from "../../../../../../src/server/auth/authenticate";
+import { failureResponse } from "../../../../../../src/server/auth/errors";
+import { requireMember, runAsUser } from "../../../../../../src/server/auth/rbac";
+import { lockReadiness } from "../../../../../../src/server/chain/readiness";
+import { requireUser, withAuth } from "../../../../lib/with-auth";
 
 export const maxDuration = 300;
 
@@ -24,7 +30,7 @@ export const POST = withAuth(
       .filter((stage) => stage.stageIndex <= input.data.upToStage)
       .sort((a, b) => a.stageIndex - b.stageIndex);
     if (rows.length === 0) return apiError(400, "No stages fall in that range.");
-    const chainUpTo = Math.max(rows.filter((stage) => stage.kind !== "mobilisation").length - 1, 0);
+    const chainUpTo = chainUpToIndex(rows, input.data.upToStage);
     const versions = await db.select().from(contractVersions).where(eq(contractVersions.projectId, project.id));
     if (versions.length > 0) {
       const current = versions.find((row) => row.id === project.currentContractVersionId) ?? versions.find((row) => row.status === "accepted");
@@ -83,7 +89,7 @@ export const POST = withAuth(
           toStage: (rows[rows.length - 1]?.stageIndex ?? 0) + 1,
           explorerLink: "",
           plainReason: message,
-          supportEmail: process.env.SUPPORT_EMAIL || "support@example.com",
+          supportEmail: supportEmailOrEmpty(),
           idempotencyKey: input.data.idempotencyKey,
         }).catch(() => undefined);
         return apiError(status, message);
@@ -109,7 +115,7 @@ export const POST = withAuth(
           toStage: (rows[rows.length - 1]?.stageIndex ?? 0) + 1,
           explorerLink: "",
           plainReason,
-          supportEmail: process.env.SUPPORT_EMAIL || "support@example.com",
+          supportEmail: supportEmailOrEmpty(),
           idempotencyKey: input.data.idempotencyKey,
         }).catch(() => undefined);
         return apiError(502, plainReason);
@@ -144,7 +150,7 @@ export const POST = withAuth(
             toStage,
             explorerLink: txHash ? `https://sepolia.etherscan.io/tx/${txHash}` : "pending",
             plainReason: "",
-            supportEmail: process.env.SUPPORT_EMAIL || "support@example.com",
+            supportEmail: supportEmailOrEmpty(),
             idempotencyKey: input.data.idempotencyKey,
           }).catch(() => ({ contractorNotified: false }))
         : { contractorNotified: false };
@@ -170,3 +176,23 @@ export const POST = withAuth(
   },
   { roles: ["client"] },
 );
+
+export async function GET(request: Request) {
+  try {
+    const auth = await requireUser(request);
+    if (auth instanceof Response) return auth;
+    const url = new URL(request.url);
+    const projectId = url.searchParams.get("projectId") ?? "";
+    const upTo = Number(url.searchParams.get("upToStage") ?? "0");
+    const db = await getDatabase();
+    const body = await runAsUser({ db, userId: auth.user.id }, async () => {
+      await requireMember(projectId, ["client"]);
+      const rows = await db.select().from(stages).where(eq(stages.projectId, projectId));
+      const check = await lockReadiness(db, { projectId, upToStage: chainUpToIndex(rows, Number.isFinite(upTo) ? upTo : 0) });
+      return { ...check, neededMicro: check.neededMicro.toString(), heldMicro: check.heldMicro.toString() };
+    });
+    return attachCookies(Response.json(body), auth.setCookies);
+  } catch (error) {
+    return failureResponse(error);
+  }
+}

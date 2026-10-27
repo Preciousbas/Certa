@@ -11,18 +11,22 @@ import {
   type Hex,
 } from "@certa/chain";
 import {
+  chainTxs,
   contractAcceptances,
   contractVersions,
   memberships,
+  payments,
   projects,
   stages,
   submissions,
   usageLedger,
   type Database,
 } from "@certa/db";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, like } from "drizzle-orm";
 import { formatUsdc } from "../../lib/money/usdc.js";
 import { audit } from "../audit.js";
+import { GAS_FLOOR, GAS_TOPUP } from "./gas.js";
+import { lockReadiness } from "./readiness.js";
 import { SEPOLIA_CHAIN_ID } from "./networks.js";
 import { defaultPort, type ChainPort } from "./port.js";
 import { sendTx, waitForTx } from "./tx.js";
@@ -30,8 +34,6 @@ import { assertRolesDistinct, ConsultantRequired, getOrCreateWallet, type RoleWa
 
 export { ConsultantRequired };
 
-const GAS_FLOOR = 1_000_000_000_000_000n;
-const GAS_TOPUP = 2_000_000_000_000_000n;
 const DAY_SECONDS = 86_400n;
 
 export class ChainRejected extends Error {
@@ -182,10 +184,24 @@ async function acceptIfNeeded(db: Database, projectId: string, escrow: Hex, vers
   await requireTx(db, sent, port);
 }
 
+async function attemptKey(db: Database, base: string): Promise<string> {
+  const rows = await db.select().from(chainTxs).where(like(chainTxs.idempotencyKey, `${base}%`));
+  const failed = rows.filter((row) => (row.idempotencyKey === base || row.idempotencyKey.startsWith(`${base}:r`)) && row.status === "failed" && row.txHash);
+  return failed.length === 0 ? base : `${base}:r${failed.length}`;
+}
+
 export async function fundAccepted(db: Database, input: { projectId: string; upToStage: number; idempotencyKey: string }, port: ChainPort = defaultPort()) {
   const project = (await db.select().from(projects).where(eq(projects.id, input.projectId)))[0];
   if (!project) throw new Error("That project is not available.");
-  if (project.status === "paused") throw new Error("This project is paused.");
+  const check = await lockReadiness(db, { projectId: input.projectId, upToStage: input.upToStage }, port);
+  if (!check.ready) {
+    if (check.code === "nothing_to_fund" && project.escrowAddress) {
+      const prior = (await db.select().from(chainTxs).where(and(eq(chainTxs.projectId, input.projectId), eq(chainTxs.kind, "fund"), eq(chainTxs.status, "confirmed"))))[0];
+      const payment = (await db.select().from(payments).where(and(eq(payments.projectId, input.projectId), eq(payments.kind, "fund"), eq(payments.status, "confirmed"))))[0];
+      if (prior) return { tx: prior, amount: payment?.amountUsdc ?? 0n, escrow: project.escrowAddress as Hex, already: true as const };
+    }
+    throw new ChainRejected([check.message, check.next].filter(Boolean).join(" "));
+  }
   const roles = await projectRoleWallets(db, input.projectId);
   await ensureGas(db, input.projectId, [roles.operator, roles.client, roles.contractor], port);
   const escrow = await ensureEscrow(db, input.projectId, port);
@@ -197,8 +213,10 @@ export async function fundAccepted(db: Database, input: { projectId: string; upT
   const amount = await port.quoteFund(escrow, input.upToStage);
   if (amount === 0n) throw new ChainRejected("That range has nothing left to fund.");
   let held = await port.erc20Balance(usdc(), roles.client.address);
-  if (held < amount) {
-    if (process.env.CERTA_ENV !== "production") {
+  if (held < amount && process.env.CERTA_ENV !== "production") {
+    const treasury = await getOrCreateWallet(db, { purpose: "treasury" });
+    const treasuryUsdc = await port.erc20Balance(usdc(), treasury.address);
+    if (treasuryUsdc >= amount - held) {
       try {
         const topped = await addTestUsdc(db, input.projectId, amount - held, port);
         await waitForTx(db, topped.id, port);
@@ -215,7 +233,7 @@ export async function fundAccepted(db: Database, input: { projectId: string; upT
   if (allowance < amount) {
     const approved = await sendTx(db, {
       kind: "approve_usdc",
-      idempotencyKey: `approve_usdc:${input.idempotencyKey}`,
+      idempotencyKey: await attemptKey(db, `approve_usdc:${escrow}:${amount}`),
       accountName: roles.client.accountRef,
       from: roles.client.address,
       to: usdc(),
@@ -228,7 +246,7 @@ export async function fundAccepted(db: Database, input: { projectId: string; upT
   }
   const funded = await sendTx(db, {
     kind: "fund",
-    idempotencyKey: `fund:${input.idempotencyKey}`,
+    idempotencyKey: await attemptKey(db, `fund:${escrow}:${input.upToStage}:${amount}`),
     accountName: roles.client.accountRef,
     from: roles.client.address,
     to: escrow,
@@ -378,7 +396,7 @@ export async function addTestUsdc(db: Database, projectId: string, amount: bigin
   const roles = await projectRoleWallets(db, projectId);
   const treasury = await getOrCreateWallet(db, { purpose: "treasury" });
   const sent = await sendTx(db, {
-    kind: "fund",
+    kind: "test_usdc",
     idempotencyKey: `test_usdc:${projectId}:${roles.client.address}`,
     accountName: treasury.accountRef,
     from: treasury.address,
