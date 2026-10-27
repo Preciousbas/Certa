@@ -46,6 +46,10 @@ async function main() {
     { name: string | null }[]
   >`select column_name as name from information_schema.columns where table_schema = 'public' and table_name = 'workspaces' and column_name = 'allowance_micro'`;
   if (!allowance[0]?.name) await sql.unsafe(migrationNamed("0011"));
+  const expectedFinish = await sql<
+    { name: string | null }[]
+  >`select column_name as name from information_schema.columns where table_schema = 'public' and table_name = 'stages' and column_name = 'expected_finish'`;
+  if (!expectedFinish[0]?.name) await sql.unsafe(migrationNamed("0012"));
   await sql.end();
   process.stdout.write("migrated\n");
 }

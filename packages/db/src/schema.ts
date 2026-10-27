@@ -139,6 +139,7 @@ export const stages = pgTable("stages", {
   kind: text("kind").notNull().default("work"),
   acceptanceCriteria: jsonb("acceptance_criteria").$type<string[]>().notNull().default([]),
   tags: text("tags").array().notNull().default([]),
+  expectedFinish: date("expected_finish"),
   ...timestamps,
 });
 

@@ -1,4 +1,6 @@
 import { countNoun } from "../../lib/count-noun.js";
+import { formatNaira } from "../../lib/money/kobo.js";
+import { digits } from "./amounts.js";
 
 export function gotFile(fileName: string, pagesOrSheets: string): string {
   return `Got it: ${fileName} (${pagesOrSheets}). Send more files, or tap Done when you've sent everything.`;
@@ -66,6 +68,42 @@ export function stageCountPhrase(count: number): string {
   return countNoun(count, "stage");
 }
 
+const DUE_MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+export function formatDue(iso: string): string {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  if (!match?.[1] || !match[2] || !match[3]) return iso;
+  const month = DUE_MONTHS[digits(match[2]) - 1];
+  if (!month) return iso;
+  return `${digits(match[3])} ${month} ${match[1]}`;
+}
+
+export function stageFigureLines(stages: { name: string; amountKobo: bigint; kind: string; itemIds: string[]; expectedFinish: string | null }[]): string[] {
+  const lines: string[] = [];
+  let number = 0;
+  for (const stage of stages) {
+    if (stage.kind === "reserve") continue;
+    number += 1;
+    const count = stage.itemIds.length > 0 ? ` (${countNoun(stage.itemIds.length, "item")})` : "";
+    const due = stage.expectedFinish ? ` · due ${formatDue(stage.expectedFinish)}` : "";
+    lines.push(`${number}. ${stage.name} — ${formatNaira(stage.amountKobo)}${count}${due}`);
+  }
+  const reserve = stages.find((stage) => stage.kind === "reserve");
+  if (reserve) lines.push(`Reserve for variations: ${formatNaira(reserve.amountKobo)}`);
+  return lines;
+}
+
+export function basisLine(plan: { basis: string; issues: { code: string; message: string }[] }): string {
+  const single = plan.issues.find((issue) => issue.code === "single_stage");
+  if (single) return single.message;
+  if (plan.basis === "contract_milestones") return "Stages come from the contract's payment schedule.";
+  return "Stages come from the bills in your BoQ.";
+}
+
+export function figureNotes(plan: { issues: { code: string; message: string }[] }): string[] {
+  return plan.issues.filter((issue) => issue.code === "V19" || issue.code === "V20").map((issue) => issue.message);
+}
+
 export function figuresReady(input: {
   project: string;
   sum: string;
@@ -76,11 +114,15 @@ export function figuresReady(input: {
   warnings: number;
   link: string;
   lines?: string[];
+  basis?: string | null;
+  notes?: string[];
 }): string {
   return [
     `Figures ready for ${input.project}:`,
     `Contract sum: ${input.sum} (VAT ${input.vatPct}% included)`,
     `Stages: ${stageCountPhrase(input.stages)} · Retention: ${input.retentionPct}% · Defects period: ${countNoun(input.months, "month")}`,
+    ...(input.basis ? [input.basis] : []),
+    ...(input.notes ?? []),
     `${countNoun(input.warnings, "thing")} to check.`,
     ...(input.lines ?? []),
     "Tap Review figures to check each one against your documents.",

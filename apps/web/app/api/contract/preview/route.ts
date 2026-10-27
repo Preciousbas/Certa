@@ -1,6 +1,6 @@
-import { contractFromBill, sniffDocument, textFromUpload } from "@certa/ai";
-import { formatNgnFromKobo } from "@certa/shared";
+import { sniffDocument } from "@certa/ai";
 import { z } from "zod";
+import { buildPreview } from "../../../../../../src/server/intake/read";
 import { apiError } from "../../../../lib/schemas";
 import { withUser } from "../../../../lib/with-auth";
 
@@ -31,19 +31,7 @@ export const POST = withUser(async (_userId, request) => {
     return apiError(400, "Send the Excel bill or a PDF. A photo of the page is not read yet.");
   }
   if (!kind) return apiError(400, "That file is not a PDF, Word, Excel, or CSV.");
-  const text = await textFromUpload(file.name, bytes).catch(() => "");
-  const bill = contractFromBill(text, file.name);
-  if (!bill) {
-    return apiError(422, "No bill table was found. The sheet needs item, description, quantity, rate, and amount.");
-  }
-  return Response.json({
-    contractSum: formatNgnFromKobo(BigInt(bill.summary.contractSumKobo)),
-    stages: bill.summary.stages.map((stage, index) => ({
-      number: index + 1,
-      name: stage.name,
-      amount: formatNgnFromKobo(BigInt(stage.amountKobo ?? "0")),
-      criteria: stage.description,
-    })),
-    issues: bill.flags,
-  });
+  const preview = await buildPreview(file.name, bytes);
+  if ("error" in preview) return apiError(422, preview.error);
+  return Response.json(preview);
 });

@@ -24,7 +24,7 @@ import { transitionStage } from "../../server/stages/transition.js";
 import { enqueuePrePour } from "../../server/x402/prepour.js";
 import { stageNeedsWeather } from "../../server/x402/gate.js";
 import { enqueueReleaseRetry } from "../releaseRetry.js";
-import { formatWatDate } from "../dates.js";
+import { formatIsoDate, formatWatDate } from "../dates.js";
 import { escapeHtml } from "../html.js";
 import {
   acceptPlanKeyboard,
@@ -212,7 +212,10 @@ export async function showPlan(db: Database, actor: Actor, deps: EngineDeps): Pr
   const stageRows = (
     await db.select().from(stages).where(and(eq(stages.projectId, actor.project.id), eq(stages.contractVersionId, version.id)))
   ).sort((a, b) => a.stageIndex - b.stageIndex);
-  const lines = stageRows.map((stage) => `${stage.stageIndex + 1}. ${escapeHtml(stage.name)} \u2014 ${naira(stage.amountNgnKobo)}`).join("\n");
+  const lines = stageRows.map((stage) => {
+    const due = stage.expectedFinish ? ` · due ${formatIsoDate(stage.expectedFinish)}` : "";
+    return `${stage.stageIndex + 1}. ${escapeHtml(stage.name)} \u2014 ${naira(stage.amountNgnKobo)}${due}`;
+  }).join("\n");
   const client = (await memberUsers(db, actor.project.id, "client"))[0];
   return say(
     bAc1({
@@ -329,7 +332,10 @@ export async function photoStage(db: Database, actor: Actor, stageId: string, de
 export async function myStages(db: Database, actor: Actor): Promise<Outbound> {
   if (!actor.project) return say(bSt6({ project: "this project", lines: "" }));
   const rows = (await db.select().from(stages).where(eq(stages.projectId, actor.project.id))).sort((a, b) => a.stageIndex - b.stageIndex);
-  const lines = rows.map((stage) => `${stage.stageIndex + 1}. ${escapeHtml(stage.name)}`).join("\n");
+  const lines = rows.map((stage) => {
+    const due = stage.expectedFinish ? ` · due ${formatIsoDate(stage.expectedFinish)}` : "";
+    return `${stage.stageIndex + 1}. ${escapeHtml(stage.name)}${due}`;
+  }).join("\n");
   return say(bSt6({ project: actor.project.name, lines }));
 }
 

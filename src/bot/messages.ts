@@ -196,12 +196,18 @@ export function bEx1(input: {
   retentionPct: string;
   months: number;
   warnings: number;
+  basis?: string | null;
+  notes?: string[];
+  lines?: string[];
 }): string {
   return [
     `Figures ready for ${e(input.project)}:`,
     `Contract sum: ${e(input.sum)} (VAT ${e(input.vatPct)}% included)`,
     `Stages: ${countNoun(input.stages, "stage")} \u00b7 Retention: ${e(input.retentionPct)}% \u00b7 Defects period: ${countNoun(input.months, "month")}`,
+    ...(input.basis ? [e(input.basis)] : []),
+    ...(input.notes ?? []).map((note) => e(note)),
     `${countNoun(input.warnings, "thing")} to check.`,
+    ...(input.lines ?? []).map((line) => e(line)),
     "Tap **Review figures** to check each one against your documents.",
   ].join("\n");
 }

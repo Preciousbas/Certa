@@ -1,4 +1,5 @@
-import { agentRouterContract, studyUpload, type ParsedContract } from "@certa/ai";
+import { agentRouterContract, type ParsedContract } from "@certa/ai";
+import { studyDocuments } from "./study.js";
 import { createPartyWallet } from "@certa/chain";
 import { getOrCreateWallet } from "../../../src/server/chain/wallets.js";
 import {
@@ -259,7 +260,7 @@ export function createBot(token: string, deps: BotDeps): Bot<BotContext> {
     const loaded = await conversation.external(async () => {
       const bytes = deps.loadDocument ? await deps.loadDocument(document.file_id) : await telegramFile(document.file_id);
       if (bytes.byteLength > MAX_CONTRACT_BYTES) throw new Error("too large");
-      const parsed = deps.studyContract ? await deps.studyContract(filename, bytes) : await studyUpload(filename, bytes, agentRouterContract() ?? undefined);
+      const parsed = deps.studyContract ? await deps.studyContract(filename, bytes) : await studyDocuments(filename, bytes, agentRouterContract() ?? undefined);
       const rate = deps.officialRate ? await deps.officialRate() : null;
       return {
         filename,

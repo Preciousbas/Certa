@@ -72,7 +72,7 @@ export async function notifyReadFailed(
   }
 }
 
-type SavedStage = { name: string; amountKobo: string };
+type SavedStage = { name: string; amountKobo: string; kind?: string };
 
 export async function notifyFigures(
   db: Database,
@@ -87,6 +87,8 @@ export async function notifyFigures(
     defectsMonths: number;
     stages: SavedStage[];
     lines?: string[];
+    basis?: string | null;
+    notes?: string[];
     warnings: number;
     send?: TelegramSender;
   },
@@ -97,8 +99,10 @@ export async function notifyFigures(
     project: input.projectName,
     sum: input.contractSumKobo === null ? "not found" : formatNaira(input.contractSumKobo),
     vatPct: pctFromBps(input.vatBps),
-    stages: input.stages.length,
+    stages: input.stages.filter((stage) => stage.kind !== "reserve").length,
     lines: input.lines,
+    basis: input.basis,
+    notes: input.notes,
     retentionPct: pctFromBps(input.retentionBps),
     months: input.defectsMonths,
     warnings: input.warnings,

@@ -22,12 +22,13 @@ import { enqueueJob } from "../jobs/enqueue.js";
 import { createSignedUploadUrl, getObject, putObject } from "../storage.js";
 import { chooseDocuments, readSucceeded } from "./choose.js";
 import { citationIssues } from "./citations.js";
-import { contentHash, sha256Hex } from "./hash.js";
+import { contentHash, sha256Hex, type HashInput } from "./hash.js";
 import { interpretGrid, type BoqDraft, type GridRow } from "./interpret.js";
-import { badType, duplicateUpload, SCAN_V13, watStamp, webDuplicate } from "./messages.js";
+import { badType, basisLine, duplicateUpload, figureNotes, formatDue, SCAN_V13, stageFigureLines, watStamp, webDuplicate } from "./messages.js";
 import { docModelSupportsImages, proposeWithModel } from "./model.js";
 import { notifyFigures, notifyOnce, notifyPlanShared, notifyReadFailed } from "./notify.js";
 import { parseBytes, type Transcriber } from "./parse.js";
+import { combineDrafts } from "./read.js";
 import { detectFile, failureMessage, UPLOAD_MAX_BYTES } from "./detect.js";
 import { documentOpenForResend } from "./status.js";
 import { formatNaira } from "../../lib/money/kobo.js";
@@ -234,6 +235,7 @@ function serialisePlan(plan: ValidatedPlan) {
       netKobo: stage.netKobo.toString(),
       amountKobo: stage.amountKobo.toString(),
       amountMicro: stage.amountMicro.toString(),
+      boqKobo: stage.boqKobo === null ? null : stage.boqKobo.toString(),
     })),
     issues: plan.issues,
   };
@@ -314,18 +316,18 @@ async function extractProject(db: Database, projectId: string): Promise<Validate
     });
     return null;
   }
-  const rows: GridRow[] = [];
+  const groups: GridRow[][] = [];
   const scans = files.filter((file) => (file.parsedJson as { scan?: boolean } | null)?.scan === true);
   for (const file of files) {
     const parsed = file.parsedJson as { rows?: GridRow[] } | null;
-    if (parsed?.rows) rows.push(...parsed.rows);
+    if (parsed?.rows) groups.push(parsed.rows);
   }
-  const draft = interpretGrid(rows);
-  fillPartyNames(draft, await partyNames(db, projectId));
-  const rate = await lockLiveRate(db, project);
-  const plan = validateDraft(draft, rate);
+  const names = await partyNames(db, projectId);
   const held = await db.select().from(documentChunks).where(inArray(documentChunks.documentId, files.map((file) => file.id)));
-  plan.issues.push(...citationIssues(draft, held.map((chunk) => ({ anchor: chunk.anchor, content: chunk.content }))));
+  let draft = combineDrafts(groups);
+  fillPartyNames(draft, names);
+  const priced = draft.bills.some((bill) => bill.items.some((item) => item.rowKind === "item" && item.statedKobo !== null));
+  const scheduled = draft.milestones.length > 0;
   const images: { mime: string; base64: string; filename: string }[] = [];
   if (scans.length > 0 && docModelSupportsImages()) {
     for (const file of scans) {
@@ -335,18 +337,24 @@ async function extractProject(db: Database, projectId: string): Promise<Validate
       images.push({ mime, base64: Buffer.from(bytes).toString("base64"), filename: file.fileName ?? "page" });
     }
   }
-  if (scans.length > 0 && images.length === 0) {
-    for (const file of scans) {
-      plan.issues.push({ code: "V13", rule: "scan", severity: "warning", message: SCAN_V13, anchor: null, field: "Document", value: file.fileName ?? "scan" });
-    }
-  }
-  const priced = draft.bills.some((bill) => bill.items.some((item) => item.rowKind === "item" && item.statedKobo !== null));
-  const proposal = priced && plan.contractSumKobo
+  const proposal = priced && draft.contractSumKobo
     ? { source: "parser" as const, text: null, notice: null }
     : await proposeWithModel({
       text: held.map((chunk) => chunk.content).join("\n").slice(0, 24_000) || "Read the attached document.",
       images,
     });
+  if (!priced && !scheduled && proposal.text) {
+    draft = combineDrafts(groups, { modelText: proposal.text, chunks: held.map((chunk) => ({ content: chunk.content })) });
+    fillPartyNames(draft, names);
+  }
+  const rate = await lockLiveRate(db, project);
+  const plan = validateDraft(draft, rate);
+  plan.issues.push(...citationIssues(draft, held.map((chunk) => ({ anchor: chunk.anchor, content: chunk.content }))));
+  if (scans.length > 0 && images.length === 0) {
+    for (const file of scans) {
+      plan.issues.push({ code: "V13", rule: "scan", severity: "warning", message: SCAN_V13, anchor: null, field: "Document", value: file.fileName ?? "scan" });
+    }
+  }
   if (scans.length > 0 && images.length > 0 && proposal.source !== "model") {
     plan.issues.push({ code: "V13", rule: "scan", severity: "warning", message: SCAN_V13, anchor: null, field: "Document", value: scans[0]?.fileName ?? "scan" });
   }
@@ -354,9 +362,13 @@ async function extractProject(db: Database, projectId: string): Promise<Validate
     bill.items
       .filter((item) => item.rowKind === "item" && item.statedKobo !== null)
       .map((item) => ({
+        id: item.id ?? `${bill.billRef}:${item.itemRef}:${item.line}`,
+        billRef: item.billRef,
         itemRef: item.itemRef,
         description: item.description || bill.title,
         amountKobo: (item.statedKobo ?? 0n).toString(),
+        stageNumber: item.stageNumber ?? null,
+        line: item.line,
       })),
   );
   const saved = {
@@ -399,8 +411,10 @@ async function extractProject(db: Database, projectId: string): Promise<Validate
       vatBps: plan.vatBps,
       retentionBps: plan.retentionBps,
       defectsMonths: plan.defectsMonths,
-      stages: plan.stages.map((stage) => ({ name: stage.name, amountKobo: stage.amountKobo.toString() })),
-      lines: lineItems.map((item, index) => `${index + 1}. ${item.description} — ${formatNaira(BigInt(item.amountKobo))}`),
+      stages: plan.stages.filter((stage) => stage.kind !== "reserve").map((stage) => ({ name: stage.name, amountKobo: stage.amountKobo.toString(), kind: stage.kind })),
+      lines: stageFigureLines(plan.stages),
+      basis: basisLine(plan),
+      notes: figureNotes(plan),
       warnings: plan.issues.length,
     });
     }
@@ -408,7 +422,17 @@ async function extractProject(db: Database, projectId: string): Promise<Validate
   return plan;
 }
 
-type SavedStage = { name: string; amountKobo: string; amountMicro: string; acceptanceCriteria: string[]; tags: string[]; kind: string; billRefs: string[] };
+type SavedStage = {
+  name: string;
+  amountKobo: string;
+  amountMicro: string;
+  acceptanceCriteria: string[];
+  tags: string[];
+  kind: string;
+  billRefs: string[];
+  number?: number;
+  expectedFinish?: string | null;
+};
 
 export async function sendPlan(
   db: Database,
@@ -430,13 +454,30 @@ export async function sendPlan(
   const hashes = [...new Set(files.map((row) => row.sha256))].sort();
   const hash = contentHash({
     terms: { retention_bps: saved.retentionBps ?? 0, defects_period_days: saved.defectsPeriodDays ?? 180 },
-    stages: saved.stages.map((stage) => ({ name: stage.name, amount_kobo: stage.amountKobo, amount_micro: stage.amountMicro, criteria: stage.acceptanceCriteria, tags: stage.tags })),
+    stages: saved.stages.map((stage) => {
+      const row: HashInput["stages"][number] = { name: stage.name, amount_kobo: stage.amountKobo, amount_micro: stage.amountMicro, criteria: stage.acceptanceCriteria, tags: stage.tags };
+      if (stage.expectedFinish) row.expected_finish = stage.expectedFinish;
+      return row;
+    }),
     fx: { kobo_per_usdc: saved.koboPerUsdc ?? project.fxRateLocked.toString(), source: project.fxSource, as_of: "2026-10-15" },
     cap: saved.spendingCapMicro ?? "1000000",
     retention: String(saved.retentionBps ?? 0),
     document_hashes: hashes,
   });
-  const stageLines = saved.stages.map((stage, index) => `${index + 1}. ${stage.name}: ${formatNaira(BigInt(stage.amountKobo))}`).join("\n");
+  const empty = saved.stages.find((stage) => stage.kind !== "reserve" && BigInt(stage.amountKobo) === 0n);
+  if (empty) {
+    const number = empty.number ?? saved.stages.indexOf(empty) + 1;
+    return { ok: false, message: `Stage ${number} has no amount yet. Move items into it or remove it.` };
+  }
+  const workStages = saved.stages.filter((stage) => stage.kind !== "reserve");
+  const reserveStage = saved.stages.find((stage) => stage.kind === "reserve");
+  const stageLines = [
+    ...workStages.map((stage, index) => {
+      const due = stage.expectedFinish ? ` · due ${formatDue(stage.expectedFinish)}` : "";
+      return `${index + 1}. ${stage.name}: ${formatNaira(BigInt(stage.amountKobo))}${due}`;
+    }),
+    ...(reserveStage ? [`Reserve for variations: ${formatNaira(BigInt(reserveStage.amountKobo))}`] : []),
+  ].join("\n");
   const named = extraction?.validatedJson as { clientName?: string | null } | null;
   const sumKobo = BigInt(saved.contractSumKobo);
   const share = (versionId: string) =>
@@ -504,6 +545,7 @@ export async function sendPlan(
     acceptanceCriteria: stage.acceptanceCriteria,
     tags: stage.tags,
     pour: stage.tags.includes("concrete_pour"),
+    expectedFinish: stage.expectedFinish ?? null,
   })));
   const grid = files.flatMap((file) => ((file.parsedJson as { rows?: GridRow[] } | null)?.rows ?? []));
   const draft = interpretGrid(grid);
