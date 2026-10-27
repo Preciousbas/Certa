@@ -16,6 +16,7 @@ import { DEFAULT_PASS_THRESHOLD, type VerifyDecision, type VerifyNext, type Veri
 import { CHECK_UNAVAILABLE } from "./messages.js";
 import { notifyVerdict } from "./notify.js";
 import { agreeChecklistRuns, alignAnswers, scoreChecklist, type ChecklistScore, type ItemAnswer } from "./checklistScore.js";
+import { stageLocationNote } from "../site/note.js";
 import { checklistUserMessageFor, findChecklist, type StageChecklist } from "./checklists.js";
 import { askChecklist, visionModels, VISION_TIMEOUT_MS, type VisionClient } from "./vision.js";
 import type { StageVerdict } from "../../lib/validation/stageVerdict.js";
@@ -74,7 +75,7 @@ const TIMED_OUT = "The photo check took too long. A consultant can review these 
 function checksOk(value: unknown): boolean {
   if (!value || typeof value !== "object") return false;
   const row = value as { nonce_ok?: boolean; fresh?: boolean; in_radius?: boolean; not_duplicate?: boolean; image_ok?: boolean };
-  return Boolean(row.nonce_ok && row.fresh && row.in_radius && row.not_duplicate && row.image_ok);
+  return Boolean(row.nonce_ok && row.fresh && row.not_duplicate && row.image_ok);
 }
 
 function noticesFor(next: VerifyNext): VerifyNotice[] {
@@ -161,7 +162,11 @@ export async function runVerifyStage(
       verdict = { ...unavailable(criteria, "This stage has no photo checklist."), stage_number_claimed: claimed };
       raw = { error: "no checklist" };
     } else {
-      const user = checklistUserMessageFor(checklist);
+      const note = stageLocationNote(photoRows.map((photo) => ({
+        distanceFromSiteM: photo.distanceFromSiteM,
+        checks: photo.checksJson as { site_pin?: boolean; in_radius?: boolean },
+      })));
+      const user = [checklistUserMessageFor(checklist), note].filter(Boolean).join("\n");
       const request = {
         system: deps?.system ?? STAGE_VERIFY_SYSTEM_V3,
         user,

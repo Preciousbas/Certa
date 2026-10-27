@@ -16,6 +16,18 @@ export function outsideRadius(distanceM: number, radiusM: number): string {
   return `This photo was taken ${distanceM} m from the site. Photos must be taken within ${radiusM} m. Move closer to the work and take it again.`;
 }
 
+/** 80 m, or 2.4 km once the distance reaches a kilometre. */
+export function formatSiteDistance(meters: number): string {
+  const rounded = Math.round(meters);
+  if (rounded >= 1000) {
+    if (rounded >= 10000) return `${Math.round(rounded / 1000)} km`;
+    const tenths = Math.round(rounded / 100);
+    const text = `${Math.floor(tenths / 10)}.${tenths % 10}`.replace(/\.0$/, "");
+    return `${text} km`;
+  }
+  return `${rounded} m`;
+}
+
 export function poorAccuracy(accuracyM: number): string {
   return `Your location isn't accurate enough yet (${accuracyM} m). Step outside or wait a few seconds, then take the photo again.`;
 }

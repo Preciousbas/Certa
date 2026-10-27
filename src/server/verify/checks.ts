@@ -1,4 +1,5 @@
 import { distanceMeters, type LatLng } from "@certa/shared";
+import { formatSiteDistance } from "../../lib/captureMessages.js";
 import {
   C5,
   C6,
@@ -6,8 +7,6 @@ import {
   CLOCK_AHEAD,
   NONCE_MESSAGE,
   OPEN_CAMERA_FIRST,
-  outsideRadius,
-  poorAccuracy,
 } from "./messages.js";
 
 export const FRESH_MS = 10 * 60 * 1000;
@@ -28,6 +27,9 @@ export type PhotoCheckRecord = {
   not_duplicate: boolean;
   image_ok: boolean;
   similar_to?: string;
+  site_pin?: boolean;
+  exif_distance_m?: number;
+  exif_mismatch?: boolean;
 };
 
 export type CaptureCheckInput = {
@@ -37,8 +39,9 @@ export type CaptureCheckInput = {
   nonceOk: boolean;
   point: LatLng;
   accuracyM: number;
-  site: LatLng;
+  site: LatLng | null;
   radiusM: number;
+  exifPoint?: LatLng | null;
   shaDuplicate: boolean;
   similarPhotoId: string | null;
   longSidePx: number;
@@ -61,36 +64,53 @@ export function stageOpenForCapture(status: string, funded: boolean): boolean {
 
 export function checkCapture(input: CaptureCheckInput): CaptureCheckResult {
   const radius = input.radiusM > 0 ? input.radiusM : DEFAULT_SITE_RADIUS_M;
-  const distance = Math.round(distanceMeters(input.point, input.site));
+  const hasPin = input.site !== null;
+  const distance = hasPin && input.site ? Math.round(distanceMeters(input.point, input.site)) : 0;
   const accuracy = Math.round(input.accuracyM);
   const age = input.nowMs - input.capturedAtMs;
   const fresh = age <= FRESH_MS && input.capturedAtMs - input.nowMs <= FUTURE_MS && input.nonceIssuedAtMs <= input.capturedAtMs;
   const accuracyOk = Number.isFinite(input.accuracyM) && input.accuracyM <= MAX_ACCURACY_M && input.accuracyM >= 0;
   const allowance = radius + Math.min(Math.max(accuracy, 0), MAX_ACCURACY_M);
-  const inRadius = accuracyOk && distance <= allowance;
+  const inRadius = hasPin && distance <= allowance;
   const duplicate = input.shaDuplicate || input.similarPhotoId !== null;
   const imageOk =
     input.longSidePx >= MIN_LONG_SIDE && input.meanLuma >= MEAN_LUMA_MIN && input.laplacian >= LAPLACIAN_MIN;
   const checks: PhotoCheckRecord = {
     nonce_ok: input.nonceOk,
     fresh,
-    in_radius: inRadius,
+    in_radius: hasPin ? inRadius : true,
     exif_present: input.exifPresent,
     not_duplicate: !duplicate,
     image_ok: imageOk,
+    site_pin: hasPin,
   };
+  if (hasPin && input.site && input.exifPoint) {
+    checks.exif_distance_m = Math.round(distanceMeters(input.exifPoint, input.site));
+    checks.exif_mismatch = distanceMeters(input.exifPoint, input.point) > 500;
+  }
   if (input.similarPhotoId) checks.similar_to = input.similarPhotoId;
 
   let message: string | null = null;
+  let warning = false;
   if (!input.nonceOk) message = NONCE_MESSAGE;
   else if (input.capturedAtMs - input.nowMs > FUTURE_MS) message = CLOCK_AHEAD;
   else if (age > FRESH_MS) message = C5;
   else if (input.nonceIssuedAtMs > input.capturedAtMs) message = OPEN_CAMERA_FIRST;
-  else if (!accuracyOk) message = poorAccuracy(accuracy);
-  else if (!inRadius) message = outsideRadius(distance, radius);
   else if (duplicate) message = C6;
   else if (!imageOk) message = C7;
+  else if (!hasPin) {
+    checks.site_pin = false;
+    message = "Saved. No site pin is set for this project, so the location wasn't checked.";
+    warning = true;
+  } else if (!inRadius) {
+    checks.in_radius = false;
+    message = `Saved. This photo was taken ${formatSiteDistance(distance)} from the site pin, so the consultant will see that.`;
+    warning = true;
+  } else if (!accuracyOk) {
+    checks.in_radius = false;
+    message = `Saved. The location reading was only accurate to ${accuracy} m, so the consultant will see that.`;
+    warning = true;
+  }
 
-  const ok = message === null;
-  return { ok, message, distanceM: distance, checks };
+  return { ok: message === null || warning, message, distanceM: hasPin ? distance : 0, checks };
 }

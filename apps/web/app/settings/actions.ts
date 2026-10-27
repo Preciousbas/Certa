@@ -2,6 +2,7 @@
 
 import { getDatabase, projects } from "@certa/db";
 import { eq } from "drizzle-orm";
+import { manualPin } from "../../../../src/server/site/pin";
 import { setProjectPaused } from "../../../../src/server/projects/pause";
 import { loadProject } from "../../lib/data";
 
@@ -14,8 +15,8 @@ export async function saveSettings(formData: FormData): Promise<{ message: strin
   const data = await loadProject();
   if (!data) return { message: "No project is open." };
   const radius = clamp(Number(formData.get("radius")), 25, 2000);
-  const lat = Number(formData.get("lat"));
-  const lng = Number(formData.get("lng"));
+  const chosen = manualPin(String(formData.get("lat") ?? ""), String(formData.get("lng") ?? ""));
+  const pin = chosen ? { siteLat: chosen.lat, siteLng: chosen.lng, sitePinSource: "manual", sitePinSetAt: new Date() } : {};
   const disputeDays = clamp(Number(formData.get("disputeDays")), 1, 90);
   const replyHours = clamp(Number(formData.get("replyHours")), 1, 168);
   const db = await getDatabase();
@@ -23,8 +24,7 @@ export async function saveSettings(formData: FormData): Promise<{ message: strin
     .update(projects)
     .set({
       geofenceRadiusM: radius,
-      siteLat: Number.isFinite(lat) ? lat : data.project.siteLat,
-      siteLng: Number.isFinite(lng) ? lng : data.project.siteLng,
+      ...pin,
       disputeTimeoutDays: disputeDays,
       changeReplyHours: replyHours,
       updatedAt: new Date(),

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { checkCapture } from "./checks.js";
-import { C5, C6, C7, outsideRadius, poorAccuracy } from "./messages.js";
+import { C5, C6, C7 } from "./messages.js";
 
 const now = Date.parse("2026-10-21T12:00:00Z");
 const site = { lat: 6.4474, lng: 3.4723 };
@@ -38,14 +38,17 @@ describe("capture checks", () => {
     expect(result.message).toBe(C5);
   });
 
-  it("rejects a point outside the site radius with C-3", () => {
+  it("keeps a point outside the site radius and warns", () => {
     const result = base({ point: { lat: 9.06, lng: 7.49 } });
-    expect(result.ok).toBe(false);
-    expect(result.message).toBe(outsideRadius(result.distanceM, 150));
+    expect(result.ok).toBe(true);
+    expect(result.checks.in_radius).toBe(false);
+    expect(result.message).toContain("from the site pin");
   });
 
-  it("rejects poor accuracy with C-4", () => {
-    expect(base({ accuracyM: 80 }).message).toBe(poorAccuracy(80));
+  it("keeps a poor accuracy reading and warns", () => {
+    const result = base({ accuracyM: 80 });
+    expect(result.ok).toBe(true);
+    expect(result.message).toContain("accurate to 80 m");
   });
 
   it("rejects a reused hash or a close perceptual hash with C-6", () => {
