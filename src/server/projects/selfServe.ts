@@ -10,6 +10,7 @@ import {
 } from "@certa/db";
 import { joinDeepLink } from "@certa/shared";
 import { and, eq } from "drizzle-orm";
+import { setApprovalMode } from "./approvalMode.js";
 import { FORBIDDEN } from "../auth/errors.js";
 import { allows } from "../auth/matrix.js";
 import { isRole } from "../auth/rbac.js";
@@ -57,6 +58,7 @@ export async function createInvite(
   if (!invitableRoles(actorRole, filled).includes(role)) return { ok: false as const, message: NOT_ALLOWED };
   const project = (await db.select().from(projects).where(eq(projects.id, input.projectId)))[0];
   if (!project) throw FORBIDDEN;
+  if (role === "consultant") await setApprovalMode(db, { userId: input.userId, projectId: input.projectId, mode: "consultant" });
   await revokeOpenJoinCodes(db, { projectId: input.projectId, role: partyRoleFor(role) });
   const issued = await issueJoinCode(db, {
     projectId: input.projectId,

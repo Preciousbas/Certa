@@ -54,6 +54,10 @@ async function main() {
     { name: string | null }[]
   >`select column_name as name from information_schema.columns where table_schema = 'public' and table_name = 'projects' and column_name = 'site_pin_source'`;
   if (!sitePin[0]?.name) await sql.unsafe(migrationNamed("0013"));
+  const approvalMode = await sql<
+    { name: string | null }[]
+  >`select column_name as name from information_schema.columns where table_schema = 'public' and table_name = 'projects' and column_name = 'approval_mode'`;
+  if (!approvalMode[0]?.name) await sql.unsafe(migrationNamed("0014"));
   await sql.end();
   process.stdout.write("migrated\n");
 }

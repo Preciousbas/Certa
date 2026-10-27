@@ -11,6 +11,7 @@ import { bGe7, bIn10, bIn11, bIn4, bIn5, bIn6, bIn8, bIn9, bSt5 } from "../messa
 import { notify } from "../notify.js";
 import { writeSession } from "../state.js";
 import { memberUsers, roleLabel, say, type Actor, type Outbound } from "./common.js";
+import { announceConsultantJoined } from "../../server/projects/approvalMode.js";
 import { nextStep, withNext } from "./next.js";
 
 function paymentPurpose(role: string): "client" | "consultant" | "contractor" | "subcontractor" | null {
@@ -72,6 +73,9 @@ export async function joinWithCode(db: Database, actor: Actor, code: string, now
       dedupeKey: `bin6:${result.projectId}:${actor.userId}`,
       chatId: person.telegramId.toString(),
     });
+  }
+  if (result.role === "consultant") {
+    await announceConsultantJoined(db, { projectId: result.projectId, userId: actor.userId, name: actor.firstName });
   }
   if (result.role === "client" || result.role === "contractor") {
     const version = (

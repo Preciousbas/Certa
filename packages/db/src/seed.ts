@@ -101,6 +101,7 @@ export async function seedDemo(db: Database) {
       siteLocation: "Lekki Phase 1, Lagos",
       siteLat: 6.4474,
       siteLng: 3.4723,
+      approvalMode: "consultant",
       geofenceRadiusM: DEMO_GEOFENCE_M,
       status: "active",
       fxRateLocked: rate,

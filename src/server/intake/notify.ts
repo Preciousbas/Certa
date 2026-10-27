@@ -140,6 +140,8 @@ export async function notifyPlanShared(
     (row) => (row.role === "contractor" || row.role === "client") && row.status === "active" && (!input.onlyUserId || row.userId === input.onlyUserId),
   );
   if (members.length === 0) return;
+  const project = (await db.select().from(projects).where(eq(projects.id, input.projectId)))[0];
+  const approvals = project?.approvalMode === "client" ? "Approvals: by the client (no consultant)" : undefined;
   const roleOf = new Map(members.map((row) => [row.userId, row.role]));
   const people = await db.select().from(users).where(inArray(users.id, members.map((row) => row.userId)));
   for (const person of people) {
@@ -152,6 +154,7 @@ export async function notifyPlanShared(
       retentionPct: pctFromBps(input.retentionBps),
       months: input.defectsMonths,
       forClient: role === "client",
+      approvals,
     }), await nextStep(db, input.projectId, person.id, role));
     const keyboard: TelegramMarkup["inline_keyboard"] = [
       [{ text: "Review plan", web_app: { url: reviewLink(input.projectId) } }],

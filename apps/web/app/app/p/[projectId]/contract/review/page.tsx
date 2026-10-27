@@ -41,6 +41,7 @@ type Review = {
   items?: { label: string }[];
   stages?: StageCard[];
   issues: Row[];
+  approvals?: string | null;
   message?: string;
 };
 
@@ -306,6 +307,7 @@ export default function ReviewPage() {
             <p>Contract sum {review.contractSumLabel}</p>
             <p>{review.stageCountLabel ?? "Stages"} · stage total {review.stageTotalLabel}</p>
             <p className="muted">{review.match ? "The stage total matches the contract sum." : "The stage total does not match the contract sum."}</p>
+            {review.approvals ? <p>{review.approvals}</p> : null}
           </section>
           {(review.stages ?? []).some((stage) => stage.source === "model") ? <p className="muted">Read by AI — please check each stage.</p> : null}
           {review.locked ? <p className="toast">This plan is agreed. Propose a change instead — both sides must accept it.</p> : null}

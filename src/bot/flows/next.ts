@@ -4,6 +4,7 @@ import {
   documents,
   extractions,
   memberships,
+  projects,
   stages,
   users,
   type Database,
@@ -39,12 +40,16 @@ export async function nextStep(db: Database, projectId: string, userId: string, 
     const member = members.find((row) => row.role === wanted);
     return people.find((person) => person.id === member?.userId)?.name ?? "";
   };
+  const project = (await db.select().from(projects).where(eq(projects.id, projectId)))[0];
   if (voice !== "consultant") {
     const other = voice === "client" ? "contractor" : "client";
     if (!has(other)) {
       return voice === "client" ? "Next: invite the contractor. Tap Invite people." : "Next: invite the client. Tap Invite people.";
     }
-    if (!has("consultant")) return "Next: invite the consultant. Money can't be locked until one joins.";
+    if (!has("consultant") && project?.approvalMode !== "client") {
+      if (project?.approvalMode === null || project?.approvalMode === undefined) return "Next: invite a consultant, or tap No consultant, skip.";
+      return "Next: invite the consultant. Money can't be locked until one joins.";
+    }
   }
   const versions = (
     await db.select().from(contractVersions).where(eq(contractVersions.projectId, projectId)).orderBy(desc(contractVersions.version))

@@ -4,7 +4,7 @@ import { ACTIONS, MATRIX, ROLES, allows, type Action, type Role } from "./matrix
 describe("permission matrix", () => {
   it("covers every role and every action", () => {
     expect(ROLES).toHaveLength(5);
-    expect(ACTIONS.length * ROLES.length).toBe(90);
+    expect(ACTIONS.length * ROLES.length).toBe(95);
     for (const action of ACTIONS) {
       for (const role of ROLES) {
         const cell = MATRIX[action][role];

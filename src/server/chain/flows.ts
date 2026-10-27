@@ -61,17 +61,21 @@ async function memberUser(db: Database, projectId: string, role: string): Promis
 }
 
 export async function projectRoleWallets(db: Database, projectId: string) {
+  const project = (await db.select().from(projects).where(eq(projects.id, projectId)))[0];
   const clientUser = await memberUser(db, projectId, "client");
   const consultantUser = await memberUser(db, projectId, "consultant");
   const contractorUser = await memberUser(db, projectId, "contractor");
   if (!clientUser || !contractorUser) throw new ChainRejected("Both the client and the contractor need to join before money can be locked.");
-  if (!consultantUser) throw new ConsultantRequired();
-  const [client, consultant, contractor, operator] = await Promise.all([
+  const clientMode = project?.approvalMode === "client";
+  if (!clientMode && !consultantUser) throw new ConsultantRequired();
+  const [client, contractor, operator] = await Promise.all([
     getOrCreateWallet(db, { purpose: "client", userId: clientUser, projectId }),
-    getOrCreateWallet(db, { purpose: "consultant", userId: consultantUser, projectId }),
     getOrCreateWallet(db, { purpose: "contractor", userId: contractorUser, projectId }),
     getOrCreateWallet(db, { purpose: "operator" }),
   ]);
+  const consultant = clientMode
+    ? await getOrCreateWallet(db, { purpose: "consultant", projectId })
+    : await getOrCreateWallet(db, { purpose: "consultant", userId: consultantUser ?? undefined, projectId });
   assertRolesDistinct({
     client: client.address,
     consultant: consultant.address,

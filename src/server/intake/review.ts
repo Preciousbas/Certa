@@ -71,6 +71,7 @@ export type ReviewPayload = {
   items: { label: string }[];
   stages: ReviewStage[];
   issues: ReviewRow[];
+  approvals?: string | null;
 };
 
 function asSaved(value: unknown): Saved | null {
@@ -153,7 +154,9 @@ export async function loadReview(db: Database, projectId: string, role?: string 
   const extraction = (await db.select().from(extractions).where(eq(extractions.projectId, projectId)).orderBy(desc(extractions.createdAt)))[0];
   const saved = asSaved(extraction?.validatedJson);
   if (!extraction || !saved) return null;
-  return payload(saved, role ?? null, await planLock(db, projectId));
+  const project = (await db.select().from(projects).where(eq(projects.id, projectId)))[0];
+  const approvals = project?.approvalMode === "client" ? "Approvals: by the client (no consultant)" : null;
+  return { ...payload(saved, role ?? null, await planLock(db, projectId)), approvals };
 }
 
 function refreshSum(saved: Saved): void {

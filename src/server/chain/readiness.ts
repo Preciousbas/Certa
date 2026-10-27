@@ -71,6 +71,13 @@ export async function lockReadiness(
     roles = await projectRoleWallets(db, input.projectId);
   } catch (error) {
     if (error instanceof ConsultantRequired) {
+      if (project.approvalMode === null) {
+        return stop({
+          code: "people_missing",
+          message: "Choose whether this project has a consultant.",
+          next: "Tap Invite people, then invite one or tap No consultant, skip.",
+        });
+      }
       return stop({ code: "people_missing", message: "Consultant hasn't joined yet.", next: "Tap Invite people." });
     }
     if (error instanceof Error && /need to join/.test(error.message)) {

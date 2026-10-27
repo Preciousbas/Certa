@@ -140,6 +140,7 @@ export function planShared(input: {
   months: number;
   link?: string;
   forClient?: boolean;
+  approvals?: string;
 }): string {
   const opening = input.forClient
     ? `Your payment plan for ${input.project} has been sent to the contractor.`
@@ -149,6 +150,7 @@ export function planShared(input: {
     `Contract sum: ${input.sum}`,
     input.stageLines,
     `Retention: ${input.retentionPct}% until ${countNoun(input.months, "month")} after completion.`,
+    ...(input.approvals ? [input.approvals] : []),
     "Tap Accept below, or Review plan to see each figure.",
   ].join("\n");
 }

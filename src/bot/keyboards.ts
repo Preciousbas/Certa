@@ -105,8 +105,26 @@ const INVITE_LABELS: Record<string, string> = {
   subcontractor: "Subcontractor",
 };
 
-export function inviteRoleKeyboard(roles: readonly string[] = ["contractor", "subcontractor", "consultant"]): BotKeyboard {
-  return roles.map((role) => [tap(INVITE_LABELS[role] ?? role, "ir", role)]);
+export function inviteRoleKeyboard(
+  roles: readonly string[] = ["contractor", "subcontractor", "consultant"],
+  options?: { offerSkip?: boolean; projectId?: string },
+): BotKeyboard {
+  const rows = roles.map((role) => [tap(INVITE_LABELS[role] ?? role, "ir", role)]);
+  if (options?.offerSkip && options.projectId) rows.push([tap("No consultant, skip", "am", options.projectId, "client")]);
+  return rows;
+}
+
+export function consultantAgreeKeyboard(projectId: string): BotKeyboard {
+  return [[tap("Agree", "am", projectId, "agree")], [tap("Keep a consultant", "am", projectId, "keep")]];
+}
+
+export function clientApproveKeyboard(stageId: string, payout: string): BotKeyboard {
+  return [[tap(`Approve and pay ${payout}`, "ap", stageId)], [tap("Not yet", "dc", stageId)]];
+}
+
+export function approveAnywayKeyboard(appUrl: string, stageId: string): BotKeyboard {
+  const base = appUrl.replace(/\/$/, "");
+  return [[{ kind: "web_app", text: "Approve anyway", url: `${base}/mini/review?stage=${stageId}` }]];
 }
 
 export function inviteShareKeyboard(link: string): BotKeyboard {
