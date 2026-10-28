@@ -44,4 +44,12 @@ describe("StageVerdictV3", () => {
     expect(StageVerdictV3.safeParse({ ...checklist, confidence: 0.8 }).success).toBe(false);
     expect(StageVerdictV3.safeParse({ ...checklist, items: [{ id: "s2-trench", answer: "maybe", reason: "Unclear." }] }).success).toBe(false);
   });
+
+  it("accepts a six-item checklist reply", () => {
+    const item = (id: string) => ({ id, answer: "yes" as const, reason: "Seen." });
+    const six = { ...checklist, items: ["c1", "c2", "c3", "c4", "c5", "c6"].map(item) };
+    expect(StageVerdictV3.parse(six).items).toHaveLength(6);
+    const nine = { ...checklist, items: ["c1", "c2", "c3", "c4", "c5", "c6", "c7", "c8", "c9"].map(item) };
+    expect(StageVerdictV3.safeParse(nine).success).toBe(false);
+  });
 });
