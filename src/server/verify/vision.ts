@@ -10,6 +10,7 @@ export type VisionRequest = {
   user: string;
   images: Uint8Array[];
   timeoutMs?: number;
+  longSide?: number;
 };
 
 export type VisionReply = {
@@ -86,7 +87,7 @@ export async function defaultVisionClient(input: VisionRequest): Promise<VisionR
 
 async function postChatCompletion(base: string, key: string, input: VisionRequest): Promise<VisionReply> {
   const started = Date.now();
-  const images = await Promise.all(input.images.map((image) => resizeLongSide(image, VISION_LONG_SIDE)));
+  const images = await Promise.all(input.images.map((image) => resizeLongSide(image, input.longSide ?? VISION_LONG_SIDE)));
   const content: unknown[] = [{ type: "text", text: input.user }];
   for (const image of images) {
     content.push({
@@ -135,7 +136,7 @@ function responseText(payload: ResponsePayload): string {
 
 async function postResponses(base: string, key: string, input: VisionRequest): Promise<VisionReply> {
   const started = Date.now();
-  const images = await Promise.all(input.images.map((image) => resizeLongSide(image, VISION_LONG_SIDE)));
+  const images = await Promise.all(input.images.map((image) => resizeLongSide(image, input.longSide ?? VISION_LONG_SIDE)));
   const content: unknown[] = [{ type: "input_text", text: input.user }];
   for (const image of images) {
     content.push({
@@ -261,6 +262,7 @@ export async function askChecklist(input: {
   model: string;
   client?: VisionClient;
   timeoutMs?: number;
+  longSide?: number;
 }): Promise<{ reply: StageVerdictV3 | null; raw: string; latencyMs: number; error: string }> {
   const client = input.client ?? defaultVisionClient;
   const budget = input.timeoutMs ?? VISION_TIMEOUT_MS;
@@ -279,6 +281,7 @@ export async function askChecklist(input: {
         user,
         images: input.images,
         timeoutMs: remaining,
+        longSide: input.longSide,
       });
       raw = reply.text;
       latency += reply.latencyMs;
