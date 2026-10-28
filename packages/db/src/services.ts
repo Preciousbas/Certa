@@ -1,4 +1,4 @@
-import { and, desc, eq, gt, sql } from "drizzle-orm";
+import { and, desc, eq, gt, isNull, lt, sql } from "drizzle-orm";
 import { generateJoinCode, usdcFromNgnKobo } from "@certa/shared";
 import { randomBytes } from "node:crypto";
 import type { Database } from "./client.js";
@@ -262,11 +262,18 @@ export async function redeemJoinCode(
 
   const user = await upsertTelegramUser(db, input.telegramId, input.name);
   const joined = await db.transaction(async (tx) => {
+    await tx.select({ id: projects.id }).from(projects).where(eq(projects.id, code.projectId)).for("update");
     const taken = await tx
       .select()
       .from(memberships)
       .where(and(eq(memberships.projectId, code.projectId), eq(memberships.role, membershipRole), eq(memberships.status, "active")));
     if (taken.length > 0) return null;
+    const consumed = await tx
+      .update(joinCodes)
+      .set({ useCount: sql`${joinCodes.useCount} + 1`, updatedAt: now })
+      .where(and(eq(joinCodes.id, code.id), lt(joinCodes.useCount, joinCodes.maxUses), isNull(joinCodes.revokedAt), gt(joinCodes.expiresAt, now)))
+      .returning({ id: joinCodes.id });
+    if (!consumed[0]) return null;
     const [party] = await tx
       .insert(parties)
       .values({
@@ -281,17 +288,16 @@ export async function redeemJoinCode(
     if (["client", "consultant", "contractor", "subcontractor", "viewer"].includes(joinedRole)) {
       await tx.insert(memberships).values({ projectId: code.projectId, userId: user.id, role: joinedRole }).onConflictDoNothing();
     }
-    await tx.update(joinCodes).set({ useCount: code.useCount + 1, updatedAt: now }).where(eq(joinCodes.id, code.id));
+    await tx
+      .insert(botSessions)
+      .values({ telegramId: input.telegramId, activeProjectId: code.projectId })
+      .onConflictDoUpdate({
+        target: botSessions.telegramId,
+        set: { activeProjectId: code.projectId, updatedAt: now },
+      });
     return { partyId: party.id, role: joinedRole };
   });
   if (!joined) return { ok: false, reason: "taken" };
-  await db
-    .insert(botSessions)
-    .values({ telegramId: input.telegramId, activeProjectId: code.projectId })
-    .onConflictDoUpdate({
-      target: botSessions.telegramId,
-      set: { activeProjectId: code.projectId, updatedAt: now },
-    });
   return { ok: true, projectId: code.projectId, partyId: joined.partyId, role: joined.role, projectName: project?.name ?? "" };
 }
 
