@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 
 export type HashInput = {
   terms: unknown;
-  stages: { name: string; amount_kobo: string; amount_micro: string; criteria: string[]; tags: string[] }[];
+  stages: { name: string; amount_kobo: string; amount_micro: string; criteria: string[]; tags: string[]; expected_finish?: string }[];
   fx: { kobo_per_usdc: string; source: string; as_of: string };
   cap: string;
   retention: string;

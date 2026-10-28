@@ -2,7 +2,7 @@ import { createMemoryDatabase, jobs, memberships, notifications, projects, users
 import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { notifyFundOutcome } from "./fundNotice.js";
-import { deliverNotification, type TelegramPost } from "./notify.js";
+import { deliverNotification, notify, type TelegramPost } from "./notify.js";
 import { notifyVerdict } from "../server/verify/notify.js";
 
 let db: Database;
@@ -107,6 +107,37 @@ describe("deliverNotification", () => {
     expect(slept).toEqual([2000]);
     const retried = (await db.select().from(notifications).where(eq(notifications.id, retryId)))[0];
     expect(retried?.status).toBe("sent");
+  });
+});
+
+describe("notify", () => {
+  it("sends immediately when the bot token is set", async () => {
+    const previousVitest = process.env.VITEST;
+    const previousToken = process.env.TELEGRAM_BOT_TOKEN;
+    const originalFetch = globalThis.fetch;
+    delete process.env.VITEST;
+    process.env.TELEGRAM_BOT_TOKEN = "123:test";
+    globalThis.fetch = async () => new Response("{}", { status: 200 });
+    try {
+      const result = await notify(db, {
+        userId: clientId,
+        messageId: "B-AP-1",
+        text: "Approve the stage.",
+        dedupeKey: "immediate-approve",
+        chatId: "8101",
+      });
+      expect(result).toBe("queued");
+      const queued = await db.select().from(jobs).where(eq(jobs.dedupeKey, "notify:immediate-approve"));
+      expect(queued).toHaveLength(0);
+      const stored = (await db.select().from(notifications).where(eq(notifications.dedupeKey, "immediate-approve")))[0];
+      expect(stored?.status).toBe("sent");
+    } finally {
+      if (previousVitest === undefined) delete process.env.VITEST;
+      else process.env.VITEST = previousVitest;
+      if (previousToken === undefined) delete process.env.TELEGRAM_BOT_TOKEN;
+      else process.env.TELEGRAM_BOT_TOKEN = previousToken;
+      globalThis.fetch = originalFetch;
+    }
   });
 });
 

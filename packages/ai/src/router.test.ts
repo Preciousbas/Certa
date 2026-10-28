@@ -1,13 +1,16 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { agentRouterContract, agentRouterVision } from "./router.js";
 
-afterEach(() => {
+function clearRouterEnv(): void {
   vi.unstubAllGlobals();
   delete process.env.LLM_API_KEY;
   delete process.env.LLM_BASE_URL;
   delete process.env.LLM_VISION_MODEL;
   delete process.env.LLM_TEXT_MODEL;
-});
+}
+
+beforeEach(clearRouterEnv);
+afterEach(clearRouterEnv);
 
 describe("agent router", () => {
   it("stays off when no key is set", () => {

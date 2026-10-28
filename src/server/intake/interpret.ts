@@ -1,4 +1,16 @@
-import { absDiff, bpsFromPct, cellMoney, digits, quantityMilli } from "./amounts.js";
+import { absDiff, bpsFromPct, cellMoney, digits, markedMoney, proseMoney, quantityMilli } from "./amounts.js";
+import {
+  contractSumAmount,
+  isContractSumRow,
+  findDueDate,
+  isSummaryTitle,
+  markedRowMoney,
+  readProseSchedule,
+  readScheduleRow,
+  scheduleHeader,
+  statedStageCount,
+  type ScheduleColumns,
+} from "./payment.js";
 
 export type GridCell = { col: string; text: string };
 export type GridRow = { sheet: string; row: number; cells: GridCell[]; anchor: string; content: string };
@@ -17,6 +29,8 @@ export type DraftItem = {
   anchor: string;
   quote: string;
   line: number;
+  id?: string;
+  stageNumber?: number | null;
 };
 
 export type DraftBill = {
@@ -28,7 +42,16 @@ export type DraftBill = {
 };
 
 export type DraftSum = { label: string; kobo: bigint; anchor: string; quote: string };
-export type DraftMilestone = { name: string; pctBps: number | null; amountKobo: bigint | null; anchor: string; quote: string };
+export type DraftMilestone = {
+  name: string;
+  pctBps: number | null;
+  amountKobo: bigint | null;
+  dueDate: string | null;
+  anchor: string;
+  quote: string;
+};
+export type DraftNotice = { message: string; anchor: string };
+export type SummaryCheck = { label: string; kobo: bigint; anchor: string };
 export type SuspiciousHit = { anchor: string; billRef: string | null; row: number; quote: string };
 
 export type BoqDraft = {
@@ -71,6 +94,11 @@ export type BoqDraft = {
   milestones: DraftMilestone[];
   suspicious: SuspiciousHit[];
   confidence: number;
+  statedStageCount: number | null;
+  notices: DraftNotice[];
+  summaryChecks: SummaryCheck[];
+  scheduleSource: "document" | "model";
+  boqStatedKobo: bigint | null;
 };
 
 const HEADER_WORDS = ["item", "description", "unit", "qty", "quantity", "rate", "amount", "total"];
@@ -214,7 +242,46 @@ function emptyDraft(): BoqDraft {
     milestones: [],
     suspicious: [],
     confidence: 0.97,
+    statedStageCount: null,
+    notices: [],
+    summaryChecks: [],
+    scheduleSource: "document",
+    boqStatedKobo: null,
   };
+}
+
+export function gridFromText(text: string, sheet: string): GridRow[] {
+  const delimiter = consistentDelimiter(text);
+  if (!delimiter) {
+    return text.replace(/^\uFEFF/, "").split(/\r?\n/).map((line, index) => rowFromValues(sheet, index + 1, line.trim().length === 0 ? [] : [line.trim()]));
+  }
+  return text.replace(/^\uFEFF/, "").split(/\r?\n/).map((line, index) => {
+    const values = line.trim().length === 0 ? [] : splitCsvLine(line, delimiter);
+    return rowFromValues(sheet, index + 1, values);
+  });
+}
+
+export function consistentDelimiter(text: string): "," | ";" | "\t" | null {
+  const lines = text.replace(/^\uFEFF/, "").split(/\r?\n/).map((line) => line.trim()).filter((line) => line.length > 0);
+  if (lines.length < 2) return null;
+  let best: { mark: "," | ";" | "\t"; support: number } | null = null;
+  for (const mark of [",", ";", "\t"] as const) {
+    const counts = lines.map((line) => splitCsvLine(line, mark).length);
+    const freq = new Map<number, number>();
+    for (const count of counts) {
+      if (count > 1) freq.set(count, (freq.get(count) ?? 0) + 1);
+    }
+    let support = 0;
+    for (const count of freq.values()) if (count > support) support = count;
+    if (support >= 3 && support >= lines.length * 0.5 && (!best || support > best.support)) best = { mark, support };
+  }
+  if (best?.mark === "," && lines.every((line) => commasAreInsideNumbers(line))) return null;
+  return best?.mark ?? null;
+}
+
+function commasAreInsideNumbers(line: string): boolean {
+  const without = line.replace(/(?:₦|\bNGN\b|\bN)?\s*\d{1,3}(?:,\d{3})+(?:\.\d{2})?/gi, "0");
+  return !without.includes(",");
 }
 
 function headerWord(text: string): string {
@@ -269,13 +336,53 @@ function isoFromParts(year: string, month: string, day: string): string | null {
   return `${year}-${mm}-${dd}`;
 }
 
+function labelled(row: GridRow): { label: string; value: string } {
+  const first = row.cells[0]?.text.trim() ?? "";
+  const second = row.cells[1]?.text.trim() ?? "";
+  if (second) return { label: first, value: second };
+  const match = /^(project|location|client|contractor|consultant|currency)\s*:\s*(.+)$/i.exec(first);
+  if (match?.[1] && match[2]) return { label: match[1], value: match[2].trim() };
+  return { label: first, value: "" };
+}
+
+function pricedWithoutColumns(row: GridRow, billRef: string): DraftItem | null {
+  const texts = row.cells.map((item) => item.text.trim()).filter((text) => text.length > 0);
+  if (texts.length < 2) return null;
+  const last = texts[texts.length - 1] ?? "";
+  const money = markedMoney(last) ?? cellMoney(last);
+  if (money === null) return null;
+  const rest = texts.slice(0, -1);
+  const ref = rest.find((text) => /^\d+(?:\.\d+)*$/.test(text)) ?? "";
+  const description = rest.find((text) => /[A-Za-z]/.test(text)) ?? "";
+  if (!ref && !description) return null;
+  return {
+    billRef,
+    itemRef: ref || `row${row.row}`,
+    description,
+    unit: null,
+    quantityMilli: null,
+    rateKobo: null,
+    statedKobo: money,
+    rowKind: ref ? "item" : "heading",
+    confidence: 0.8,
+    anchor: row.anchor,
+    quote: last.slice(0, 200),
+    line: row.row,
+  };
+}
+
 export function interpretGrid(rows: GridRow[]): BoqDraft {
   const draft = emptyDraft();
   let bill: DraftBill | null = null;
   let columns: Record<string, string> | null = null;
+  let schedule: ScheduleColumns | null = null;
   let summary = false;
   const pushBill = () => {
     if (!bill) return;
+    if (bill.billRef === "BOQ" && bill.items.length === 0 && bill.statedSubtotalKobo === null) {
+      bill = null;
+      return;
+    }
     draft.bills.push(bill);
     if (/prelim/i.test(bill.title) && bill.statedSubtotalKobo !== null) draft.preliminariesKobo = bill.statedSubtotalKobo;
     bill = null;
@@ -283,36 +390,45 @@ export function interpretGrid(rows: GridRow[]): BoqDraft {
   for (const row of rows) {
     const text = joined(row);
     if (!text) continue;
+    if (draft.statedStageCount === null) draft.statedStageCount = statedStageCount(text);
     if (INJECTION.test(text)) {
       draft.suspicious.push({ anchor: row.anchor, billRef: bill?.billRef ?? null, row: row.row, quote: text.slice(0, 200) });
       continue;
     }
     readConditions(draft, text);
-    const label = row.cells[0]?.text ?? "";
-    const value = row.cells[1]?.text ?? "";
+    const pair = labelled(row);
+    const label = pair.label;
+    const value = pair.value;
     if (/^project$/i.test(label) && value) draft.projectName = value;
     if (/^location$/i.test(label) && value) draft.location = value;
     if (/^client$/i.test(label) && value) draft.clientName = value;
     if (/^contractor$/i.test(label) && value) draft.contractorName = value;
     if (/^consultant$/i.test(label) && value) draft.consultantName = value;
     if (/^currency$/i.test(label) && /usd/i.test(value)) draft.currency = "USD";
-    if (/general summary/i.test(text)) {
+    if (isSummaryTitle(text)) {
       pushBill();
       summary = true;
       columns = null;
+      schedule = null;
       continue;
     }
     const billNo = /^bill$/i.test(label) && /^\d+$/.test(value) ? value : null;
     const inline = /^bill no\.?\s*(\d+)\s*[—-]\s*(.+)$/i.exec(text);
     const opened = billNo && !summary ? { ref: billNo, title: row.cells[2]?.text ?? "" } : inline && !summary ? { ref: inline[1] ?? "", title: inline[2] ?? "" } : null;
     if (opened?.ref) {
+      schedule = null;
       pushBill();
       bill = { billRef: opened.ref, title: opened.title, items: [], statedSubtotalKobo: null, anchor: row.anchor };
-      columns = null;
+      continue;
+    }
+    const scheduleCols = !summary ? scheduleHeader(row) : null;
+    if (scheduleCols) {
+      schedule = scheduleCols;
       continue;
     }
     const mapped = headerMap(row);
     if (mapped && !summary) {
+      schedule = null;
       columns = mapped;
       if (!bill) {
         bill = { billRef: "BOQ", title: row.sheet || "Bill of quantities", items: [], statedSubtotalKobo: null, anchor: row.anchor };
@@ -320,29 +436,41 @@ export function interpretGrid(rows: GridRow[]): BoqDraft {
       continue;
     }
     if (mapped && summary) continue;
-    if (draft.contractSumKobo === null) {
-      const money = lastMoney(row);
-      const words = row.cells.map((item) => item.text.trim()).filter((item) => item.length > 0);
-      const head = words[0] ?? "";
-      const joinedHead = words.slice(0, 2).join(" ");
-      if (money && (/^contract sum$/i.test(head) || /^contract sum$/i.test(joinedHead))) {
-        draft.contractSumKobo = money.kobo;
+    if (isContractSumRow(row, text)) {
+      const money = contractSumAmount(row, text);
+      if (money !== null) {
+        draft.contractSumKobo = money;
         draft.contractSumAnchor = row.anchor;
-        draft.contractSumQuote = money.quote;
+        const moneyCell = [...row.cells].reverse().find((item) => cellMoney(item.text) === money || markedMoney(item.text) === money || proseMoney(item.text) === money);
+        draft.contractSumQuote = (moneyCell?.text || row.content).slice(0, 200);
       }
+      continue;
     }
-    if (/^milestone$/i.test(label)) {
-      const pctCell = row.cells.map((item) => item.text).find((item) => /^\d+(?:\.\d+)?%$/.test(item));
+    if (/^milestone$/i.test(row.cells[0]?.text.trim() ?? "")) {
+      const pctCell = row.cells.map((item) => item.text).find((item) => /^\d+(?:\.\d+)?%$/.test(item.trim()));
       const pct = pctCell ? bpsFromPct(pctCell.replace("%", "")) : null;
-      const money = lastMoney(row);
+      const name = row.cells[2]?.text.trim() || value;
       draft.milestones.push({
-        name: row.cells[2]?.text || value,
+        name,
         pctBps: pct,
-        amountKobo: money?.kobo ?? null,
+        amountKobo: markedRowMoney(row),
+        dueDate: findDueDate(text),
         anchor: row.anchor,
         quote: text.slice(0, 200),
       });
       continue;
+    }
+    const prose = readProseSchedule(text);
+    if (prose && !summary) {
+      draft.milestones.push({ ...prose, dueDate: prose.dueDate, anchor: row.anchor });
+      continue;
+    }
+    if (schedule && !summary) {
+      const hit = readScheduleRow(row, schedule);
+      if (hit) {
+        draft.milestones.push({ ...hit, anchor: row.anchor });
+        continue;
+      }
     }
     if (summary) {
       const money = lastMoney(row);
@@ -369,6 +497,11 @@ export function interpretGrid(rows: GridRow[]): BoqDraft {
         draft.contingencyAnchor = row.anchor;
         const rate = /(\d+(?:\.\d+)?)\s*%/.exec(head);
         if (rate?.[1]) draft.contingencyBps = bpsFromPct(rate[1]);
+      } else if (money && /^bill\s+\d+\b/i.test(head)) {
+        draft.summaryChecks.push({ label: head, kobo: money.kobo, anchor: row.anchor });
+      } else if (/^\d+$/.test(label) && money && draft.bills.some((item) => item.billRef === label)) {
+        const known = draft.bills.find((item) => item.billRef === label);
+        if (known) draft.summaryChecks.push({ label: `${label} ${value}`.trim(), kobo: money.kobo, anchor: row.anchor });
       } else if (/^\d+$/.test(label) && money && !draft.bills.some((item) => item.billRef === label)) {
         draft.bills.push({
           billRef: label,
@@ -393,7 +526,19 @@ export function interpretGrid(rows: GridRow[]): BoqDraft {
       }
       continue;
     }
-    if (!bill || !columns) continue;
+    if (!bill || !columns) {
+      const orphan = pricedWithoutColumns(row, bill?.billRef ?? "BOQ");
+      if (orphan) {
+        if (!bill) bill = { billRef: "BOQ", title: row.sheet || "Bill of quantities", items: [], statedSubtotalKobo: null, anchor: row.anchor };
+        orphan.billRef = bill.billRef;
+        bill.items.push(orphan);
+        draft.notices.push({
+          message: `Row ${row.row} (${orphan.description || orphan.itemRef}) was priced without a column heading, so Certa added it to the bill.`,
+          anchor: row.anchor,
+        });
+      }
+      continue;
+    }
     const description = cell(row, columns.description);
     const itemRef = cell(row, columns.item);
     const moneyText = cell(row, columns.amount);

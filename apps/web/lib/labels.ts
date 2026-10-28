@@ -1,5 +1,6 @@
 import { usdcFromNgnKobo } from "@certa/shared";
-import { stageChip } from "../../../src/components/ui/status";
+import { stageStatusLabel } from "../../../src/lib/stageStatus";
+export { stageStatusLabel };
 import { z } from "zod";
 
 const newStage = z.object({
@@ -21,11 +22,6 @@ export function isReviewStatus(status: string): boolean {
 
 export function isLockedStage(status: string, funded: boolean): boolean {
   return funded && status !== "released" && status !== "cancelled" && !REVIEW_STATUSES.has(status);
-}
-
-export function stageStatusLabel(status: string): string {
-  // Funding is a boolean. Migration 0003 stores funded stages as not_started.
-  return stageChip(status).label;
 }
 
 export function changeStatusLabel(status: string): string {

@@ -1,4 +1,5 @@
-import { approvals, stages, submissions, type Database } from "@certa/db";
+import { approvals, projects, stages, submissions, type Database } from "@certa/db";
+import { stageReviewer } from "../projects/approvalMode.js";
 import { and, desc, eq } from "drizzle-orm";
 import { audit } from "../audit.js";
 import { transitionStage, type StageStatus } from "../stages/transition.js";
@@ -24,19 +25,22 @@ export async function applyAiOverride(
   if (reason.length < 20) throw new Error("Write at least 20 characters so the override is on the record.");
   const stage = (await db.select().from(stages).where(and(eq(stages.id, input.stageId), eq(stages.projectId, input.projectId))))[0];
   if (!stage) throw new Error("That stage is not on this project.");
+  const project = (await db.select().from(projects).where(eq(projects.id, input.projectId)))[0];
+  const clientReviews = project ? stageReviewer(project, stage) === "client" : false;
   const before = stage.status;
   const steps = WALK[stage.status] ?? [];
   for (const step of steps) await transitionStage(db, stage.id, step);
+  if (clientReviews) await transitionStage(db, stage.id, "awaiting_client_approval");
   await db.insert(approvals).values({
     projectId: input.projectId,
     workspaceId: input.workspaceId,
     stageId: stage.id,
     byUserId: input.userId,
-    decision: "certified",
+    decision: clientReviews ? "client_override" : "certified",
     reason,
   });
   await audit(db, {
-    action: "ai_override",
+    action: clientReviews ? "client_override" : "ai_override",
     entity: "stages",
     entityId: stage.id,
     projectId: input.projectId,
@@ -44,7 +48,7 @@ export async function applyAiOverride(
     actor: input.userId,
     reason,
     before: { status: before },
-    after: { status: "awaiting_certification" },
+    after: { status: clientReviews ? "awaiting_client_approval" : "awaiting_certification" },
   });
   const submission = (
     await db.select().from(submissions).where(eq(submissions.stageId, stage.id)).orderBy(desc(submissions.createdAt))

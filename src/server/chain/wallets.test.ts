@@ -24,4 +24,15 @@ describe("role wallets", () => {
     ).toThrow(RolesNotDistinct);
     await close();
   });
+
+  it("returns the same client address for a second project", async () => {
+    const { db, close } = await createMemoryDatabase();
+    const first = await startOwnProject(db, { telegramId: 46002n, name: "Ada", projectName: "Gate", role: "client" });
+    const second = await startOwnProject(db, { telegramId: 46002n, name: "Ada", projectName: "House", role: "client" });
+    const gate = await getOrCreateWallet(db, { purpose: "client", userId: first.userId, projectId: first.projectId });
+    const house = await getOrCreateWallet(db, { purpose: "client", userId: second.userId, projectId: second.projectId });
+    expect(house.address).toBe(gate.address);
+    expect(first.userId).toBe(second.userId);
+    await close();
+  });
 });

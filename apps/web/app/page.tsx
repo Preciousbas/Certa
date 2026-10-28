@@ -2,6 +2,7 @@ import { cookies } from "next/headers";
 import { PUBLISHED_FACTORY } from "../lib/published-chain";
 import { SEPOLIA_CHAIN_ID, explorerAddress } from "../lib/explorer";
 import { openSession } from "../../../src/server/auth/sessionOpen";
+import { supportEmailOrEmpty } from "../../../src/lib/support";
 import { PageContainer } from "../components/ui/page";
 
 const PITCH_SUB =
@@ -20,8 +21,7 @@ export default async function LandingPage() {
     }
   }
   const factory = process.env.ESCROW_FACTORY_ADDRESS || PUBLISHED_FACTORY;
-  const configured = process.env.SUPPORT_EMAIL?.trim();
-  const support = configured && configured !== "support@example.com" ? configured : "";
+  const support = supportEmailOrEmpty();
   const video = process.env.DEMO_VIDEO_URL;
   const year = new Date().getFullYear();
   return (

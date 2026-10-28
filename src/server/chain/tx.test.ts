@@ -99,7 +99,31 @@ describe("transaction service", () => {
     const second = await sendTx(db, input, mocked.chain);
     expect(first.id).toBe(second.id);
     expect(first.txHash).toBe(second.txHash);
-    expect(mocked.sends).toEqual(["release_stage:stage:approval"]);
+    expect(mocked.sends).toEqual(["release_stage:stage:approval:a1"]);
+    await close();
+  });
+
+  it("retries a failed send that was never broadcast", async () => {
+    const { db, close } = await createMemoryDatabase();
+    const mocked = port("CapExceeded");
+    const input = {
+      kind: "create_escrow" as const,
+      idempotencyKey: "create_escrow:version",
+      accountName: "certa-test-operator-00000000",
+      from: FROM,
+      to: TO,
+      data: "0x1234" as Hex,
+      intent: { event: "EscrowCreated" },
+    };
+    const failed = await sendTx(db, input, mocked.chain);
+    expect(failed.status).toBe("failed");
+    expect(failed.txHash).toBeNull();
+    expect(mocked.sends).toEqual([]);
+    mocked.chain.simulate = async () => ({ ok: true });
+    const retried = await sendTx(db, input, mocked.chain);
+    expect(retried.status).toBe("submitted");
+    expect(retried.txHash).toBeTruthy();
+    expect(mocked.sends).toEqual(["create_escrow:version:a2"]);
     await close();
   });
 

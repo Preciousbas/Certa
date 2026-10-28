@@ -9,26 +9,42 @@ import {
   documentChunks,
   documents,
   extractions,
+  memberships,
   projects,
   stages,
+  users,
   type Database,
 } from "@certa/db";
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, asc, desc, eq, inArray } from "drizzle-orm";
+import { fetchCbnRate } from "@certa/shared";
+import { appBaseUrl } from "../../lib/appUrl.js";
 import { audit } from "../audit.js";
 import { enqueueJob } from "../jobs/enqueue.js";
 import { createSignedUploadUrl, getObject, putObject } from "../storage.js";
 import { chooseDocuments, readSucceeded } from "./choose.js";
 import { citationIssues } from "./citations.js";
-import { contentHash, sha256Hex } from "./hash.js";
-import { interpretGrid, type GridRow } from "./interpret.js";
-import { badType, duplicateUpload, SCAN_V13, watStamp, webDuplicate } from "./messages.js";
+import { contentHash, sha256Hex, type HashInput } from "./hash.js";
+import { interpretGrid, type BoqDraft, type GridRow } from "./interpret.js";
+import { badType, basisLine, duplicateUpload, figureNotes, formatDue, SCAN_V13, stageFigureLines, watStamp, webDuplicate } from "./messages.js";
 import { docModelSupportsImages, proposeWithModel } from "./model.js";
-import { notifyFigures, notifyPlanShared, notifyReadFailed } from "./notify.js";
+import { notifyFigures, notifyOnce, notifyPlanShared, notifyReadFailed } from "./notify.js";
 import { parseBytes, type Transcriber } from "./parse.js";
+import { combineDrafts } from "./read.js";
 import { detectFile, failureMessage, UPLOAD_MAX_BYTES } from "./detect.js";
 import { documentOpenForResend } from "./status.js";
 import { formatNaira } from "../../lib/money/kobo.js";
 import { validateDraft, type ValidatedPlan } from "./validate.js";
+
+async function lockLiveRate(db: Database, project: { id: string; fxRateLocked: bigint }): Promise<bigint> {
+  if (project.fxRateLocked > 0n) return project.fxRateLocked;
+  const live = await fetchCbnRate();
+  if (!live) return project.fxRateLocked;
+  await db
+    .update(projects)
+    .set({ fxRateLocked: live.koboPerUsdc, fxSource: `Central Bank of Nigeria ${live.asOf}`, fxLockedAt: new Date() })
+    .where(and(eq(projects.id, project.id), eq(projects.fxRateLocked, 0n)));
+  return live.koboPerUsdc;
+}
 
 async function readStored(storageKey: string): Promise<Uint8Array | null> {
   const remote = await getObject("documents", storageKey).catch(() => null);
@@ -220,6 +236,7 @@ function serialisePlan(plan: ValidatedPlan) {
       netKobo: stage.netKobo.toString(),
       amountKobo: stage.amountKobo.toString(),
       amountMicro: stage.amountMicro.toString(),
+      boqKobo: stage.boqKobo === null ? null : stage.boqKobo.toString(),
     })),
     issues: plan.issues,
   };
@@ -246,6 +263,36 @@ export async function extractDocumentJob(db: Database, projectId: string): Promi
   }
 }
 
+export function fillPartyNames(
+  draft: BoqDraft,
+  names: { client: string | null; contractor: string | null; consultant: string | null },
+): BoqDraft {
+  draft.clientName ??= names.client ?? "The client";
+  draft.contractorName ??= names.contractor ?? "The contractor";
+  draft.consultantName ??= names.consultant;
+  return draft;
+}
+
+async function partyNames(db: Database, projectId: string): Promise<{ client: string | null; contractor: string | null; consultant: string | null }> {
+  const rows = await db
+    .select({ role: memberships.role, name: users.name })
+    .from(memberships)
+    .innerJoin(users, eq(users.id, memberships.userId))
+    .where(and(eq(memberships.projectId, projectId), eq(memberships.status, "active")))
+    .orderBy(asc(memberships.joinedAt));
+  const names: { client: string | null; contractor: string | null; consultant: string | null } = {
+    client: null,
+    contractor: null,
+    consultant: null,
+  };
+  for (const row of rows) {
+    if (row.role === "client" && names.client === null) names.client = row.name;
+    else if (row.role === "contractor" && names.contractor === null) names.contractor = row.name;
+    else if (row.role === "consultant" && names.consultant === null) names.consultant = row.name;
+  }
+  return names;
+}
+
 async function extractProject(db: Database, projectId: string): Promise<ValidatedPlan | null> {
   const heldFiles = await db.select().from(documents).where(eq(documents.projectId, projectId));
   const readHashes = new Set(heldFiles.filter(readSucceeded).map((file) => file.sha256));
@@ -270,16 +317,18 @@ async function extractProject(db: Database, projectId: string): Promise<Validate
     });
     return null;
   }
-  const rows: GridRow[] = [];
+  const groups: GridRow[][] = [];
   const scans = files.filter((file) => (file.parsedJson as { scan?: boolean } | null)?.scan === true);
   for (const file of files) {
     const parsed = file.parsedJson as { rows?: GridRow[] } | null;
-    if (parsed?.rows) rows.push(...parsed.rows);
+    if (parsed?.rows) groups.push(parsed.rows);
   }
-  const draft = interpretGrid(rows);
-  const plan = validateDraft(draft, project.fxRateLocked);
+  const names = await partyNames(db, projectId);
   const held = await db.select().from(documentChunks).where(inArray(documentChunks.documentId, files.map((file) => file.id)));
-  plan.issues.push(...citationIssues(draft, held.map((chunk) => ({ anchor: chunk.anchor, content: chunk.content }))));
+  let draft = combineDrafts(groups);
+  fillPartyNames(draft, names);
+  const priced = draft.bills.some((bill) => bill.items.some((item) => item.rowKind === "item" && item.statedKobo !== null));
+  const scheduled = draft.milestones.length > 0;
   const images: { mime: string; base64: string; filename: string }[] = [];
   if (scans.length > 0 && docModelSupportsImages()) {
     for (const file of scans) {
@@ -289,18 +338,24 @@ async function extractProject(db: Database, projectId: string): Promise<Validate
       images.push({ mime, base64: Buffer.from(bytes).toString("base64"), filename: file.fileName ?? "page" });
     }
   }
-  if (scans.length > 0 && images.length === 0) {
-    for (const file of scans) {
-      plan.issues.push({ code: "V13", rule: "scan", severity: "warning", message: SCAN_V13, anchor: null, field: "Document", value: file.fileName ?? "scan" });
-    }
-  }
-  const priced = draft.bills.some((bill) => bill.items.some((item) => item.rowKind === "item" && item.statedKobo !== null));
-  const proposal = priced && plan.contractSumKobo
+  const proposal = priced && draft.contractSumKobo
     ? { source: "parser" as const, text: null, notice: null }
     : await proposeWithModel({
       text: held.map((chunk) => chunk.content).join("\n").slice(0, 24_000) || "Read the attached document.",
       images,
     });
+  if (!priced && !scheduled && proposal.text) {
+    draft = combineDrafts(groups, { modelText: proposal.text, chunks: held.map((chunk) => ({ content: chunk.content })) });
+    fillPartyNames(draft, names);
+  }
+  const rate = await lockLiveRate(db, project);
+  const plan = validateDraft(draft, rate);
+  plan.issues.push(...citationIssues(draft, held.map((chunk) => ({ anchor: chunk.anchor, content: chunk.content }))));
+  if (scans.length > 0 && images.length === 0) {
+    for (const file of scans) {
+      plan.issues.push({ code: "V13", rule: "scan", severity: "warning", message: SCAN_V13, anchor: null, field: "Document", value: file.fileName ?? "scan" });
+    }
+  }
   if (scans.length > 0 && images.length > 0 && proposal.source !== "model") {
     plan.issues.push({ code: "V13", rule: "scan", severity: "warning", message: SCAN_V13, anchor: null, field: "Document", value: scans[0]?.fileName ?? "scan" });
   }
@@ -308,9 +363,13 @@ async function extractProject(db: Database, projectId: string): Promise<Validate
     bill.items
       .filter((item) => item.rowKind === "item" && item.statedKobo !== null)
       .map((item) => ({
+        id: item.id ?? `${bill.billRef}:${item.itemRef}:${item.line}`,
+        billRef: item.billRef,
         itemRef: item.itemRef,
         description: item.description || bill.title,
         amountKobo: (item.statedKobo ?? 0n).toString(),
+        stageNumber: item.stageNumber ?? null,
+        line: item.line,
       })),
   );
   const saved = {
@@ -353,8 +412,10 @@ async function extractProject(db: Database, projectId: string): Promise<Validate
       vatBps: plan.vatBps,
       retentionBps: plan.retentionBps,
       defectsMonths: plan.defectsMonths,
-      stages: plan.stages.map((stage) => ({ name: stage.name, amountKobo: stage.amountKobo.toString() })),
-      lines: lineItems.map((item, index) => `${index + 1}. ${item.description} — ${formatNaira(BigInt(item.amountKobo))}`),
+      stages: plan.stages.filter((stage) => stage.kind !== "reserve").map((stage) => ({ name: stage.name, amountKobo: stage.amountKobo.toString(), kind: stage.kind })),
+      lines: stageFigureLines(plan.stages),
+      basis: basisLine(plan),
+      notes: figureNotes(plan),
       warnings: plan.issues.length,
     });
     }
@@ -362,7 +423,17 @@ async function extractProject(db: Database, projectId: string): Promise<Validate
   return plan;
 }
 
-type SavedStage = { name: string; amountKobo: string; amountMicro: string; acceptanceCriteria: string[]; tags: string[]; kind: string; billRefs: string[] };
+type SavedStage = {
+  name: string;
+  amountKobo: string;
+  amountMicro: string;
+  acceptanceCriteria: string[];
+  tags: string[];
+  kind: string;
+  billRefs: string[];
+  number?: number;
+  expectedFinish?: string | null;
+};
 
 export async function sendPlan(
   db: Database,
@@ -384,12 +455,56 @@ export async function sendPlan(
   const hashes = [...new Set(files.map((row) => row.sha256))].sort();
   const hash = contentHash({
     terms: { retention_bps: saved.retentionBps ?? 0, defects_period_days: saved.defectsPeriodDays ?? 180 },
-    stages: saved.stages.map((stage) => ({ name: stage.name, amount_kobo: stage.amountKobo, amount_micro: stage.amountMicro, criteria: stage.acceptanceCriteria, tags: stage.tags })),
+    stages: saved.stages.map((stage) => {
+      const row: HashInput["stages"][number] = { name: stage.name, amount_kobo: stage.amountKobo, amount_micro: stage.amountMicro, criteria: stage.acceptanceCriteria, tags: stage.tags };
+      if (stage.expectedFinish) row.expected_finish = stage.expectedFinish;
+      return row;
+    }),
     fx: { kobo_per_usdc: saved.koboPerUsdc ?? project.fxRateLocked.toString(), source: project.fxSource, as_of: "2026-10-15" },
     cap: saved.spendingCapMicro ?? "1000000",
     retention: String(saved.retentionBps ?? 0),
     document_hashes: hashes,
   });
+  const empty = saved.stages.find((stage) => stage.kind !== "reserve" && BigInt(stage.amountKobo) === 0n);
+  if (empty) {
+    const number = empty.number ?? saved.stages.indexOf(empty) + 1;
+    return { ok: false, message: `Stage ${number} has no amount yet. Move items into it or remove it.` };
+  }
+  const workStages = saved.stages.filter((stage) => stage.kind !== "reserve");
+  const reserveStage = saved.stages.find((stage) => stage.kind === "reserve");
+  const stageLines = [
+    ...workStages.map((stage, index) => {
+      const due = stage.expectedFinish ? ` · due ${formatDue(stage.expectedFinish)}` : "";
+      return `${index + 1}. ${stage.name}: ${formatNaira(BigInt(stage.amountKobo))}${due}`;
+    }),
+    ...(reserveStage ? [`Reserve for variations: ${formatNaira(BigInt(reserveStage.amountKobo))}`] : []),
+  ].join("\n");
+  const named = extraction?.validatedJson as { clientName?: string | null } | null;
+  const sumKobo = BigInt(saved.contractSumKobo);
+  const share = (versionId: string) =>
+    notifyPlanShared(db, {
+      projectId: input.projectId,
+      versionId,
+      clientName: named?.clientName || "The client",
+      projectName: project.name,
+      sumKobo,
+      stageLines,
+      retentionBps: saved.retentionBps ?? 0,
+      defectsMonths: Math.round((saved.defectsPeriodDays ?? 180) / 30),
+    });
+  const latest = (await db.select().from(contractVersions).where(eq(contractVersions.projectId, input.projectId)).orderBy(desc(contractVersions.version)))[0];
+  if (latest?.status === "pending_acceptance" && latest.contentHash === hash) {
+    const existingStages = (await db.select().from(stages).where(eq(stages.contractVersionId, latest.id))).sort((a, b) => a.stageIndex - b.stageIndex);
+    for (const [index, stage] of existingStages.entries()) {
+      await db.update(stages).set({ stageIndex: index, onChainIdx: index }).where(eq(stages.id, stage.id));
+    }
+    await share(latest.id);
+    return { ok: true, versionId: latest.id, hash };
+  }
+  const rate = BigInt(saved.koboPerUsdc ?? project.fxRateLocked.toString());
+  if (rate <= 0n || saved.stages.some((stage) => BigInt(stage.amountMicro) === 0n)) {
+    return { ok: false, message: "The exchange rate is missing, so the USDC amounts are zero. Re-open Review figures and try again." };
+  }
   const previous = await db.select().from(contractVersions).where(eq(contractVersions.projectId, input.projectId));
   const version = previous.reduce((max, row) => Math.max(max, row.version), 0) + 1;
   const [created] = await db.insert(contractVersions).values({
@@ -417,7 +532,7 @@ export async function sendPlan(
   await db.insert(stages).values(saved.stages.map((stage, index) => ({
     projectId: input.projectId,
     workspaceId: project.workspaceId,
-    stageIndex: index + 1,
+    stageIndex: index,
     name: stage.name,
     description: stage.acceptanceCriteria.join(" "),
     amountNgnKobo: BigInt(stage.amountKobo),
@@ -431,6 +546,7 @@ export async function sendPlan(
     acceptanceCriteria: stage.acceptanceCriteria,
     tags: stage.tags,
     pour: stage.tags.includes("concrete_pour"),
+    expectedFinish: stage.expectedFinish ?? null,
   })));
   const grid = files.flatMap((file) => ((file.parsedJson as { rows?: GridRow[] } | null)?.rows ?? []));
   const draft = interpretGrid(grid);
@@ -454,29 +570,37 @@ export async function sendPlan(
   await enqueueJob(db, { kind: "contract_reply", payload: { projectId: input.projectId, versionId: created.id, hoursLeft: 24 }, dedupeKey: `reply:${created.id}:48`, runAt: new Date(replyAt + 48 * 3600_000) });
   await enqueueJob(db, { kind: "contract_reply", payload: { projectId: input.projectId, versionId: created.id, hoursLeft: 0 }, dedupeKey: `reply:${created.id}:72`, runAt: new Date(replyAt + 72 * 3600_000) });
   await audit(db, { action: "contract.sent", entity: "contract_version", entityId: created.id, projectId: input.projectId, workspaceId: project.workspaceId, actor: input.userId, after: { hash } });
-  const named = extraction?.validatedJson as { clientName?: string | null } | null;
-  await notifyPlanShared(db, {
-    projectId: input.projectId,
-    versionId: created.id,
-    clientName: named?.clientName || "The client",
-    projectName: project.name,
-    sumKobo: BigInt(saved.contractSumKobo),
-    stageLines: saved.stages.map((stage, index) => `${index + 1}. ${stage.name}: ${stage.amountKobo}`).join("\n"),
-    retentionBps: saved.retentionBps ?? 0,
-    defectsMonths: Math.round((saved.defectsPeriodDays ?? 180) / 30),
-  });
+  await share(created.id);
   return { ok: true, versionId: created.id, hash };
 }
 
 export async function acceptPlan(
   db: Database,
-  input: { projectId: string; userId: string; role: "client" | "contractor"; decision: "accepted" | "change_requested"; reason?: string },
-): Promise<{ ok: true; both: boolean; hash: string } | { ok: false; message: string }> {
+  input: { projectId: string; userId: string; role: "client" | "contractor"; decision: "accepted" | "change_requested"; reason?: string; versionId?: string },
+): Promise<{ ok: true; both: boolean; hash: string } | { ok: false; message: string; stale?: boolean; already?: boolean }> {
   if (input.decision === "change_requested" && (input.reason ?? "").trim().length < 10) {
     return { ok: false, message: "Say what should change, in at least 10 characters." };
   }
   const version = (await db.select().from(contractVersions).where(eq(contractVersions.projectId, input.projectId)).orderBy(desc(contractVersions.version)))[0];
   if (!version || version.status !== "pending_acceptance") return { ok: false, message: "There is no plan waiting for agreement." };
+  if (input.versionId && input.versionId !== version.id) {
+    return { ok: false, stale: true, message: "This plan changed after that message. Here's the latest one." };
+  }
+  if (input.decision === "accepted") {
+    const prior = await db.select().from(contractAcceptances).where(eq(contractAcceptances.contractVersionId, version.id));
+    const mine = prior.find((row) => row.userId === input.userId && row.role === input.role && row.decision === "accepted");
+    if (mine) {
+      const other = input.role === "client" ? "contractor" : "client";
+      const otherMembers = await db
+        .select()
+        .from(memberships)
+        .where(and(eq(memberships.projectId, input.projectId), eq(memberships.role, other), eq(memberships.status, "active")));
+      const otherUser = otherMembers[0] ? (await db.select().from(users).where(eq(users.id, otherMembers[0].userId)))[0] : undefined;
+      const name = otherUser?.name ?? (other === "client" ? "the client" : "the contractor");
+      const label = other === "client" ? "client" : "contractor";
+      return { ok: false, already: true, message: `You've already accepted. Waiting for ${name} (${label}).` };
+    }
+  }
   await db.insert(contractAcceptances).values({
     contractVersionId: version.id,
     userId: input.userId,
@@ -499,6 +623,25 @@ export async function acceptPlan(
   await db.update(projects).set({ status: "active", currentContractVersionId: version.id, termsHash: version.contentHash }).where(eq(projects.id, input.projectId));
   await enqueueJob(db, { kind: "accept_terms_deferred", payload: { projectId: input.projectId, versionId: version.id, contentHash: version.contentHash }, dedupeKey: `accept-terms:${version.id}` });
   await audit(db, { action: "contract.accepted", entity: "contract_version", entityId: version.id, projectId: input.projectId, actor: input.userId, after: { hash: version.contentHash } });
+  const agreed = (await db.select().from(projects).where(eq(projects.id, input.projectId)))[0];
+  const clientMembers = await db
+    .select()
+    .from(memberships)
+    .where(and(eq(memberships.projectId, input.projectId), eq(memberships.role, "client"), eq(memberships.status, "active")));
+  if (clientMembers.length > 0) {
+    const people = await db.select().from(users).where(inArray(users.id, clientMembers.map((row) => row.userId)));
+    const base = appBaseUrl();
+    for (const person of people) {
+      await notifyOnce(db, {
+        userId: person.id,
+        chatId: person.telegramId.toString(),
+        kind: "plan_agreed",
+        dedupeKey: `agreed:${version.id}:${person.id}`,
+        text: `Both sides agreed the plan for ${agreed?.name ?? "this project"}. Tap Open Fund to lock the money.`,
+        markup: { inline_keyboard: [[{ text: "Open Fund", web_app: { url: `${base}/mini/fund?project=${input.projectId}` } }]] },
+      });
+    }
+  }
   return { ok: true, both: true, hash: version.contentHash };
 }
 

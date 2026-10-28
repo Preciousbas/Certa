@@ -1,4 +1,5 @@
 import { apiError, apiJson, captureFields, captureOutput, projectIdField } from "../../../../lib/schemas";
+import { sitePin } from "../../../../../../src/server/site/pin";
 import { storeCapturePhoto } from "../../../../../../src/server/verify/capture";
 import { withAuth } from "../../../../lib/with-auth";
 
@@ -43,7 +44,7 @@ export const POST = withAuth(
       accuracyM: accuracy,
       deviceInfo: fields.data.deviceInfo ?? "mini-app",
       bytes,
-      site: { lat: project.siteLat, lng: project.siteLng },
+      site: sitePin(project),
       radiusM: project.geofenceRadiusM,
     });
     return apiJson(

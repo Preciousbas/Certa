@@ -65,6 +65,12 @@ export const projects = pgTable("projects", {
   siteLocation: text("site_location").notNull(),
   siteLat: doublePrecision("site_lat").notNull(),
   siteLng: doublePrecision("site_lng").notNull(),
+  sitePinSource: text("site_pin_source"),
+  sitePinLabel: text("site_pin_label"),
+  sitePinSetAt: timestamp("site_pin_set_at", { withTimezone: true }),
+  approvalMode: text("approval_mode").$type<"consultant" | "client" | null>(),
+  approvalModeSetAt: timestamp("approval_mode_set_at", { withTimezone: true }),
+  consultantFromStage: integer("consultant_from_stage"),
   geofenceRadiusM: integer("geofence_radius_m").notNull(),
   status: text("status").notNull().default("draft"),
   fxRateLocked: bigint("fx_rate_locked", { mode: "bigint" }).notNull(),
@@ -139,6 +145,7 @@ export const stages = pgTable("stages", {
   kind: text("kind").notNull().default("work"),
   acceptanceCriteria: jsonb("acceptance_criteria").$type<string[]>().notNull().default([]),
   tags: text("tags").array().notNull().default([]),
+  expectedFinish: date("expected_finish"),
   ...timestamps,
 });
 

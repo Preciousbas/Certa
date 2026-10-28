@@ -1,9 +1,13 @@
 import { documents, memberships, parties, projects, stages, users, upsertTelegramUser, type Database } from "@certa/db";
 import { and, eq } from "drizzle-orm";
+import { appBaseUrl } from "../../lib/appUrl.js";
+import { supportEmailOrEmpty } from "../../lib/support.js";
 import { documentOpenForResend } from "../../server/intake/status.js";
+import { sitePin } from "../../server/site/pin.js";
 import { roleMenu, startKeyboard, type BotKeyboard } from "../keyboards.js";
 import { bGe1, bSt1, bSt3 } from "../messages.js";
 import { readSession, type SessionRecord } from "../state.js";
+import { fundMenuOpen, nextStep, withNext } from "./next.js";
 
 export type Person = { id: number; firstName: string };
 
@@ -37,7 +41,7 @@ export type EngineDeps = {
   botUsername?: string;
   now?: () => Date;
   paidWeather?: () => Promise<string>;
-  release?: (input: ReleaseInput) => Promise<{ ok: true; explorerLink: string } | { ok: false; reason: string }>;
+  release?: (input: ReleaseInput) => Promise<{ ok: true; txHash?: string; explorerLink: string } | { ok: false; reason: string }>;
   ingest?: (input: {
     projectId: string;
     workspaceId: string;
@@ -48,13 +52,11 @@ export type EngineDeps = {
 };
 
 export function appUrl(deps: EngineDeps): string {
-  return (deps.appUrl || process.env.APP_URL || process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000").replace(/\/$/, "");
+  return (deps.appUrl || appBaseUrl()).replace(/\/$/, "");
 }
 
 export function supportEmail(deps: EngineDeps): string {
-  const email = (deps.supportEmail || process.env.SUPPORT_EMAIL || "").trim();
-  if (!email || email === "support@example.com") return "";
-  return email;
+  return supportEmailOrEmpty(deps.supportEmail || process.env.SUPPORT_EMAIL);
 }
 
 export function botUsername(deps: EngineDeps): string {
@@ -119,9 +121,11 @@ export async function menuFor(db: Database, actor: Actor, deps: EngineDeps): Pro
   if (!actor.project || !actor.role) return say(bSt1(), startKeyboard());
   const waiting = await waitingCount(db, actor.project.id, actor.role);
   const retry = await projectNeedsRetry(db, actor.project.id);
+  const fund = actor.role === "client" ? await fundMenuOpen(db, actor.project.id) : false;
+  const line = await nextStep(db, actor.project.id, actor.userId, actor.role);
   return say(
-    bSt3({ firstName: actor.firstName, project: actor.project.name, roleLabel: roleLabel(actor.role) }),
-    roleMenu(actor.role, waiting, appUrl(deps), actor.project.id, retry),
+    withNext(bSt3({ firstName: actor.firstName, project: actor.project.name, roleLabel: roleLabel(actor.role) }), line),
+    roleMenu(actor.role, waiting, appUrl(deps), actor.project.id, retry, { fund, sitePin: sitePin(actor.project) === null }),
   );
 }
 

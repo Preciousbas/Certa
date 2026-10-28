@@ -150,7 +150,7 @@ describe("self-serve projects with side-based invite links", () => {
       role: "consultant",
       botUsername: "CertaApp_bot",
     });
-    expect(again).toEqual({ ok: false, message: "That side of the contract is already taken." });
+    expect(again).toEqual({ ok: false, message: "That role is already filled." });
     if (!joined.ok) throw new Error("expected consultant");
     const consultant = (await db.select().from(parties).where(eq(parties.id, joined.partyId)))[0];
     await expect(

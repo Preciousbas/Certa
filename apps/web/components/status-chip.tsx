@@ -12,9 +12,11 @@ const TONE = {
 export function StatusChip({
   status,
   kind = "stage",
+  label,
 }: {
   status: string;
   kind?: "stage" | "change";
+  label?: string;
 }) {
   if (kind === "change") {
     const tone = status === "accepted" ? "released" : status === "rejected" || status === "declined" ? "disputed" : "review";
@@ -29,7 +31,7 @@ export function StatusChip({
   return (
     <span className={`chip chip-${TONE[chip.tone]}`}>
       <span className="chip-dot" aria-hidden="true" />
-      {chip.label}
+      {label ?? chip.label}
     </span>
   );
 }

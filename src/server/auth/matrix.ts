@@ -20,6 +20,7 @@ export const ACTIONS = [
   "invite_settings_pause",
   "invite_extra",
   "view_audit_log",
+  "set_approval_mode",
 ] as const;
 
 export type Action = (typeof ACTIONS)[number];
@@ -150,6 +151,13 @@ export const MATRIX: Record<Action, Record<Role, Cell>> = {
   view_audit_log: {
     client: "allow",
     consultant: "allow",
+    contractor: "deny",
+    subcontractor: "deny",
+    viewer: "deny",
+  },
+  set_approval_mode: {
+    client: "allow",
+    consultant: "deny",
     contractor: "deny",
     subcontractor: "deny",
     viewer: "deny",

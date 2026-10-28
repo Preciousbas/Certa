@@ -40,6 +40,7 @@ beforeAll(async () => {
       siteLocation: "Lekki",
       siteLat: 6.4474,
       siteLng: 3.4723,
+      sitePinSource: "legacy",
       geofenceRadiusM: 150,
       fxRateLocked: 133111n,
       fxSource: "test",

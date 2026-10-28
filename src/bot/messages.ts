@@ -1,3 +1,5 @@
+import { supportEmailOrEmpty } from "../lib/support.js";
+import { sentence } from "../lib/text.js";
 import { countNoun } from "../lib/count-noun.js";
 import { escapeHtml } from "./html.js";
 
@@ -139,6 +141,10 @@ export function bIn10(): string {
 
 /** B-IN-11 */
 export function bIn11(input: { project: string }): string {
+  return `You're in as client on ${e(input.project)}.`;
+}
+
+export function bInLater(input: { project: string }): string {
   return `You have not joined ${e(input.project)}.`;
 }
 
@@ -196,12 +202,18 @@ export function bEx1(input: {
   retentionPct: string;
   months: number;
   warnings: number;
+  basis?: string | null;
+  notes?: string[];
+  lines?: string[];
 }): string {
   return [
     `Figures ready for ${e(input.project)}:`,
     `Contract sum: ${e(input.sum)} (VAT ${e(input.vatPct)}% included)`,
     `Stages: ${countNoun(input.stages, "stage")} \u00b7 Retention: ${e(input.retentionPct)}% \u00b7 Defects period: ${countNoun(input.months, "month")}`,
+    ...(input.basis ? [e(input.basis)] : []),
+    ...(input.notes ?? []).map((note) => e(note)),
     `${countNoun(input.warnings, "thing")} to check.`,
+    ...(input.lines ?? []).map((line) => e(line)),
     "Tap **Review figures** to check each one against your documents.",
   ].join("\n");
 }
@@ -230,12 +242,14 @@ export function bAc1(input: {
   stageLines: string;
   retentionPct: string;
   months: number;
+  approvals?: string;
 }): string {
   return [
     `${e(input.clientName)} has shared the payment plan for **${e(input.project)}**.`,
     `Contract sum: ${e(input.sum)}`,
     input.stageLines,
     `Retention: ${e(input.retentionPct)}% until ${countNoun(input.months, "month")} after completion.`,
+    ...(input.approvals ? [e(input.approvals)] : []),
     "Please check it carefully. Tap **Review plan** to see each figure and where it came from.",
   ].join("\n");
 }
@@ -272,7 +286,11 @@ export function bFu3(input: { client: string; amount: string; from: number; to: 
 
 /** B-FU-4 */
 export function bFu4(input: { plainReason: string; supportEmail: string }): string {
-  return `The money wasn't locked: ${e(input.plainReason)}. Nothing was taken from your account. Try again, or contact support at ${e(input.supportEmail)}.`;
+  const reason = sentence(input.plainReason);
+  const base = `The money wasn't locked: ${e(reason)}. Nothing was taken from your account.`;
+  const email = supportEmailOrEmpty(input.supportEmail);
+  if (!email) return `${base} Try again.`;
+  return `${base} Try again, or contact support at ${e(email)}.`;
 }
 
 /** B-PH-1 */
@@ -296,7 +314,8 @@ export function bVf2(input: { n: number; stage: string; consultant: string; amou
 }
 
 /** B-VF-3 */
-export function bVf3(input: { n: number }): string {
+export function bVf3(input: { n: number; clientReviews?: boolean }): string {
+  if (input.clientReviews) return `\u2705 Your photos for stage ${input.n} passed the check. The client will now review and approve it.`;
   return `\u2705 Your photos for stage ${input.n} passed the check. The consultant will now certify it.`;
 }
 
@@ -330,6 +349,10 @@ export function bRv2(input: { n: number; consultant: string; reason: string }): 
   return `Stage ${input.n} was not certified by ${e(input.consultant)}: "${e(input.reason)}". The money stays locked. Fix it and send new photos.`;
 }
 
+export function bApClient(input: { n: number; stage: string; check: string }): string {
+  return `Stage ${input.n} \u2014 ${e(input.stage)}: Certa's photo check ${e(input.check)}. This is advice only. There's no consultant on this project, so you decide.`;
+}
+
 /** B-AP-1 */
 export function bAp1(input: { n: number; stage: string; consultant: string; amount: string; retention: string; contractor: string }): string {
   return `Stage ${input.n} \u2014 ${e(input.stage)} is certified by ${e(input.consultant)}.\nPay ${e(input.amount)} to ${e(input.contractor)}? (${e(input.retention)} retention is kept until the defects period ends.)`;
@@ -346,13 +369,17 @@ export function bAp3(input: { amount: string; n: number }): string {
 }
 
 /** B-AP-4 */
-export function bAp4(input: { amount: string; contractor: string; n: number; stage: string; explorerLink: string }): string {
-  return `\u{1F4B8} Paid ${e(input.amount)} to ${e(input.contractor)} for stage ${input.n} \u2014 ${e(input.stage)}.\nProof of payment: ${e(input.explorerLink)}`;
+export function bAp4(input: { amount: string; retention?: string; contractor: string; n: number; stage: string; explorerLink: string; approvedBy?: string }): string {
+  const paid = `\u{1F4B8} Paid ${e(input.amount)} to ${e(input.contractor)} for stage ${input.n} \u2014 ${e(input.stage)}.`;
+  const kept = input.retention ? `\n${e(input.retention)} is kept as retention until the defects period ends.` : "";
+  const by = input.approvedBy ? `\n${e(input.approvedBy)}.` : "";
+  return `${paid}${kept}\nProof of payment: ${e(input.explorerLink)}${by}`;
 }
 
 /** B-AP-5 */
-export function bAp5(input: { n: number }): string {
-  return `Why are you declining payment for stage ${input.n}? This goes to the contractor and the consultant (at least 10 characters).`;
+export function bAp5(input: { n: number; clientOnly?: boolean }): string {
+  const who = input.clientOnly ? "the contractor" : "the contractor and the consultant";
+  return `Why are you declining payment for stage ${input.n}? This goes to ${who} (at least 10 characters).`;
 }
 
 /** B-AP-6 */
@@ -378,6 +405,10 @@ export function bDi1(input: { n: number }): string {
 /** B-DI-1 opened, the second sentence in the dispute flow. */
 export function bDi1Opened(input: { otherParty: string; consultant: string; decideAfterDate: string }): string {
   return `Dispute opened. ${e(input.otherParty)} and ${e(input.consultant)} have been told. If you can't agree by ${e(input.decideAfterDate)}, ${e(input.consultant)} will decide.`;
+}
+
+export function bDi1NoConsultant(input: { n: number }): string {
+  return `Dispute opened on stage ${input.n}. There's no consultant on this project, so nobody independent can decide it. The money stays locked until you both agree, or a consultant is added.`;
 }
 
 /** B-DI-1 photos step. */
@@ -484,9 +515,10 @@ export function bGe3(input: { supportEmail?: string | null }): string {
     "/photos \u2014 send stage photos",
     "/review \u2014 things waiting for you",
     "/wallet \u2014 your payments",
+    "/site \u2014 set the site pin",
   ];
-  const email = input.supportEmail?.trim();
-  if (email && email !== "support@example.com") lines.push(`Need a person? Email ${e(email)}.`);
+  const email = supportEmailOrEmpty(input.supportEmail);
+  if (email) lines.push(`Need a person? Email ${e(email)}.`);
   return lines.join("\n");
 }
 
@@ -545,6 +577,8 @@ export function bAc5(): string {
 }
 
 /** B-AC-6 One side has accepted. */
-export function bAc6(): string {
-  return "You accepted. The other side still has to accept.";
+export function bAc6(input: { name: string; joined?: boolean } = { name: "the other side" }): string {
+  const line = `You accepted. Waiting for ${e(input.name)} to accept.`;
+  if (input.joined === false) return `${line} They haven't joined yet. Send them the invite link.`;
+  return line;
 }

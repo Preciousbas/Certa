@@ -12,6 +12,8 @@ function tableChunks(html: string): { chunks: Chunk[]; rows: GridRow[] } {
     if (!text || /<table/i.test(block)) continue;
     para += 1;
     chunks.push({ anchor: `para${para}`, kind: "text", content: text, ord: chunks.length });
+    const row = rowFromValues("para", para, [text]);
+    rows.push({ ...row, anchor: `para${para}` });
   }
   const tables = html.split(/<table/i).slice(1);
   tables.forEach((table, tableIndex) => {

@@ -1,4 +1,4 @@
-import { gridFromCsv, rowFromValues, type GridRow } from "./interpret.js";
+import { gridFromCsv, gridFromText, rowFromValues, type GridRow } from "./interpret.js";
 
 export type Chunk = {
   anchor: string;
@@ -35,7 +35,8 @@ export function decodeCsv(bytes: Uint8Array): string {
 }
 
 export function parseCsvBytes(name: string, bytes: Uint8Array): ParsedDocument {
-  const rows = gridFromCsv(decodeCsv(bytes), name);
+  const text = decodeCsv(bytes);
+  const rows = name.toLowerCase().endsWith(".txt") ? gridFromText(text, name) : gridFromCsv(text, name);
   return { kind: "csv", pageCount: null, sheetNames: [name], chunks: chunksFromRows(rows, "cell"), rows };
 }
 

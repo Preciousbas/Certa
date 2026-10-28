@@ -1,21 +1,29 @@
 import { randomUUID } from "node:crypto";
 import {
+  aiVerdicts,
   approvals,
   changeRequests,
   contractVersions,
   documents,
   disputes,
   jobs,
-  issueJoinCode,
   memberships,
   parties,
   payments,
+  photos as photoRows,
+  projects,
   stages,
   type Database,
 } from "@certa/db";
 import { koboFromUsdc, usdcFromNgnKobo } from "@certa/shared";
-import { and, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { parseNaira, formatNaira } from "../../lib/money/kobo.js";
+import { releaseSplit } from "../../lib/money/release-split.js";
+import { stageStatusLabel } from "../../lib/stageStatus.js";
+import { explorerTx, SEPOLIA_CHAIN_ID } from "../../server/chain/networks.js";
+import { approverLine, canOfferSkip, noConsultantDispute, setApprovalMode, stageReviewer } from "../../server/projects/approvalMode.js";
+import { createInvite, invitableRoles } from "../../server/projects/selfServe.js";
+import { stageLocationNote } from "../../server/site/note.js";
 import { InvalidMoney } from "../../lib/money/kobo.js";
 import { readSucceeded } from "../../server/intake/choose.js";
 import { acceptPlan, enqueueExtraction } from "../../server/intake/flow.js";
@@ -24,11 +32,12 @@ import { transitionStage } from "../../server/stages/transition.js";
 import { enqueuePrePour } from "../../server/x402/prepour.js";
 import { stageNeedsWeather } from "../../server/x402/gate.js";
 import { enqueueReleaseRetry } from "../releaseRetry.js";
-import { formatWatDate } from "../dates.js";
+import { formatIsoDate, formatWatDate } from "../dates.js";
 import { escapeHtml } from "../html.js";
 import {
   acceptPlanKeyboard,
   approveKeyboard,
+  clientApproveKeyboard,
   cameraKeyboard,
   cancelKeyboard,
   certifyKeyboard,
@@ -53,8 +62,8 @@ import {
   bAc3,
   bAc5,
   bAc6,
-  bIn8,
   bAp1,
+  bApClient,
   bAp2,
   bAp3,
   bAp4,
@@ -63,6 +72,7 @@ import {
   bAp8,
   bCf1,
   bDi1,
+  bDi1NoConsultant,
   bDi1Opened,
   bDi1Photos,
   bDi2,
@@ -113,6 +123,7 @@ import {
   type EngineDeps,
   type Outbound,
 } from "./common.js";
+import { fundMenuOpen, nextStep, withNext } from "./next.js";
 
 function naira(kobo: bigint): string {
   return formatNaira(kobo);
@@ -177,26 +188,52 @@ export async function takeDocument(db: Database, actor: Actor, fileName: string,
   return say(bUp1({ fileName, pagesOrSheets: saved.pagesOrSheets }), uploadDoneKeyboard());
 }
 
-export function beginInvite(actor: Actor): Outbound {
-  const denied = forbid(actor, ["client"], "client");
+async function openInviteRoles(db: Database, actor: Actor): Promise<string[]> {
+  if (!actor.project || !actor.role) return [];
+  const rows = await db
+    .select()
+    .from(memberships)
+    .where(and(eq(memberships.projectId, actor.project.id), eq(memberships.status, "active")));
+  return invitableRoles(actor.role, new Set(rows.map((row) => row.role)));
+}
+
+async function inviteKeyboard(db: Database, actor: Actor, roles: string[]) {
+  const skip = actor.project ? await canOfferSkip(db, actor.project) : false;
+  return inviteRoleKeyboard(roles, { offerSkip: skip, projectId: actor.project?.id });
+}
+
+export async function beginInvite(db: Database, actor: Actor): Promise<Outbound> {
+  const denied = forbid(actor, ["client", "contractor"], "client");
   if (denied) return denied;
-  return say(bIn1(), inviteRoleKeyboard());
+  const roles = await openInviteRoles(db, actor);
+  if (roles.length === 0) return say("Everyone is already in. Nothing to invite.");
+  return say(bIn1(), await inviteKeyboard(db, actor, roles));
+}
+
+export async function chooseApprovalMode(db: Database, actor: Actor, choice: string): Promise<Outbound> {
+  if (!actor.project) return say(bGe4());
+  if (choice === "keep") return say("A consultant stays on this project. Invite one when you're ready.");
+  const agreed = choice === "agree";
+  const result = await setApprovalMode(db, { userId: actor.userId, projectId: actor.project.id, mode: "client", agreed });
+  if (!result.ok) return say(result.message);
+  if (result.waiting) return say(result.waiting);
+  const line = await nextStep(db, actor.project.id, actor.userId, actor.role ?? "client");
+  return say(withNext(`OK. No consultant on ${escapeHtml(actor.project.name)}. You'll approve each stage yourself after Certa's photo check.`, line));
 }
 
 export async function issueInvite(db: Database, actor: Actor, role: string, now: Date, deps: EngineDeps): Promise<Outbound> {
-  const denied = forbid(actor, ["client"], "client");
-  if (denied || !actor.project) return denied ?? say(bIn1(), inviteRoleKeyboard());
-  if (role !== "contractor" && role !== "subcontractor" && role !== "consultant") return say(bIn1(), inviteRoleKeyboard());
-  const filled = await db
-    .select()
-    .from(memberships)
-    .where(and(eq(memberships.projectId, actor.project.id), eq(memberships.role, role), eq(memberships.status, "active")));
-  if (filled.length > 0) return say(bIn8());
-  const partyRole = role === "contractor" ? "main_contractor" : role;
-  const issued = await issueJoinCode(db, { projectId: actor.project.id, workspaceId: actor.project.workspaceId, role: partyRole });
-  const link = `https://t.me/${botName(deps)}?start=join_${issued.code}`;
+  const denied = forbid(actor, ["client", "contractor"], "client");
+  const roles = actor.project ? await openInviteRoles(db, actor) : [];
+  const keyboard = roles.length > 0 ? await inviteKeyboard(db, actor, roles) : undefined;
+  if (denied || !actor.project) return denied ?? say(bIn1(), keyboard);
+  const issued = await createInvite(db, { userId: actor.userId, projectId: actor.project.id, role, botUsername: botName(deps) });
+  if (!issued.ok) return say(issued.message, keyboard);
+  const link = issued.link;
   const label = roleLabel(role);
-  return say(bIn2({ roleLabel: label, date: formatWatDate(issued.expiresAt), link }), inviteShareKeyboard(link));
+  const line = await nextStep(db, actor.project.id, actor.userId, actor.role ?? "client");
+  const skip = await canOfferSkip(db, actor.project);
+  const hint = role === "contractor" && skip ? "\nInvite a consultant, or skip if there isn't one." : "";
+  return say(withNext(`${bIn2({ roleLabel: label, date: formatWatDate(issued.expiresAt), link })}${hint}`, line), inviteShareKeyboard(link));
 }
 
 function botName(deps: EngineDeps): string {
@@ -205,25 +242,43 @@ function botName(deps: EngineDeps): string {
 
 export async function showPlan(db: Database, actor: Actor, deps: EngineDeps): Promise<Outbound> {
   if (!actor.project) return say(bGe4());
-  const version = (await db.select().from(contractVersions).where(eq(contractVersions.projectId, actor.project.id)))[0];
-  if (!version) return say(bEx3(), manualStagesKeyboard(appUrl(deps), actor.project.id));
-  const stageRows = (await db.select().from(stages).where(eq(stages.projectId, actor.project.id))).sort((a, b) => a.stageIndex - b.stageIndex);
-  const lines = stageRows.map((stage) => `${stage.stageIndex + 1}. ${escapeHtml(stage.name)} \u2014 ${naira(stage.amountNgnKobo)}`).join("\n");
+  const version = (
+    await db.select().from(contractVersions).where(eq(contractVersions.projectId, actor.project.id)).orderBy(desc(contractVersions.version))
+  )[0];
+  const line = await nextStep(db, actor.project.id, actor.userId, actor.role ?? "client");
+  if (!version || version.status !== "pending_acceptance") {
+    return say(withNext(version ? "There's no plan waiting for agreement." : bEx3(), line), version ? undefined : manualStagesKeyboard(appUrl(deps), actor.project.id));
+  }
+  const stageRows = (
+    await db.select().from(stages).where(and(eq(stages.projectId, actor.project.id), eq(stages.contractVersionId, version.id)))
+  ).sort((a, b) => a.stageIndex - b.stageIndex);
+  const lines = stageRows.map((stage) => {
+    const due = stage.expectedFinish ? ` · due ${formatIsoDate(stage.expectedFinish)}` : "";
+    return `${stage.stageIndex + 1}. ${escapeHtml(stage.name)} \u2014 ${naira(stage.amountNgnKobo)}${due}`;
+  }).join("\n");
   const client = (await memberUsers(db, actor.project.id, "client"))[0];
   return say(
-    bAc1({
+    withNext(bAc1({
       clientName: client?.name ?? "The client",
       project: actor.project.name,
       sum: naira(version.contractSumKobo),
       stageLines: lines,
       retentionPct: String(version.retentionBps / 100),
       months: Math.max(1, Math.round(version.defectsPeriodDays / 30)),
-    }),
+      approvals: actor.project.approvalMode === "client" ? "Approvals: by the client (no consultant)" : undefined,
+    }), line),
     acceptPlanKeyboard(appUrl(deps), version.id),
   );
 }
 
-export async function acceptOrChange(db: Database, actor: Actor, versionId: string, arg: string, now: Date, _deps: EngineDeps): Promise<Outbound> {
+async function waitingParty(db: Database, projectId: string, actorRole: string): Promise<{ name: string; joined: boolean }> {
+  const other = actorRole === "client" ? "contractor" : "client";
+  const people = await memberUsers(db, projectId, other);
+  if (!people[0]) return { name: other === "client" ? "the client" : "the contractor", joined: false };
+  return { name: people[0].name, joined: true };
+}
+
+export async function acceptOrChange(db: Database, actor: Actor, versionId: string, arg: string, now: Date, deps: EngineDeps): Promise<Outbound> {
   if (!actor.project) return replace(bGe4());
   if (arg === "change") {
     const denied = forbid(actor, ["contractor"], "contractor");
@@ -241,14 +296,25 @@ export async function acceptOrChange(db: Database, actor: Actor, versionId: stri
       userId: actor.userId,
       role: actor.role === "client" ? "client" : "contractor",
       decision: "accepted",
+      versionId,
     });
   } catch {
     return replace(bGe4());
   }
-  if (!result.ok) return replace(result.message);
-  if (!result.both) return replace(bAc6());
+  const line = await nextStep(db, actor.project.id, actor.userId, actor.role);
+  if (!result.ok) {
+    if (result.stale) {
+      const plan = await showPlan(db, actor, deps);
+      return { messages: [{ text: result.message }, ...plan.messages] };
+    }
+    return replace(withNext(result.message, line));
+  }
+  if (!result.both) {
+    const waiting = await waitingParty(db, actor.project.id, actor.role);
+    return replace(withNext(bAc6(waiting), line));
+  }
   const clients = await memberUsers(db, actor.project.id, "client");
-  return replace(bAc3({ dateTimeWat: watStamp(now), clientName: clients[0]?.name ?? "The client" }));
+  return replace(withNext(bAc3({ dateTimeWat: watStamp(now), clientName: clients[0]?.name ?? "The client" }), line));
 }
 
 export async function onChangeReason(db: Database, actor: Actor, text: string, now: Date, deps: EngineDeps): Promise<Outbound> {
@@ -277,10 +343,12 @@ export async function onChangeReason(db: Database, actor: Actor, text: string, n
   return say(note, editPlanKeyboard(appUrl(deps), actor.project.id));
 }
 
-export function fund(actor: Actor, deps: EngineDeps): Outbound {
+export async function fund(db: Database, actor: Actor, deps: EngineDeps): Promise<Outbound> {
   const denied = forbid(actor, ["client"], "client");
   if (denied || !actor.project) return denied ?? say(bFu1({ project: "this project" }));
-  return say(bFu1({ project: actor.project.name }), fundKeyboard(appUrl(deps), actor.project.id));
+  const line = await nextStep(db, actor.project.id, actor.userId, actor.role ?? "client");
+  if (!(await fundMenuOpen(db, actor.project.id))) return say(line || "Nothing to lock yet.");
+  return say(withNext(bFu1({ project: actor.project.name }), line), fundKeyboard(appUrl(deps), actor.project.id));
 }
 
 const PHOTO_OPEN = new Set(["not_started", "in_progress", "ai_fail", "needs_more_evidence"]);
@@ -325,7 +393,13 @@ export async function photoStage(db: Database, actor: Actor, stageId: string, de
 export async function myStages(db: Database, actor: Actor): Promise<Outbound> {
   if (!actor.project) return say(bSt6({ project: "this project", lines: "" }));
   const rows = (await db.select().from(stages).where(eq(stages.projectId, actor.project.id))).sort((a, b) => a.stageIndex - b.stageIndex);
-  const lines = rows.map((stage) => `${stage.stageIndex + 1}. ${escapeHtml(stage.name)}`).join("\n");
+  const openDisputes = (await db.select().from(disputes).where(eq(disputes.projectId, actor.project.id))).filter((row) => row.status === "open" && noConsultantDispute(row.resolution));
+  const flagged = new Set(openDisputes.map((row) => row.stageId));
+  const lines = rows.map((stage) => {
+    const due = stage.expectedFinish ? ` · due ${formatIsoDate(stage.expectedFinish)}` : "";
+    const label = flagged.has(stage.id) ? "Disputed: no independent reviewer" : stageStatusLabel(stage.status, stage.funded);
+    return `${stage.stageIndex + 1}. ${escapeHtml(stage.name)} \u2014 ${escapeHtml(label)}${due}`;
+  }).join("\n");
   return say(bSt6({ project: actor.project.name, lines }));
 }
 
@@ -359,11 +433,23 @@ export async function reviewQueue(db: Database, actor: Actor, deps: EngineDeps):
     return say(bRv3({ project: actor.project.name }));
   }
   const stage = waiting[0];
-  if (actor.role === "client") return approvalPrompt(db, actor, stage.id, deps);
-  return say(bCf1({ n: stage.stageIndex + 1 }), certifyKeyboard(appUrl(deps), stage.id));
+  const note = await locationLine(db, stage.id);
+  if (actor.role === "client") {
+    const prompt = await approvalPrompt(db, actor, stage.id, deps);
+    return note ? { ...prompt, messages: prompt.messages.map((message) => ({ ...message, text: withNext(message.text, note) })), edit: prompt.edit ? { ...prompt.edit, text: withNext(prompt.edit.text, note) } : prompt.edit } : prompt;
+  }
+  return say(withNext(bCf1({ n: stage.stageIndex + 1 }), note), certifyKeyboard(appUrl(deps), stage.id));
 }
 
-export async function certify(db: Database, actor: Actor, stageId: string, _deps: EngineDeps): Promise<Outbound> {
+async function locationLine(db: Database, stageId: string): Promise<string> {
+  const shots = await db.select().from(photoRows).where(eq(photoRows.stageId, stageId));
+  return stageLocationNote(shots.map((shot) => ({
+    distanceFromSiteM: shot.distanceFromSiteM,
+    checks: shot.checksJson as { site_pin?: boolean; in_radius?: boolean },
+  })));
+}
+
+export async function certify(db: Database, actor: Actor, stageId: string, deps: EngineDeps): Promise<Outbound> {
   const denied = forbid(actor, ["consultant"], "consultant");
   if (denied || !actor.project) return denied ? replace(denied.messages[0]?.text ?? bGe4()) : replace(bGe4());
   const stage = (await db.select().from(stages).where(eq(stages.id, stageId)))[0];
@@ -403,9 +489,11 @@ export async function certify(db: Database, actor: Actor, stageId: string, _deps
       text: prompt,
       dedupeKey: `bap:${stage.id}:${client.id}`,
       chatId: client.telegramId.toString(),
+      keyboard: approveKeyboard(appUrl(deps), stage.id),
     });
   }
-  return replace(bCf1({ n: stage.stageIndex + 1 }));
+  const line = await nextStep(db, actor.project.id, actor.userId, actor.role ?? "consultant");
+  return replace(withNext(bCf1({ n: stage.stageIndex + 1 }), line));
 }
 
 function capNaira(project: { spendingCapUsdc: bigint; fxRateLocked: bigint }): string {
@@ -454,8 +542,17 @@ export async function approvalPrompt(db: Database, actor: Actor, stageId: string
   if (denied || !actor.project) return denied ?? replace(bGe4());
   const stage = (await db.select().from(stages).where(eq(stages.id, stageId)))[0];
   if (!stage || stage.projectId !== actor.project.id) return replace(bGe4());
-  const consultants = await memberUsers(db, actor.project.id, "consultant");
   const contractors = await memberUsers(db, actor.project.id, "contractor");
+  if (stageReviewer(actor.project, stage) === "client") {
+    const verdict = (await db.select().from(aiVerdicts).where(eq(aiVerdicts.stageId, stage.id)).orderBy(desc(aiVerdicts.createdAt)))[0];
+    const flagged = verdict?.verdict === "fail" || verdict?.verdict === "unsure";
+    const check = flagged
+      ? `flagged: ${verdict?.reasons[0] ?? "the photos need another look"}`
+      : `passed (${Math.round((verdict?.confidence ?? 0) * 100)}% sure)`;
+    const payout = naira(releaseSplit({ amountUsdc: stage.amountUsdc, amountNgnKobo: stage.amountNgnKobo, retentionBps: stage.retentionBps }).payoutNgnKobo);
+    return say(bApClient({ n: stage.stageIndex + 1, stage: stage.name, check }), clientApproveKeyboard(stage.id, payout));
+  }
+  const consultants = await memberUsers(db, actor.project.id, "consultant");
   const above = stage.amountUsdc > actor.project.spendingCapUsdc;
   const text = above
     ? bAp2({
@@ -486,35 +583,67 @@ export async function approve(db: Database, actor: Actor, stageId: string, deps:
   const existing = (await db.select().from(payments).where(eq(payments.idempotencyKey, key)))[0];
   const contractors = await memberUsers(db, actor.project.id, "contractor");
   const contractorName = contractors[0]?.name ?? "the contractor";
-  if (existing?.status === "confirmed") {
-    return replace(bAp4({ amount: naira(stage.amountNgnKobo), contractor: contractorName, n: stage.stageIndex + 1, stage: stage.name, explorerLink: existing.txHash ?? "" }));
-  }
-  if (existing) return replace(bAp3({ amount: naira(stage.amountNgnKobo), n: stage.stageIndex + 1 }));
-  if (stage.status !== "awaiting_client_approval" && stage.status !== "approved") return replace(bGe4());
-  const approvalId = randomUUID();
-  await db.insert(approvals).values({
-    id: approvalId,
-    projectId: actor.project.id,
-    workspaceId: actor.project.workspaceId,
-    stageId: stage.id,
-    byUserId: actor.userId,
-    decision: "approved",
+  const split = releaseSplit({ amountUsdc: stage.amountUsdc, amountNgnKobo: stage.amountNgnKobo, retentionBps: stage.retentionBps });
+  const clientReviews = stageReviewer(actor.project, stage) === "client";
+  const paidCopy = async (explorerLink: string) => bAp4({
+    amount: naira(split.payoutNgnKobo),
+    retention: split.retentionNgnKobo > 0n ? naira(split.retentionNgnKobo) : undefined,
+    contractor: contractorName,
+    n: stage.stageIndex + 1,
+    stage: stage.name,
+    explorerLink,
+    approvedBy: clientReviews ? (await approverLine(db, stage)) || undefined : undefined,
   });
-  const inserted = await db
-    .insert(payments)
-    .values({
-      stageId: stage.id,
+  if (existing?.status === "confirmed") {
+    const stored = existing.txHash ?? "";
+    const link = /^0x[a-fA-F0-9]{64}$/.test(stored) ? explorerTx(SEPOLIA_CHAIN_ID, stored) : stored;
+    return replace(await paidCopy(link));
+  }
+  let approvalId: string;
+  let paymentId: string;
+  if (existing?.status === "failed") {
+    const prior = (
+      await db.select().from(approvals).where(and(eq(approvals.stageId, stage.id), eq(approvals.decision, "approved")))
+    ).sort((a, b) => b.at.getTime() - a.at.getTime())[0];
+    if (!prior) return replace(bAp3({ amount: naira(stage.amountNgnKobo), n: stage.stageIndex + 1 }));
+    approvalId = prior.id;
+    paymentId = existing.id;
+  } else if (existing) {
+    return replace(bAp3({ amount: naira(stage.amountNgnKobo), n: stage.stageIndex + 1 }));
+  } else {
+    if (stage.status === "disputed" && clientReviews) {
+      await transitionStage(db, stage.id, "approved");
+      const open = (await db.select().from(disputes).where(eq(disputes.stageId, stage.id))).filter((row) => row.status === "open");
+      for (const dispute of open) {
+        await db.update(disputes).set({ status: "resolved", resolution: { pay: true, by: "client" } }).where(eq(disputes.id, dispute.id));
+      }
+    } else if (stage.status !== "awaiting_client_approval" && stage.status !== "approved") return replace(bGe4());
+    approvalId = randomUUID();
+    await db.insert(approvals).values({
+      id: approvalId,
       projectId: actor.project.id,
       workspaceId: actor.project.workspaceId,
-      kind: "release",
-      amountUsdc: stage.amountUsdc,
-      amountNgnKobo: stage.amountNgnKobo,
-      status: "pending",
-      idempotencyKey: key,
-    })
-    .onConflictDoNothing({ target: payments.idempotencyKey })
-    .returning();
-  if (!inserted[0]) return replace(bAp3({ amount: naira(stage.amountNgnKobo), n: stage.stageIndex + 1 }));
+      stageId: stage.id,
+      byUserId: actor.userId,
+      decision: "approved",
+    });
+    const inserted = await db
+      .insert(payments)
+      .values({
+        stageId: stage.id,
+        projectId: actor.project.id,
+        workspaceId: actor.project.workspaceId,
+        kind: "release",
+        amountUsdc: stage.amountUsdc,
+        amountNgnKobo: stage.amountNgnKobo,
+        status: "pending",
+        idempotencyKey: key,
+      })
+      .onConflictDoNothing({ target: payments.idempotencyKey })
+      .returning();
+    if (!inserted[0]) return replace(bAp3({ amount: naira(stage.amountNgnKobo), n: stage.stageIndex + 1 }));
+    paymentId = inserted[0].id;
+  }
   const released = deps.release
     ? await deps.release({
         projectId: actor.project.id,
@@ -526,7 +655,7 @@ export async function approve(db: Database, actor: Actor, stageId: string, deps:
       })
     : { ok: false as const, reason: "The payment service is not configured." };
   if (!released.ok) {
-    await db.update(payments).set({ status: "failed" }).where(eq(payments.id, inserted[0].id));
+    await db.update(payments).set({ status: "failed" }).where(eq(payments.id, paymentId));
     await enqueueReleaseRetry(db, {
       idempotencyKey: key,
       projectId: actor.project.id,
@@ -538,26 +667,25 @@ export async function approve(db: Database, actor: Actor, stageId: string, deps:
     });
     return replace(bAp6({ n: stage.stageIndex + 1 }));
   }
-  await db.update(payments).set({ status: "confirmed", txHash: released.explorerLink }).where(eq(payments.id, inserted[0].id));
+  const txHash = released.txHash && /^0x[a-fA-F0-9]{64}$/.test(released.txHash) ? released.txHash : null;
+  await db.update(payments).set({ status: "confirmed", txHash }).where(eq(payments.id, paymentId));
   if (stage.status === "awaiting_client_approval") {
     await transitionStage(db, stage.id, "approved").catch(() => undefined);
   }
-  const paid = bAp4({
-    amount: naira(stage.amountNgnKobo),
-    contractor: contractorName,
-    n: stage.stageIndex + 1,
-    stage: stage.name,
-    explorerLink: released.explorerLink,
-  });
+  const paid = await paidCopy(released.explorerLink);
   const everyone = [
     ...(await memberUsers(db, actor.project.id, "contractor")),
     ...(await memberUsers(db, actor.project.id, "consultant")),
     ...(await memberUsers(db, actor.project.id, "subcontractor")),
   ];
+  const memberRows = await db.select().from(memberships).where(eq(memberships.projectId, actor.project.id));
   for (const person of everyone) {
-    await notify(db, { userId: person.id, messageId: "B-AP-4", text: paid, dedupeKey: `bap4:${stage.id}:${person.id}`, chatId: person.telegramId.toString() });
+    const role = memberRows.find((row) => row.userId === person.id)?.role ?? "contractor";
+    const note = await nextStep(db, actor.project.id, person.id, role);
+    await notify(db, { userId: person.id, messageId: "B-AP-4", text: withNext(paid, note), dedupeKey: `bap4:${stage.id}:${person.id}`, chatId: person.telegramId.toString() });
   }
-  return replace(paid);
+  const mine = await nextStep(db, actor.project.id, actor.userId, actor.role ?? "client");
+  return replace(withNext(paid, mine));
 }
 
 export async function declineAsk(db: Database, actor: Actor, stageId: string, now: Date): Promise<Outbound> {
@@ -566,17 +694,22 @@ export async function declineAsk(db: Database, actor: Actor, stageId: string, no
   const stage = (await db.select().from(stages).where(eq(stages.id, stageId)))[0];
   if (!stage || stage.projectId !== actor.project.id) return replace(bGe4());
   await writeSession(db, actor.telegramId, { step: "decline_reason", projectId: actor.project.id, data: { stageId } }, now);
-  return replace(bAp5({ n: stage.stageIndex + 1 }));
+  const clientOnly = stageReviewer(actor.project, stage) === "client";
+  return replace(bAp5({ n: stage.stageIndex + 1, clientOnly }));
 }
 
 export async function onDeclineReason(db: Database, actor: Actor, text: string, now: Date): Promise<Outbound> {
   const reason = text.trim();
   const stage = actor.session.data.stageId ? (await db.select().from(stages).where(eq(stages.id, actor.session.data.stageId)))[0] : undefined;
   if (!stage) return say(bGe4());
-  if (reason.length < 10) return say(bAp5({ n: stage.stageIndex + 1 }));
+  const project = (await db.select().from(projects).where(eq(projects.id, stage.projectId)))[0];
+  const clientOnly = project ? stageReviewer(project, stage) === "client" : false;
+  if (reason.length < 10) return say(bAp5({ n: stage.stageIndex + 1, clientOnly }));
   if (stage.status === "awaiting_client_approval") await transitionStage(db, stage.id, "in_progress");
   const note = bAp8({ n: stage.stageIndex + 1, client: actor.firstName, reason });
-  const people = [...(await memberUsers(db, stage.projectId, "contractor")), ...(await memberUsers(db, stage.projectId, "consultant"))];
+  const people = clientOnly
+    ? await memberUsers(db, stage.projectId, "contractor")
+    : [...(await memberUsers(db, stage.projectId, "contractor")), ...(await memberUsers(db, stage.projectId, "consultant"))];
   for (const person of people) {
     await notify(db, { userId: person.id, messageId: "B-AP-8", text: note, dedupeKey: `bap8:${stage.id}:${person.id}`, chatId: person.telegramId.toString() });
   }
@@ -626,6 +759,17 @@ export async function finishDispute(db: Database, actor: Actor, now: Date): Prom
   const consultants = await memberUsers(db, actor.project.id, "consultant");
   const otherRole = actor.role === "client" ? "contractor" : "client";
   const others = await memberUsers(db, actor.project.id, otherRole);
+  if (stageReviewer(actor.project, stage) === "client") {
+    if (opened) {
+      await db.update(disputes).set({ resolution: { noConsultant: true } }).where(eq(disputes.id, opened.id));
+    }
+    const note = bDi1NoConsultant({ n: stage.stageIndex + 1 });
+    for (const person of others) {
+      await notify(db, { userId: person.id, messageId: "B-DI-1", text: note, dedupeKey: `bdi1:${opened?.id ?? stage.id}:${person.id}`, chatId: person.telegramId.toString() });
+    }
+    await writeSession(db, actor.telegramId, { step: null, projectId: actor.project.id }, now);
+    return say(note);
+  }
   const consultantName = consultants[0]?.name ?? "the consultant";
   const otherName = others[0]?.name ?? "the other party";
   const note = bDi1Opened({ otherParty: otherName, consultant: consultantName, decideAfterDate: formatWatDate(deadline) });
@@ -806,15 +950,13 @@ export async function wallet(db: Database, actor: Actor): Promise<Outbound> {
   if (denied || !actor.project) return denied ?? say(bWa1({ project: "this project", lines: "None yet.", total: naira(0n), retention: naira(0n) }));
   const rows = (await db.select().from(payments).where(eq(payments.projectId, actor.project.id))).filter((row) => row.status === "confirmed" && row.kind === "release");
   const stageRows = await db.select().from(stages).where(eq(stages.projectId, actor.project.id));
-  const lines = rows.map((row) => {
+  const splits = rows.map((row) => {
     const stage = stageRows.find((item) => item.id === row.stageId);
-    return paymentLine({ n: (stage?.stageIndex ?? 0) + 1, amount: naira(row.amountNgnKobo), date: formatWatDate(row.createdAt) });
+    return { stage, at: row.createdAt, split: releaseSplit({ amountUsdc: row.amountUsdc, amountNgnKobo: row.amountNgnKobo, retentionBps: stage?.retentionBps ?? 0 }) };
   });
-  const total = rows.reduce((sum, row) => sum + row.amountNgnKobo, 0n);
-  const retention = rows.reduce((sum, row) => {
-    const stage = stageRows.find((item) => item.id === row.stageId);
-    return sum + retentionKobo(row.amountNgnKobo, stage?.retentionBps ?? 0);
-  }, 0n);
+  const lines = splits.map(({ stage, at, split }) => paymentLine({ n: (stage?.stageIndex ?? 0) + 1, amount: naira(split.payoutNgnKobo), date: formatWatDate(at) }));
+  const total = splits.reduce((sum, row) => sum + row.split.payoutNgnKobo, 0n);
+  const retention = splits.reduce((sum, row) => sum + row.split.retentionNgnKobo, 0n);
   return say(
     bWa1({
       project: actor.project.name,

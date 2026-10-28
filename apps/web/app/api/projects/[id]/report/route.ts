@@ -1,10 +1,11 @@
-import { aiVerdicts, getDatabase, projects, stages } from "@certa/db";
+import { aiVerdicts, getDatabase, photos, projects, stages } from "@certa/db";
 import { renderReportPdf } from "@certa/pdf";
 import { eq } from "drizzle-orm";
 import { attachCookies } from "../../../../../../../src/server/auth/authenticate";
 import { failureResponse } from "../../../../../../../src/server/auth/errors";
 import { requireMember, runAsUser } from "../../../../../../../src/server/auth/rbac";
 import { formatNaira } from "../../../../../../../src/lib/money/kobo";
+import { stageLocationNote } from "../../../../../../../src/server/site/note";
 import { requireUser } from "../../../../../lib/with-auth";
 
 export async function GET(request: Request, context: { params: Promise<{ id: string }> }) {
@@ -32,8 +33,13 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
   const unsure = week.length - pass - fail;
   const released = stageRows.filter((stage) => stage.status === "released").reduce((sum, stage) => sum + stage.amountNgnKobo, 0n);
   const next = stageRows.find((stage) => stage.status !== "released")?.name ?? "none";
+  const shots = await db.select().from(photos).where(eq(photos.projectId, project.id));
+  const location = stageLocationNote(shots.map((shot) => ({
+    distanceFromSiteM: shot.distanceFromSiteM,
+    checks: shot.checksJson as { site_pin?: boolean; in_radius?: boolean },
+  })));
   const line = `This week: ${week.length} photo sets checked (${pass} passed, ${fail} need work, ${unsure} need more photos); ${formatNaira(released)} paid out; next stage due: ${next}.`;
-  const pdf = await renderReportPdf([project.name, line]);
+  const pdf = await renderReportPdf([project.name, line, location].filter(Boolean));
   return attachCookies(
     new Response(Buffer.from(pdf), {
       headers: {

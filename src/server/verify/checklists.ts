@@ -121,7 +121,10 @@ export function findChecklist(stage: number): StageChecklist | undefined {
 }
 
 export function checklistUserMessage(stage: number): string {
-  const list = checklistFor(stage);
+  return checklistUserMessageFor(checklistFor(stage));
+}
+
+export function checklistUserMessageFor(list: StageChecklist): string {
   const items = list.items.map((item) => `${item.id}: ${item.text}`).join("\n");
   return `Claimed stage ${list.stage}: ${list.name}. Answer every checklist item. Do not name the stage. Do not give a confidence number.\n${items}`;
 }

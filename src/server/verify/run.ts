@@ -12,11 +12,13 @@ import { audit } from "../audit.js";
 import { transitionStage } from "../stages/transition.js";
 import { PROMPT_VERSION, STAGE_VERIFY_SYSTEM_V3 } from "../ai/prompts/stage_verify.v3.js";
 import { criteriaOf } from "./criteria.js";
+import { stageReviewer } from "../projects/approvalMode.js";
 import { DEFAULT_PASS_THRESHOLD, type VerifyDecision, type VerifyNext, type VerifyNotice } from "./decide.js";
 import { CHECK_UNAVAILABLE } from "./messages.js";
 import { notifyVerdict } from "./notify.js";
 import { agreeChecklistRuns, alignAnswers, scoreChecklist, type ChecklistScore, type ItemAnswer } from "./checklistScore.js";
-import { checklistUserMessage, findChecklist } from "./checklists.js";
+import { stageLocationNote } from "../site/note.js";
+import { checklistUserMessageFor, findChecklist, type StageChecklist } from "./checklists.js";
 import { askChecklist, visionModels, VISION_TIMEOUT_MS, type VisionClient } from "./vision.js";
 import type { StageVerdict } from "../../lib/validation/stageVerdict.js";
 import { getObject } from "../storage.js";
@@ -70,11 +72,12 @@ function unavailable(criteria: { id: string }[], reason = CHECK_UNAVAILABLE): St
 }
 
 const TIMED_OUT = "The photo check took too long. A consultant can review these photos and send the stage on.";
+const CLIENT_TIMED_OUT = "The client can review these photos.";
 
 function checksOk(value: unknown): boolean {
   if (!value || typeof value !== "object") return false;
   const row = value as { nonce_ok?: boolean; fresh?: boolean; in_radius?: boolean; not_duplicate?: boolean; image_ok?: boolean };
-  return Boolean(row.nonce_ok && row.fresh && row.in_radius && row.not_duplicate && row.image_ok);
+  return Boolean(row.nonce_ok && row.fresh && row.not_duplicate && row.image_ok);
 }
 
 function noticesFor(next: VerifyNext): VerifyNotice[] {
@@ -144,7 +147,14 @@ export async function runVerifyStage(
   let raw: unknown = existing?.rawJson ?? {};
   let latency = existing?.latencyMs ?? 0;
   if (!existing) {
-    const checklist = findChecklist(claimed);
+    const ownCriteria = Array.isArray(stage.acceptanceCriteria) && stage.acceptanceCriteria.length > 0;
+    const checklist: StageChecklist | undefined = ownCriteria
+      ? {
+          stage: claimed,
+          name: stage.name,
+          items: criteria.map((item, index) => ({ id: item.id || `c${index + 1}`, text: item.text })),
+        }
+      : findChecklist(claimed);
     const images: Uint8Array[] = [];
     for (const photo of photoRows) {
       const bytes = await readStored(photo.originalKey || photo.storageKey);
@@ -154,7 +164,11 @@ export async function runVerifyStage(
       verdict = { ...unavailable(criteria, "This stage has no photo checklist."), stage_number_claimed: claimed };
       raw = { error: "no checklist" };
     } else {
-      const user = checklistUserMessage(claimed);
+      const note = stageLocationNote(photoRows.map((photo) => ({
+        distanceFromSiteM: photo.distanceFromSiteM,
+        checks: photo.checksJson as { site_pin?: boolean; in_radius?: boolean },
+      })));
+      const user = [checklistUserMessageFor(checklist), note].filter(Boolean).join("\n");
       const request = {
         system: deps?.system ?? STAGE_VERIFY_SYSTEM_V3,
         user,
@@ -174,7 +188,8 @@ export async function runVerifyStage(
         score = { ...score, verdict: "unsure", next: "needs_more_evidence" };
       }
       const timedOut = left.error === "timed out" || right.error === "timed out";
-      const fallback = timedOut && score.verdict === "unsure" ? TIMED_OUT : CHECK_UNAVAILABLE;
+      const clientReviews = stageReviewer(project, stage) === "client";
+      const fallback = timedOut && score.verdict === "unsure" ? (clientReviews ? CLIENT_TIMED_OUT : TIMED_OUT) : CHECK_UNAVAILABLE;
       const items = (score.verdict === "fail" && rightItems && scoreChecklist(rightItems).verdict === "fail" ? rightItems : leftItems) ?? rightItems ?? [];
       verdict = verdictFromItems(claimed, items, score, fallback);
       model = visionModels().primary;
@@ -194,7 +209,10 @@ export async function runVerifyStage(
       verdict: verdict.verdict,
       confidence: verdict.confidence,
       rawJson: raw,
-      criteriaResults: verdict.criteria,
+      criteriaResults: verdict.criteria.map((row) => ({
+        ...row,
+        text: checklist?.items.find((item) => item.id === row.id)?.text ?? "",
+      })),
       reasons: [...verdict.reasons],
       issues: [...verdict.issues],
       safetyFlags: [...verdict.safety_flags],
@@ -221,9 +239,13 @@ export async function runVerifyStage(
         };
   }
 
-  const decision = { next: nextFromStored(verdict, photoOk), notices: noticesFor(nextFromStored(verdict, photoOk)) };
+  const storedNext = nextFromStored(verdict, photoOk);
+  const clientReviews = stageReviewer(project, stage) === "client";
+  const statusNext = storedNext === "awaiting_certification" && clientReviews ? "awaiting_client_approval" : storedNext;
+  const notices = noticesFor(storedNext).filter((notice) => !(clientReviews && notice === "B-VF-2"));
+  const decision = { next: storedNext, notices };
 
-  if (stage.status === "ai_review") await transitionStage(db, stage.id, decision.next);
+  if (stage.status === "ai_review") await transitionStage(db, stage.id, statusNext);
   await audit(db, {
     action: "ai_verdict",
     entity: "ai_verdicts",
@@ -234,6 +256,7 @@ export async function runVerifyStage(
     after: { verdict: verdict.verdict, confidence: verdict.confidence, next: decision.next, model, prompt: PROMPT_VERSION },
   });
   await notifyVerdict(db, decision.notices, {
+    clientReviews,
     projectId: project.id,
     projectName: project.name,
     submissionId,
@@ -246,9 +269,11 @@ export async function runVerifyStage(
     issues: [...verdict.issues],
     missingShots: [...verdict.missing_shots],
     safetyFlags: [...verdict.safety_flags],
+    amountUsdc: stage.amountUsdc,
+    retentionBps: stage.retentionBps,
   });
 
-  if (decision.next === "awaiting_certification" && submission.evidenceHash?.startsWith("0x")) {
+  if ((statusNext === "awaiting_certification" || statusNext === "awaiting_client_approval") && submission.evidenceHash?.startsWith("0x")) {
     const already = (
       await db.select().from(chainTxs).where(eq(chainTxs.idempotencyKey, `submit_stage:${submissionId}`))
     )[0];

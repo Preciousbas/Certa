@@ -16,10 +16,33 @@ export function moneyKobo(raw: string): bigint | null {
 }
 
 export function cellMoney(raw: string): bigint | null {
-  const stripped = raw.trim().replace(/\s+/g, "").replace(/₦/g, "").replace(/,/g, "").replace(/^NGN/i, "");
+  const stripped = raw
+    .trim()
+    .replace(/\s*naira\s*$/i, "")
+    .replace(/\s+/g, "")
+    .replace(/₦/g, "")
+    .replace(/,/g, "")
+    .replace(/^(?:NGN|N)/i, "");
   if (/^\d{1,13}\.\d{2}$/.test(stripped)) return moneyKobo(stripped);
   if (/^\d{1,13}$/.test(stripped)) return BigInt(stripped) * 100n;
   return null;
+}
+
+/** A currency marker, a thousands comma, two decimals, or a trailing "naira". A bare stage number is not money. */
+export function markedMoney(raw: string): bigint | null {
+  const text = raw.trim();
+  if (!text) return null;
+  const compact = text.replace(/\s+/g, "");
+  const marked = /₦/.test(text) || /NGN/i.test(text) || /^N\d/i.test(compact) || /naira\s*$/i.test(text) || /,\d{3}/.test(text) || /\.\d{2}(?:\D|$)/.test(text);
+  if (!marked) return null;
+  return cellMoney(text);
+}
+
+/** First money figure in a sentence, such as "Contract Sum: N10,000,000.00 (Ten Million Naira)". */
+export function proseMoney(raw: string): bigint | null {
+  const match = /(?:₦|\bNGN\b|\bN)?\s*\d{1,3}(?:,\d{3})+(?:\.\d{2})?(?:\s*naira)?|(?:₦|\bNGN\b|\bN)\s*\d+(?:\.\d{2})?|\d+(?:\.\d{2})\s*naira/i.exec(raw);
+  if (!match) return markedMoney(raw);
+  return markedMoney(match[0]) ?? cellMoney(match[0]);
 }
 
 export function quantityMilli(raw: string): bigint | null {

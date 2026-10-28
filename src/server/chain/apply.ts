@@ -9,6 +9,7 @@ import {
   type Database,
 } from "@certa/db";
 import { eq } from "drizzle-orm";
+import { releaseSplit } from "../../lib/money/release-split.js";
 import { audit } from "../audit.js";
 import { canTransition, transitionStage, type StageStatus } from "../stages/transition.js";
 import type { TxIntent } from "./tx.js";
@@ -80,6 +81,22 @@ export async function applyConfirmation(
     }
   }
   if (row.stageId && (intent.event === "StageReleased" || intent.event === "DisputeResolved" || intent.event === "RetentionReleased")) {
+    const stage = (await db.select().from(stages).where(eq(stages.id, row.stageId)))[0];
+    const releasedLog = logs.find((log) => log.eventName === "StageReleased");
+    const rawPayout = releasedLog?.args.payout;
+    if (stage && typeof rawPayout === "bigint") {
+      const expected = releaseSplit({ amountUsdc: stage.amountUsdc, amountNgnKobo: stage.amountNgnKobo, retentionBps: stage.retentionBps }).payoutUsdc;
+      if (rawPayout !== expected) {
+        await audit(db, {
+          action: "release.amount_mismatch",
+          entity: "stages",
+          entityId: stage.id,
+          projectId: row.projectId ?? undefined,
+          actorKind: "system",
+          after: { payout: rawPayout.toString(), expected: expected.toString() },
+        });
+      }
+    }
     await walk(db, row.stageId, "released");
     await recordReleaseFee(db, row, logs);
     await notifyPaid(db, row);

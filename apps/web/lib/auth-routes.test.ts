@@ -56,17 +56,13 @@ describe("mini app auth", () => {
     expect(funded.status).toBe(403);
   });
 
-  it("records one pending fund for the client and ignores the repeat key", async () => {
+  it("refuses a USDC lock on the agreed demo when no payment account is configured", async () => {
     const body = { projectId, upToStage: 1, idempotencyKey: "client-fund-once-0001" };
     const first = await post(fund, "fund", body, 1001);
-    expect(first.status).toBe(200);
-    const created = (await first.json()) as { created: boolean; status: string; amountUsdc: string };
-    expect(created.created).toBe(true);
-    expect(created.status).toBe("pending");
-    expect(created.amountUsdc).toMatch(/^\d+$/);
+    expect(first.status).toBe(503);
+    expect(((await first.json()) as { message: string }).message).toBe("The payment account is not configured.");
     const second = await post(fund, "fund", body, 1001);
-    expect(second.status).toBe(200);
-    expect(((await second.json()) as { created: boolean }).created).toBe(false);
+    expect(second.status).toBe(503);
   });
 
   it("records a naira deposit without a chain transaction", async () => {

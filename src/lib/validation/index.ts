@@ -30,6 +30,8 @@ export const fundOutput = z.object({
   rail: z.enum(["usdc", "ngn"]),
   amountUsdc: z.string().regex(/^\d+$/),
   amountNgnKobo: z.string().regex(/^\d+$/),
+  retentionUsdc: z.string().regex(/^\d+$/).optional(),
+  retentionNgnKobo: z.string().regex(/^\d+$/).optional(),
   txHash: hexTx.nullable(),
   escrowAddress: hexAddress.nullable(),
   contractorNotified: z.boolean(),

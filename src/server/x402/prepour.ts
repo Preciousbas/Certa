@@ -2,6 +2,7 @@ import { memberships, projects, stages, type Database } from "@certa/db";
 import { and, eq } from "drizzle-orm";
 import { bWx1, bWx2, bWx3 } from "../../bot/messages.js";
 import { notify } from "../../bot/notify.js";
+import { sitePin } from "../site/pin.js";
 import { enqueueJob } from "../jobs/enqueue.js";
 import { paidFetch, PaymentRefused, type PaidSuccess } from "./agent.js";
 import { canPay, maxPerCallMicro, prePourDedupeKey, stageNeedsWeather, WEATHER_PRICE_MICRO } from "./gate.js";
@@ -71,10 +72,20 @@ export async function runPrePourCheck(
     });
     return "failed";
   }
+  const pin = sitePin(project);
+  if (!pin) {
+    await tell(db, {
+      projectId: project.id,
+      stageId: stage.id,
+      text: "Set the site pin with /site so Certa can check the weather.",
+      messageId: "B-WX-3",
+    });
+    return "failed";
+  }
   const pay = deps?.pay ?? paidFetch;
   const url = new URL("/api/paid/weather", input.origin);
-  url.searchParams.set("lat", String(project.siteLat));
-  url.searchParams.set("lng", String(project.siteLng));
+  url.searchParams.set("lat", String(pin.lat));
+  url.searchParams.set("lng", String(pin.lng));
   url.searchParams.set("hours", "48");
   try {
     const paid = await pay(url.toString(), { projectId: project.id, stageId: stage.id, purpose: "weather_check" });

@@ -1,10 +1,13 @@
 import { cdpConfigured } from "@certa/chain";
 import { approvals, payments, stages } from "@certa/db";
 import { and, eq } from "drizzle-orm";
+import { releaseSplit } from "../../../../../../src/lib/money/release-split";
 import { ChainRejected, releaseStageTx } from "../../../../../../src/server/chain/flows";
 import { rejectIfPaused } from "../../../../../../src/server/projects/pause";
 import { apiError, apiJson, fundOutput, releaseInput } from "../../../../lib/schemas";
 import { withAuth } from "../../../../lib/with-auth";
+
+export const maxDuration = 300;
 
 export const POST = withAuth(
   async ({ db, project, json }) => {
@@ -33,7 +36,7 @@ export const POST = withAuth(
     if (!cdpConfigured() || !project.escrowAddress) return apiError(409, "Release stays locked until the checks pass.");
     const stage = (await db.select().from(stages).where(and(eq(stages.id, input.data.stageId), eq(stages.projectId, project.id))))[0];
     const approval = (await db.select().from(approvals).where(eq(approvals.stageId, input.data.stageId))).find(
-      (row) => row.decision === "approved_release" || row.decision === "approve",
+      (row) => row.decision === "approved_release" || row.decision === "approve" || row.decision === "approved",
     );
     if (!stage || !approval) return apiError(409, "Release stays locked until the checks pass.");
     try {
@@ -51,8 +54,10 @@ export const POST = withAuth(
         paymentId: approval.id,
         status: sent.status === "confirmed" ? "confirmed" : "pending",
         rail: "usdc",
-        amountUsdc: stage.amountUsdc.toString(),
-        amountNgnKobo: stage.amountNgnKobo.toString(),
+        amountUsdc: releaseSplit({ amountUsdc: stage.amountUsdc, amountNgnKobo: stage.amountNgnKobo, retentionBps: stage.retentionBps }).payoutUsdc.toString(),
+        amountNgnKobo: releaseSplit({ amountUsdc: stage.amountUsdc, amountNgnKobo: stage.amountNgnKobo, retentionBps: stage.retentionBps }).payoutNgnKobo.toString(),
+        retentionUsdc: releaseSplit({ amountUsdc: stage.amountUsdc, amountNgnKobo: stage.amountNgnKobo, retentionBps: stage.retentionBps }).retentionUsdc.toString(),
+        retentionNgnKobo: releaseSplit({ amountUsdc: stage.amountUsdc, amountNgnKobo: stage.amountNgnKobo, retentionBps: stage.retentionBps }).retentionNgnKobo.toString(),
         txHash: sent.txHash && /^0x[a-fA-F0-9]{64}$/.test(sent.txHash) ? sent.txHash : null,
         escrowAddress: /^0x[a-fA-F0-9]{40}$/.test(project.escrowAddress) ? project.escrowAddress : null,
         contractorNotified: false,

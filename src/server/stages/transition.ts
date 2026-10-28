@@ -1,4 +1,5 @@
-import { appendAudit, stages, type Database } from "@certa/db";
+import { appendAudit, projects, stages, type Database } from "@certa/db";
+import { stageReviewer } from "../projects/approvalMode.js";
 import { and, eq } from "drizzle-orm";
 import { stageNeedsWeather } from "../x402/gate.js";
 import { enqueuePrePour } from "../x402/prepour.js";
@@ -26,7 +27,7 @@ const EDGES: Record<StageStatus, readonly StageStatus[]> = {
   not_started: ["in_progress", "cancelled"],
   in_progress: ["submitted", "disputed"],
   submitted: ["ai_review", "disputed"],
-  ai_review: ["ai_fail", "needs_more_evidence", "awaiting_certification", "disputed"],
+  ai_review: ["ai_fail", "needs_more_evidence", "awaiting_certification", "awaiting_client_approval", "disputed"],
   ai_fail: ["submitted", "disputed"],
   needs_more_evidence: ["submitted", "disputed"],
   awaiting_certification: ["awaiting_client_approval", "in_progress", "disputed"],
@@ -160,7 +161,9 @@ export async function recordCaptureOutcome(
       current = step;
     }
   }
-  const verdict: StageStatus = outcome.pass ? "awaiting_certification" : "needs_more_evidence";
+  const project = (await db.select().from(projects).where(eq(projects.id, row.projectId)))[0];
+  const passStatus: StageStatus = outcome.pass && project && stageReviewer(project, row) === "client" ? "awaiting_client_approval" : "awaiting_certification";
+  const verdict: StageStatus = outcome.pass ? passStatus : "needs_more_evidence";
   if (canTransition(current, verdict)) {
     await writeStatus(db, stageId, verdict);
     current = verdict;

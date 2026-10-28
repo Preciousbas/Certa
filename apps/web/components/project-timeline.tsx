@@ -68,6 +68,7 @@ function titleFor(action: string): string {
     ai_override: "A person checked the photos",
     stage_submitted_onchain: "Sent for certification",
     certified: "Consultant certified",
+    client_override: "Client approved after the photo check flagged it",
     rejected: "Consultant asked for changes",
     approved: "Client approved",
     declined: "Client declined",

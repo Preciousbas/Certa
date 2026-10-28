@@ -14,7 +14,7 @@ export function pickCurrentProject<T extends { id: string; createdAt: Date }>(ro
   return [...rows].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0];
 }
 
-export async function loadProject() {
+export async function loadProject(preferredId?: string) {
   const db = await getDatabase();
   const userRows = await db.select().from(users).where(eq(users.telegramId, 1001n));
   const user = userRows[0];
@@ -42,8 +42,9 @@ export async function loadProject() {
   } catch {
     memberProjects = [];
   }
+  const preferred = preferredId ? memberProjects.find((row) => row.id === preferredId) : undefined;
   const project = memberProjects.length > 0
-    ? pickCurrentProject(memberProjects, activeId)
+    ? (preferred ?? pickCurrentProject(memberProjects, activeId))
     : uploaded[0] ?? (process.env.DEMO_SEED === "true" ? demo : undefined);
   if (!project) return null;
   const partyRows = await db.select().from(parties).where(eq(parties.projectId, project.id));

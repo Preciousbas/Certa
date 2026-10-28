@@ -1,10 +1,14 @@
 import { memberships, notifications, projects, users, type Database } from "@certa/db";
 import { eq, inArray } from "drizzle-orm";
-import { figuresReady, planShared, readFailed, replyReminder, reviewLink, acceptDeepLink } from "./messages.js";
+import { callbackData } from "../../bot/callbacks.js";
+import { nextStep, withNext } from "../../bot/flows/next.js";
+import { figuresReady, planShared, readFailed, replyReminder, reviewLink } from "./messages.js";
 import { pctFromBps } from "./amounts.js";
 import { formatNaira } from "../../lib/money/kobo.js";
 
-export type TelegramMarkup = { inline_keyboard: { text: string; callback_data: string }[][] };
+export type TelegramButton = { text: string; callback_data: string } | { text: string; web_app: { url: string } };
+
+export type TelegramMarkup = { inline_keyboard: TelegramButton[][] };
 
 export type TelegramSender = (chatId: string, text: string, markup?: TelegramMarkup) => Promise<void>;
 
@@ -69,7 +73,7 @@ export async function notifyReadFailed(
   }
 }
 
-type SavedStage = { name: string; amountKobo: string };
+type SavedStage = { name: string; amountKobo: string; kind?: string };
 
 export async function notifyFigures(
   db: Database,
@@ -84,6 +88,8 @@ export async function notifyFigures(
     defectsMonths: number;
     stages: SavedStage[];
     lines?: string[];
+    basis?: string | null;
+    notes?: string[];
     warnings: number;
     send?: TelegramSender;
   },
@@ -94,8 +100,10 @@ export async function notifyFigures(
     project: input.projectName,
     sum: input.contractSumKobo === null ? "not found" : formatNaira(input.contractSumKobo),
     vatPct: pctFromBps(input.vatBps),
-    stages: input.stages.length,
+    stages: input.stages.filter((stage) => stage.kind !== "reserve").length,
     lines: input.lines,
+    basis: input.basis,
+    notes: input.notes,
     retentionPct: pctFromBps(input.retentionBps),
     months: input.defectsMonths,
     warnings: input.warnings,
@@ -125,27 +133,41 @@ export async function notifyPlanShared(
     retentionBps: number;
     defectsMonths: number;
     send?: TelegramSender;
+    onlyUserId?: string;
   },
 ): Promise<void> {
-  const members = (await db.select().from(memberships).where(eq(memberships.projectId, input.projectId))).filter((row) => row.role === "contractor");
+  const members = (await db.select().from(memberships).where(eq(memberships.projectId, input.projectId))).filter(
+    (row) => (row.role === "contractor" || row.role === "client") && row.status === "active" && (!input.onlyUserId || row.userId === input.onlyUserId),
+  );
   if (members.length === 0) return;
+  const project = (await db.select().from(projects).where(eq(projects.id, input.projectId)))[0];
+  const approvals = project?.approvalMode === "client" ? "Approvals: by the client (no consultant)" : undefined;
+  const roleOf = new Map(members.map((row) => [row.userId, row.role]));
   const people = await db.select().from(users).where(inArray(users.id, members.map((row) => row.userId)));
-  const text = planShared({
-    clientName: input.clientName,
-    project: input.projectName,
-    sum: formatNaira(input.sumKobo),
-    stageLines: input.stageLines,
-    retentionPct: pctFromBps(input.retentionBps),
-    months: input.defectsMonths,
-    link: acceptDeepLink(input.projectId),
-  });
   for (const person of people) {
+    const role = roleOf.get(person.id) ?? "";
+    const text = withNext(planShared({
+      clientName: input.clientName,
+      project: input.projectName,
+      sum: formatNaira(input.sumKobo),
+      stageLines: input.stageLines,
+      retentionPct: pctFromBps(input.retentionBps),
+      months: input.defectsMonths,
+      forClient: role === "client",
+      approvals,
+    }), await nextStep(db, input.projectId, person.id, role));
+    const keyboard: TelegramMarkup["inline_keyboard"] = [
+      [{ text: "Review plan", web_app: { url: reviewLink(input.projectId) } }],
+      [{ text: "Accept", callback_data: callbackData("ac", input.versionId, "yes") }],
+    ];
+    if (role === "contractor") keyboard.push([{ text: "Ask for a change", callback_data: callbackData("ac", input.versionId, "change") }]);
     await notifyOnce(db, {
       userId: person.id,
       chatId: person.telegramId.toString(),
       kind: "contract_accept",
       dedupeKey: `bac:${input.versionId}:${person.id}`,
       text,
+      markup: { inline_keyboard: keyboard },
       send: input.send,
     });
   }

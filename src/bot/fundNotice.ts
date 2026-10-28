@@ -1,6 +1,7 @@
 import { memberships, users, type Database } from "@certa/db";
 import { and, eq } from "drizzle-orm";
 import { formatNaira } from "../lib/money/kobo.js";
+import { nextStep, withNext } from "./flows/next.js";
 import { bFu2, bFu3, bFu4 } from "./messages.js";
 import { notify } from "./notify.js";
 
@@ -34,7 +35,7 @@ export async function notifyFundOutcome(
   await notify(db, {
     userId: input.clientUserId,
     messageId: "B-FU-2",
-    text: bFu2({ amount, from: input.fromStage, to: input.toStage, explorerLink: input.explorerLink }),
+    text: withNext(bFu2({ amount, from: input.fromStage, to: input.toStage, explorerLink: input.explorerLink }), await nextStep(db, input.projectId, input.clientUserId, "client")),
     dedupeKey: `bfu2:${input.idempotencyKey}`,
   });
   const contractors = await db
@@ -47,7 +48,7 @@ export async function notifyFundOutcome(
     await notify(db, {
       userId: contractor.userId,
       messageId: "B-FU-3",
-      text: bFu3({ client: clientName, amount, from: input.fromStage, to: input.toStage }),
+      text: withNext(bFu3({ client: clientName, amount, from: input.fromStage, to: input.toStage }), await nextStep(db, input.projectId, contractor.userId, "contractor")),
       dedupeKey: `bfu3:${input.idempotencyKey}:${contractor.userId}`,
     });
   }

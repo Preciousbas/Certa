@@ -149,9 +149,9 @@ describe("bot handlers", () => {
     const asClient = await send({ type: "command", command: "menu", arg: "", from: client });
     expect(textOf(asClient)).toContain("Welcome back, Ada");
     expect(textOf(asClient)).toContain("Plot 14 Lekki");
-    expect(labels(asClient)).toEqual(["Upload contract or BoQ", "Review figures", "Fund", "Waiting for me (1)", "Invite people", "Project report", "New project", "Switch project"]);
+    expect(labels(asClient)).toEqual(["Upload contract or BoQ", "Review figures", "Waiting for me (1)", "Invite people", "Set site pin", "Project report", "New project", "Switch project"]);
     const asContractor = await send({ type: "command", command: "menu", arg: "", from: contractor });
-    expect(labels(asContractor)).toEqual(["Submit stage photos", "My stages", "Payments", "Propose change", "New project", "Switch project"]);
+    expect(labels(asContractor)).toEqual(["Submit stage photos", "My stages", "Payments", "Propose change", "Invite people", "Set site pin", "New project", "Switch project"]);
     const asSub = await send({ type: "command", command: "menu", arg: "", from: sub });
     expect(labels(asSub)).toEqual(["Submit stage photos", "My stages", "Payments", "New project"]);
     const again = await send({ type: "command", command: "newproject", arg: "", from: client });
@@ -264,7 +264,7 @@ describe("bot handlers", () => {
       .returning();
     if (!version) throw new Error("version");
     const accepted = await send({ type: "callback", data: callbackData("ac", version.id, "yes"), from: contractor });
-    expect(textOf(accepted)).toContain("The other side still has to accept");
+    expect(textOf(accepted)).toContain("Waiting for Ada Client to accept");
     const [nextVersion] = await db
       .insert(contractVersions)
       .values({
@@ -302,8 +302,8 @@ describe("bot handlers", () => {
 
   it("opens fund for the client and refuses the contractor", async () => {
     const opened = await send({ type: "command", command: "fund", arg: "", from: client });
-    expect(textOf(opened)).toContain("Lock money for Plot 14 Lekki");
-    expect(opened.messages[0]?.keyboard?.[0]?.[0]).toMatchObject({ kind: "web_app", text: "Open Fund" });
+    expect(textOf(opened)).toContain("Next:");
+    expect(opened.messages[0]?.keyboard).toBeUndefined();
     const denied = await send({ type: "command", command: "fund", arg: "", from: contractor });
     expect(textOf(denied)).toBe("Only the client can do this on Plot 14 Lekki.");
   });
@@ -365,7 +365,9 @@ describe("bot handlers", () => {
       second += 1;
       return { ok: true, explorerLink: "https://sepolia.etherscan.io/tx/0xdef" };
     });
-    expect(second).toBe(0);
+    expect(second).toBe(1);
+    const retried = await db.select().from(payments).where(eq(payments.idempotencyKey, `bot-approve:${smallStage}`));
+    expect(retried[0]?.status).toBe("confirmed");
     expect(await db.select().from(jobs).where(eq(jobs.dedupeKey, `bot-approve:${smallStage}`))).toHaveLength(1);
     const blocked = await send({ type: "callback", data: callbackData("ap", smallStage), from: contractor });
     expect(textOf(blocked)).toBe("Only the client can do this on Plot 14 Lekki.");

@@ -75,7 +75,7 @@ export async function storeCapturePhoto(
     deviceInfo: string;
     bytes: Uint8Array;
     nowMs?: number;
-    site: { lat: number; lng: number };
+    site: { lat: number; lng: number } | null;
     radiusM: number;
   },
 ): Promise<{ accepted: boolean; message: string; photoId?: string; distanceM?: number }> {
@@ -128,6 +128,7 @@ export async function storeCapturePhoto(
     point: { lat: input.lat, lng: input.lng },
     accuracyM: input.accuracyM,
     site: input.site,
+    exifPoint: exif.gps ? { lat: exif.gps.lat, lng: exif.gps.lng } : null,
     radiusM: input.radiusM,
     shaDuplicate: seen.length > 0,
     similarPhotoId: similarId,
@@ -168,7 +169,7 @@ export async function storeCapturePhoto(
         gpsLat: input.lat,
         gpsLng: input.lng,
         accuracyM: input.accuracyM,
-        distanceFromSiteM: result.distanceM,
+        distanceFromSiteM: input.site ? result.distanceM : null,
         device: input.deviceInfo.slice(0, 300),
         checksJson: result.checks,
         exif,
@@ -178,7 +179,7 @@ export async function storeCapturePhoto(
         heightPx: facts.height,
       })
       .returning();
-    return { accepted: true, message: "Photo kept.", photoId: photo?.id, distanceM: result.distanceM };
+    return { accepted: true, message: result.message ?? "Photo kept.", photoId: photo?.id, distanceM: input.site ? result.distanceM : undefined };
   } catch (error) {
     if (!duplicateKey(error)) throw error;
     const existing = (await db.select().from(photos).where(and(eq(photos.projectId, input.projectId), eq(photos.sha256, digest))))[0];

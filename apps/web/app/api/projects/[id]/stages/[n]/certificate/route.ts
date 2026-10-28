@@ -8,6 +8,7 @@ import { failureResponse } from "../../../../../../../../../src/server/auth/erro
 import { requireMember, runAsUser } from "../../../../../../../../../src/server/auth/rbac";
 import { formatNaira } from "../../../../../../../../../src/lib/money/kobo";
 import { formatUsdc } from "../../../../../../../../../src/lib/money/usdc";
+import { approverLine } from "../../../../../../../../../src/server/projects/approvalMode";
 import { explorerTx, SEPOLIA_CHAIN_ID } from "../../../../../../../lib/explorer";
 import { requireUser } from "../../../../../../../lib/with-auth";
 
@@ -75,7 +76,11 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
     fxLine: fx,
     txHash,
     explorerUrl: explorer,
-    consultant: consultant ? `${nameOf("consultant")}, ${when(consultant.at)}` : "Not recorded",
+    consultant: consultant
+      ? `${nameOf("consultant")}, ${when(consultant.at)}`
+      : client
+        ? await approverLine(db, stage)
+        : "Not recorded",
     clientApproval: client ? `${nameOf("client")}, ${when(client.at)}` : "Not recorded",
   });
   const bytes = new Uint8Array(pdf);

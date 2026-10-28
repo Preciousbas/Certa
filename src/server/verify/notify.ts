@@ -1,8 +1,10 @@
 import { memberships, users, type Database } from "@certa/db";
 import { and, eq, inArray } from "drizzle-orm";
+import { appBaseUrl } from "../../lib/appUrl.js";
 import { formatNaira } from "../../lib/money/kobo.js";
-import { bVf1, bVf2, bVf3, bVf4, bVf5, bVf6, bVf7, bullets } from "../../bot/messages.js";
-import { certifyKeyboard, morePhotosKeyboard, retryPhotosKeyboard, reviewNowKeyboard, type BotKeyboard } from "../../bot/keyboards.js";
+import { releaseSplit } from "../../lib/money/release-split.js";
+import { bApClient, bVf1, bVf2, bVf3, bVf4, bVf5, bVf6, bVf7, bullets } from "../../bot/messages.js";
+import { approveAnywayKeyboard, certifyKeyboard, clientApproveKeyboard, morePhotosKeyboard, retryPhotosKeyboard, reviewNowKeyboard, type BotKeyboard } from "../../bot/keyboards.js";
 import { notify } from "../../bot/notify.js";
 import type { VerifyNotice } from "./decide.js";
 
@@ -18,13 +20,28 @@ async function roleUsers(db: Database, projectId: string, role: string): Promise
 }
 
 function appUrl(): string {
-  return (process.env.APP_URL || process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000").replace(/\/$/, "");
+  return appBaseUrl();
 }
 
 function textFor(notice: VerifyNotice, input: NoticeInput): { text: string; keyboard?: BotKeyboard } {
   const reasons = bullets(input.reasons);
   const issues = bullets(input.issues);
   const missing = bullets(input.missingShots);
+  if (input.clientReviews && notice === "B-VF-1") {
+    const payout = input.amountUsdc === undefined
+      ? input.amountLabel
+      : formatNaira(releaseSplit({ amountUsdc: input.amountUsdc, amountNgnKobo: input.amountKobo, retentionBps: input.retentionBps ?? 0 }).payoutNgnKobo);
+    return {
+      text: bApClient({ n: input.stageNumber, stage: input.stageName, check: `passed (${input.confidencePct}% sure)` }),
+      keyboard: clientApproveKeyboard(input.stageId, payout),
+    };
+  }
+  if (input.clientReviews && (notice === "B-VF-6" || notice === "consultant_fyi")) {
+    const body = notice === "B-VF-6"
+      ? bVf6({ n: input.stageNumber, stage: input.stageName, confidence: input.confidencePct })
+      : `Stage ${input.stageNumber} — ${input.stageName} did not pass the photo check. The money stays locked.`;
+    return { text: body, keyboard: approveAnywayKeyboard(appUrl(), input.stageId) };
+  }
   if (notice === "B-VF-1") {
     return {
       text: bVf1({ n: input.stageNumber, stage: input.stageName, project: input.projectName, confidence: input.confidencePct, reasonsBullets: reasons }),
@@ -34,7 +51,7 @@ function textFor(notice: VerifyNotice, input: NoticeInput): { text: string; keyb
   if (notice === "B-VF-2") {
     return { text: bVf2({ n: input.stageNumber, stage: input.stageName, consultant: input.consultantName, amount: input.amountLabel }) };
   }
-  if (notice === "B-VF-3") return { text: bVf3({ n: input.stageNumber }) };
+  if (notice === "B-VF-3") return { text: bVf3({ n: input.stageNumber, clientReviews: input.clientReviews }) };
   if (notice === "B-VF-4") {
     return { text: bVf4({ n: input.stageNumber, issuesBullets: issues }), keyboard: retryPhotosKeyboard(input.stageId) };
   }
@@ -53,7 +70,8 @@ function textFor(notice: VerifyNotice, input: NoticeInput): { text: string; keyb
   return { text: `Stage ${input.stageNumber} — ${input.stageName} did not pass the photo check. The money stays locked.` };
 }
 
-function audience(notice: VerifyNotice): "consultant" | "client" | "contractor" | "consultant_client" {
+function audience(notice: VerifyNotice, clientReviews: boolean): "consultant" | "client" | "contractor" | "consultant_client" {
+  if (clientReviews && (notice === "B-VF-1" || notice === "B-VF-6" || notice === "consultant_fyi" || notice === "B-VF-7")) return "client";
   if (notice === "B-VF-1" || notice === "B-VF-6" || notice === "consultant_fyi") return "consultant";
   if (notice === "B-VF-2") return "client";
   if (notice === "B-VF-7") return "consultant_client";
@@ -75,12 +93,15 @@ export type NoticeInput = {
   safetyFlags: string[];
   consultantName: string;
   amountLabel: string;
+  clientReviews?: boolean;
+  amountUsdc?: bigint;
+  retentionBps?: number;
 };
 
 export async function notifyVerdict(
   db: Database,
   notices: readonly VerifyNotice[],
-  input: Omit<NoticeInput, "amountLabel" | "consultantName"> & { consultantName?: string },
+  input: Omit<NoticeInput, "amountLabel" | "consultantName"> & { consultantName?: string; clientReviews?: boolean },
 ): Promise<void> {
   const consultants = await roleUsers(db, input.projectId, "consultant");
   const clients = await roleUsers(db, input.projectId, "client");
@@ -90,11 +111,12 @@ export async function notifyVerdict(
   ];
   const filled: NoticeInput = {
     ...input,
-    consultantName: input.consultantName || consultants[0]?.name || "the consultant",
+    consultantName: input.clientReviews ? (input.consultantName || "") : (input.consultantName || consultants[0]?.name || "the consultant"),
     amountLabel: formatNaira(input.amountKobo),
+    clientReviews: input.clientReviews === true,
   };
   for (const notice of notices) {
-    const who = audience(notice);
+    const who = audience(notice, filled.clientReviews === true);
     const people = who === "consultant" ? consultants : who === "client" ? clients : who === "consultant_client" ? [...consultants, ...clients] : contractors;
     const body = textFor(notice, filled);
     for (const person of people) {

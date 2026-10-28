@@ -6,7 +6,7 @@ import { acceptTelegramUpdate, requireWebhookSecret } from "../../../../../src/s
 import { drainAfterHandler } from "../../../../../src/server/intake/schedule";
 import { fetchCbnRate } from "../../../lib/cbn-rate";
 
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 export async function POST(request: Request) {
   const denied = requireWebhookSecret(request);

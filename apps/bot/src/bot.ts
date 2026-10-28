@@ -1,47 +1,32 @@
-import { agentRouterContract, studyUpload, type ParsedContract } from "@certa/ai";
-import { createPartyWallet } from "@certa/chain";
-import { getOrCreateWallet } from "../../../src/server/chain/wallets.js";
 import {
-  acceptContractSide,
-  ensureWallet,
   getActiveProjectId,
   loadPrincipal,
-  recordUploadedContract,
-  redeemJoinCode,
-  startOwnProject,
-  type ContractSide,
   setActiveProject,
-  sha256Hex,
   upsertTelegramUser,
   visibleProjectIds,
   type Database,
 } from "@certa/db";
 import { requireMember } from "../../../src/server/auth/rbac";
-import { sideLabel } from "../../../src/server/projects/selfServe";
-import { copy, formatMoneyPair, formatNgnFromKobo, formatOfficialRate, joinDeepLink, parseStartPayload, type OfficialRate } from "@certa/shared";
+import { copy, formatMoneyPair, formatNgnFromKobo, formatOfficialRate, parseStartPayload, type OfficialRate } from "@certa/shared";
 import { handleIncoming, toHtml, bGe2, bGe5, bUp9, type BotKeyboard, type Inbound } from "../../../src/bot/index.js";
 import { randomUUID } from "node:crypto";
-import { conversations, createConversation, type ConversationFlavor } from "@grammyjs/conversations";
 import { limit } from "@grammyjs/ratelimiter";
-import { Bot, InlineKeyboard, session, type Context, type SessionFlavor } from "grammy";
+import { Bot, InlineKeyboard, Keyboard, type Context } from "grammy";
 import { eq } from "drizzle-orm";
-import { parties, projects, stages, users } from "@certa/db";
+import { memberships, parties, projects, stages, users } from "@certa/db";
+import { explorerTx, SEPOLIA_CHAIN_ID } from "../../../src/server/chain/networks.js";
+import { bUp1 } from "../../../src/bot/messages.js";
+import { uploadDoneKeyboard } from "../../../src/bot/keyboards.js";
 import { awaitingProject, enqueueExtraction, ingestDocument, setAwaitingDocuments } from "../../../src/server/intake/flow.js";
 import { gotFile, READING, telegramTooBig } from "../../../src/server/intake/messages.js";
-import { applyGapAnswer, contractGaps, contractNote, filenameOf, MAX_CONTRACT_STAGES, readFailure, savedContractMessage } from "./intake.js";
+import { filenameOf } from "./intake.js";
 import { syncEscrowProject } from "./sync.js";
-
-const MAX_CONTRACT_BYTES = 8_000_000;
-
-type SessionData = { pending?: string };
-type BotContext = Context & SessionFlavor<SessionData> & ConversationFlavor<Context>;
 
 export type BotDeps = {
   db: Database;
   paidWeather?: () => Promise<string>;
   officialRate?: () => Promise<OfficialRate | null>;
   loadDocument?: (fileId: string) => Promise<Uint8Array>;
-  studyContract?: (filename: string, bytes: Uint8Array) => Promise<ParsedContract>;
   apiFetch?: typeof fetch;
 };
 
@@ -63,36 +48,52 @@ async function active(db: Database, telegramId: bigint) {
   return { user, project: projectRows[0] ?? null, visible };
 }
 
-export function createBot(token: string, deps: BotDeps): Bot<BotContext> {
-  const bot = new Bot<BotContext>(token, deps.apiFetch ? { client: { fetch: deps.apiFetch } } : undefined);
+export function createBot(token: string, deps: BotDeps): Bot<Context> {
+  const bot = new Bot<Context>(token, deps.apiFetch ? { client: { fetch: deps.apiFetch } } : undefined);
   const requestIds = new WeakMap<Context, string>();
   bot.use(async (ctx, next) => {
     requestIds.set(ctx, randomUUID().slice(0, 8));
     await next();
   });
-  bot.use(session({ initial: (): SessionData => ({}) }));
-  bot.use(conversations());
   bot.use(limit({ timeFrame: 2_000, limit: 20, onLimitExceeded: async (ctx) => ctx.reply(copy.rateLimited) }));
 
   function toMarkup(keyboard?: BotKeyboard) {
     if (!keyboard || keyboard.length === 0) return undefined;
+    if (keyboard.some((row) => row.some((button) => button.kind === "location"))) {
+      const reply = new Keyboard();
+      for (const row of keyboard) {
+        for (const button of row) {
+          if (button.kind === "location") reply.requestLocation(button.text);
+          else reply.text(button.text);
+        }
+        reply.row();
+      }
+      return reply.resized().oneTime();
+    }
     const markup = new InlineKeyboard();
     for (const row of keyboard) {
       for (const button of row) {
         if (button.kind === "callback") markup.text(button.text, button.data);
         else if (button.kind === "web_app") markup.webApp(button.text, button.url);
-        else markup.switchInline(button.text, button.query);
+        else if (button.kind === "switch") markup.switchInline(button.text, button.query);
       }
       markup.row();
     }
     return markup;
   }
 
+  function released(hash: string) {
+    const txHash = /^0x[a-fA-F0-9]{64}$/.test(hash) ? hash : undefined;
+    return { ok: true as const, txHash, explorerLink: txHash ? explorerTx(SEPOLIA_CHAIN_ID, txHash) : "pending" };
+  }
+
   async function speak(ctx: Context, outbound: Awaited<ReturnType<typeof handleIncoming>>) {
     if (outbound.edit && ctx.callbackQuery) {
       await ctx.editMessageText(toHtml(outbound.edit.text), {
         parse_mode: "HTML",
-        reply_markup: toMarkup(outbound.edit.keyboard) ?? { inline_keyboard: [] },
+        reply_markup: outbound.edit.keyboard?.some((row) => row.some((button) => button.kind === "location"))
+          ? undefined
+          : (toMarkup(outbound.edit.keyboard) as InlineKeyboard | undefined) ?? { inline_keyboard: [] },
       });
     }
     for (const message of outbound.messages) {
@@ -112,8 +113,7 @@ export function createBot(token: string, deps: BotDeps): Bot<BotContext> {
         try {
           const { releaseStageTx } = await import("../../../src/server/chain/flows.js");
           const tx = await releaseStageTx(deps.db, input);
-          const hash = tx.txHash ?? "";
-          return { ok: true as const, explorerLink: hash ? `https://sepolia.etherscan.io/tx/${hash}` : "pending" };
+          return released(tx.txHash ?? "");
         } catch (error) {
           return { ok: false as const, reason: error instanceof Error ? error.message : "The payment did not go through." };
         }
@@ -151,213 +151,12 @@ export function createBot(token: string, deps: BotDeps): Bot<BotContext> {
     await ctx.reply(top ? `${top}\n${text}` : text, markup ? { reply_markup: markup } : undefined);
   }
 
-  async function joinWithCode(ctx: Context, code: string) {
-    const from = ctx.from;
-    if (!from) return;
-    const result = await redeemJoinCode(deps.db, { telegramId: BigInt(from.id), name: from.first_name, code });
-    if (!result.ok) {
-      const text =
-        result.reason === "rate_limited"
-          ? copy.rateLimited
-          : result.reason === "expired"
-            ? copy.expiredCode
-            : result.reason === "revoked"
-              ? "That invite was revoked."
-              : result.reason === "taken"
-                ? "That side of the contract is already taken."
-                : copy.invalidCode;
-      await say(ctx, text);
-      return;
-    }
-    const joined = `You've joined ${result.projectName} as the ${sideLabel(result.role)}.`;
-    try {
-      const party = (await deps.db.select().from(parties).where(eq(parties.id, result.partyId)))[0];
-      const purpose =
-        result.role === "client" || result.role === "consultant" || result.role === "contractor" || result.role === "subcontractor"
-          ? result.role
-          : null;
-      await ensureWallet(deps.db, result.partyId, async () => {
-        if (!party || !purpose) return createPartyWallet(result.partyId);
-        const wallet = await getOrCreateWallet(deps.db, { purpose, userId: party.userId, projectId: result.projectId });
-        return { address: wallet.address, walletId: wallet.accountRef, mock: wallet.mock };
-      });
-    } catch {
-      await say(ctx, `${joined} The payment account could not be created.`);
-      return;
-    }
-    await say(ctx, joined);
-  }
-
   async function moneyLine(kobo: bigint, lockedRate: bigint): Promise<string> {
     if (!deps.officialRate) return formatMoneyPair(kobo, lockedRate);
     const rate = await deps.officialRate();
     if (!rate) return `${formatNgnFromKobo(kobo)}\nThe Central Bank rate is unavailable.`;
     return `${formatMoneyPair(kobo, rate.koboPerUsdc)}\n1 USDC is ${formatOfficialRate(rate)} at the Central Bank rate for ${rate.asOf}.`;
   }
-
-  async function joinConversation(conversation: { waitFor: (filter: "message:text") => Promise<{ message?: { text?: string } }> }, ctx: Context) {
-    await ctx.reply(copy.startJoin);
-    const next = await conversation.waitFor("message:text");
-    await joinWithCode(ctx, next.message?.text?.trim() ?? "");
-  }
-  bot.use(createConversation(joinConversation as Parameters<typeof createConversation>[0], "join"));
-
-  const sides = new Set<ContractSide>(["client", "contractor"]);
-
-  async function startConversation(
-    conversation: {
-      external: <T>(fn: () => Promise<T>) => Promise<T>;
-      waitFor: (filter: "message:text") => Promise<{ message?: { text?: string } }>;
-    },
-    ctx: Context,
-  ) {
-    await ctx.reply("Are you the Client or the Contractor?");
-    const roleMsg = await conversation.waitFor("message:text");
-    const role = (roleMsg.message?.text?.trim().toLowerCase() ?? "") as ContractSide;
-    if (!sides.has(role)) {
-      await ctx.reply("Reply contractor or client.");
-      return;
-    }
-    await ctx.reply("What is the project called?");
-    const named = await conversation.waitFor("message:text");
-    const projectName = named.message?.text?.trim() ?? "";
-    const from = ctx.from;
-    if (!from || !projectName || projectName.startsWith("/")) {
-      await ctx.reply("Send the project name.");
-      return;
-    }
-    const started = await conversation.external(() =>
-      startOwnProject(deps.db, {
-        telegramId: BigInt(from.id),
-        name: from.first_name || "Telegram",
-        projectName,
-        role,
-      }),
-    );
-    const link = joinDeepLink(process.env.TELEGRAM_BOT_USERNAME || "CertaApp_bot", started.inviteCode);
-    const other = sideLabel(started.inviteRole);
-    await ctx.reply(`You are the ${sideLabel(role)} on ${projectName}. Share this link with your ${other}: ${link}`);
-  }
-  bot.use(createConversation(startConversation as Parameters<typeof createConversation>[0], "startProject"));
-
-  async function contractConversation(
-    conversation: {
-      external: <T>(fn: () => Promise<T>) => Promise<T>;
-      waitFor: (filter: "message:text") => Promise<{ message?: { text?: string } }>;
-    },
-    ctx: Context,
-  ) {
-    const document = ctx.message?.document;
-    const filename = document ? filenameOf(document) : null;
-    if (!document || !filename) {
-      await ctx.reply("Send the contract as a PDF, Word, Excel, CSV, or text file.");
-      return;
-    }
-    if ((document.file_size ?? 0) > MAX_CONTRACT_BYTES) {
-      await ctx.reply("That file is too large. Send a file under 8 MB.");
-      return;
-    }
-    const loaded = await conversation.external(async () => {
-      const bytes = deps.loadDocument ? await deps.loadDocument(document.file_id) : await telegramFile(document.file_id);
-      if (bytes.byteLength > MAX_CONTRACT_BYTES) throw new Error("too large");
-      const parsed = deps.studyContract ? await deps.studyContract(filename, bytes) : await studyUpload(filename, bytes, agentRouterContract() ?? undefined);
-      const rate = deps.officialRate ? await deps.officialRate() : null;
-      return {
-        filename,
-        base64: Buffer.from(bytes).toString("base64"),
-        sha256: sha256Hex(bytes),
-        summary: parsed.summary,
-        flags: parsed.flags,
-        koboPerUsdc: rate ? rate.koboPerUsdc.toString() : "",
-        asOf: rate?.asOf ?? "",
-      };
-    }).catch((error: unknown) => {
-      const message = error instanceof Error && error.message === "too large" ? "That file is too large. Send a file under 8 MB." : readFailure(error);
-      return { error: message };
-    });
-    if ("error" in loaded) {
-      await ctx.reply(loaded.error);
-      return;
-    }
-    if (!loaded.koboPerUsdc) {
-      await ctx.reply("The Central Bank rate is unavailable, so this contract was not saved.");
-      return;
-    }
-    if (loaded.summary.stages.length > MAX_CONTRACT_STAGES) {
-      await ctx.reply(`This file has ${loaded.summary.stages.length === 1 ? "1 stage" : `${loaded.summary.stages.length} stages`}. A project can hold ${MAX_CONTRACT_STAGES}.`);
-      return;
-    }
-    const rate = { koboPerUsdc: BigInt(loaded.koboPerUsdc), asOf: loaded.asOf };
-    if (loaded.flags.length > 0) {
-      await ctx.reply(`${contractNote(loaded.summary, rate.koboPerUsdc)}\n${loaded.flags.join("\n")}\nSend the file again once those figures add up.`);
-      return;
-    }
-    await ctx.reply(contractNote(loaded.summary, rate.koboPerUsdc));
-    let summary = loaded.summary;
-    let site = "";
-    for (const question of contractGaps(summary)) {
-      let settled = false;
-      while (!settled) {
-        await ctx.reply(question.prompt);
-        const next = await conversation.waitFor("message:text");
-        const text = next.message?.text?.trim() ?? "";
-        if (text === "/cancel") {
-          await ctx.reply("The contract was not saved.");
-          return;
-        }
-        const applied = applyGapAnswer(summary, question.id, text);
-        if (!applied.ok) {
-          await ctx.reply(applied.reason);
-          continue;
-        }
-        summary = applied.summary;
-        if (applied.site) site = applied.site;
-        settled = true;
-      }
-    }
-    if (!site) {
-      await ctx.reply("The site address is missing, so this contract was not saved.");
-      return;
-    }
-    await ctx.reply("Reply accept if this schedule is right. The contractor accepts later with /accept.");
-    let accepted = false;
-    while (!accepted) {
-      const next = await conversation.waitFor("message:text");
-      const text = next.message?.text?.trim().toLowerCase() ?? "";
-      if (text === "/cancel") {
-        await ctx.reply("The contract was not saved.");
-        return;
-      }
-      if (text === "accept") {
-        accepted = true;
-        break;
-      }
-      await ctx.reply("Reply accept, or /cancel.");
-    }
-    const saved = await conversation.external(async () => {
-      const row = await recordUploadedContract(deps.db, {
-        telegramId: BigInt(ctx.from?.id ?? 0),
-        senderName: ctx.from?.first_name ?? "Client",
-        site,
-        filename: loaded.filename,
-        sha256: loaded.sha256,
-        bytesBase64: loaded.base64,
-        summary,
-        koboPerUsdc: rate.koboPerUsdc,
-        fxAsOf: rate.asOf,
-        clientAccepted: true,
-      });
-      try {
-        await ensureWallet(deps.db, row.partyId, () => createPartyWallet(row.partyId));
-      } catch {
-        return { ...row, wallet: false };
-      }
-      return { ...row, wallet: true };
-    });
-    const walletNote = saved.wallet ? "" : "\nThe payment account could not be created.";
-    await ctx.reply(`${savedContractMessage(saved.stageCount, saved.contractorCode)}${walletNote}`);
-  }
-  bot.use(createConversation(contractConversation as Parameters<typeof createConversation>[0], "contract"));
 
   async function telegramFile(fileId: string): Promise<Uint8Array> {
     const remote = await bot.api.getFile(fileId);
@@ -393,15 +192,25 @@ export function createBot(token: string, deps: BotDeps): Bot<BotContext> {
       await ctx.reply(text, duplicate ? undefined : { reply_markup: new InlineKeyboard().text("Retry", `v1:rx:${project.id}`) });
       return;
     }
-    if (!document || !filenameOf(document)) {
-      await say(ctx, "Send the contract as a PDF, Word, Excel, CSV, or text file.");
+    const row = ctx.from ? await active(deps.db, BigInt(ctx.from.id)) : null;
+    const member = row?.project && row.user
+      ? (await deps.db.select().from(memberships).where(eq(memberships.projectId, row.project.id))).find((item) => item.userId === row.user?.id && item.status === "active")
+      : undefined;
+    if (document && row?.project && row.user && (member?.role === "client" || member?.role === "consultant")) {
+      await setAwaitingDocuments(deps.db, BigInt(ctx.from?.id ?? 0), row.project.id);
+      const bytes = deps.loadDocument ? await deps.loadDocument(document.file_id) : await telegramFile(document.file_id);
+      const saved = await ingestDocument(deps.db, {
+        projectId: row.project.id,
+        workspaceId: row.project.workspaceId,
+        userId: row.user.id,
+        fileName: filenameOf(document) ?? document.file_name ?? "file",
+        bytes,
+      });
+      const text = saved.ok ? bUp1({ fileName: filenameOf(document) ?? document.file_name ?? "file", pagesOrSheets: saved.pagesOrSheets }) : saved.message;
+      await ctx.reply(text, saved.ok ? { reply_markup: toMarkup(uploadDoneKeyboard()) } : undefined);
       return;
     }
-    if ((document.file_size ?? 0) > MAX_CONTRACT_BYTES) {
-      await say(ctx, "That file is too large. Send a file under 8 MB.");
-      return;
-    }
-    await ctx.conversation.enter("contract");
+    await ctx.reply("Start or open a project first.", { reply_markup: new InlineKeyboard().text("New project", "v1:go:create") });
   });
 
   bot.command("done", async (ctx) => {
@@ -456,13 +265,17 @@ export function createBot(token: string, deps: BotDeps): Bot<BotContext> {
   bot.callbackQuery("go-start", async (ctx) => {
     if (!(await gate(ctx, false))) return;
     await ctx.answerCallbackQuery();
-    await ctx.conversation.enter("startProject");
+    const who = person(ctx);
+    if (!who) return;
+    await runEngine(ctx, { type: "callback", data: "v1:go:create", from: who });
   });
 
   bot.callbackQuery("go-join", async (ctx) => {
     if (!(await gate(ctx, false))) return;
     await ctx.answerCallbackQuery();
-    await ctx.conversation.enter("joinConversation");
+    const who = person(ctx);
+    if (!who) return;
+    await runEngine(ctx, { type: "callback", data: "v1:go:code", from: who });
   });
 
   bot.command("join", async (ctx) => {
@@ -475,24 +288,9 @@ export function createBot(token: string, deps: BotDeps): Bot<BotContext> {
 
   bot.command("accept", async (ctx) => {
     if (!(await gate(ctx, true))) return;
-    const row = ctx.from ? await active(deps.db, BigInt(ctx.from.id)) : null;
-    if (!row?.project || !row.user) {
-      await say(ctx, copy.noProjects);
-      return;
-    }
-    const partyRows = await deps.db.select().from(parties).where(eq(parties.userId, row.user.id));
-    const party = partyRows.find((item) => item.projectId === row.project?.id);
-    const side = party?.role === "main_contractor" ? "contractor" : party?.role === "client" ? "client" : null;
-    if (!side) {
-      await say(ctx, "You are not the client or the contractor on this project.");
-      return;
-    }
-    const result = await acceptContractSide(deps.db, { projectId: row.project.id, side });
-    if (!result.ok) {
-      await say(ctx, result.reason);
-      return;
-    }
-    await say(ctx, result.both ? "Both sides have accepted this schedule. Money can be locked from it." : "You accepted. The other side still has to accept.");
+    const who = person(ctx);
+    if (!who) return;
+    await runEngine(ctx, { type: "command", command: "accept", arg: "", from: who });
   });
 
   bot.command("help", async (ctx) => {
@@ -520,17 +318,9 @@ export function createBot(token: string, deps: BotDeps): Bot<BotContext> {
 
   bot.command("stages", async (ctx) => {
     if (!(await gate(ctx, true))) return;
-    const row = ctx.from ? await active(deps.db, BigInt(ctx.from.id)) : null;
-    if (!row?.project) {
-      await say(ctx, copy.noProjects, "Stages");
-      return;
-    }
-    await syncEscrowProject(deps.db, row.project).catch(() => undefined);
-    const stageRows = await deps.db.select().from(stages).where(eq(stages.projectId, row.project.id));
-    const lines = stageRows
-      .sort((a, b) => a.stageIndex - b.stageIndex)
-      .map((stage) => `${stage.stageIndex + 1}. ${stage.name} — ${stage.status}`);
-    await say(ctx, lines.join("\n"), "Stages");
+    const who = person(ctx);
+    if (!who) return;
+    await runEngine(ctx, { type: "command", command: "stages", arg: "", from: who });
   });
 
   bot.command("switch", async (ctx) => {
@@ -565,8 +355,16 @@ export function createBot(token: string, deps: BotDeps): Bot<BotContext> {
 
   bot.command("submit", async (ctx) => {
     if (!(await gate(ctx, false))) return;
-    const url = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
-    await say(ctx, `Take the photo in the camera page.\n${url}/capture`, "Submit");
+    const who = person(ctx);
+    if (!who) return;
+    await runEngine(ctx, { type: "command", command: "submit", arg: "", from: who });
+  });
+
+  bot.command("site", async (ctx) => {
+    if (!(await gate(ctx, true))) return;
+    const who = person(ctx);
+    if (!who) return;
+    await runEngine(ctx, { type: "command", command: "site", arg: "", from: who });
   });
 
   bot.command("wallet", async (ctx) => {
@@ -632,14 +430,12 @@ export function createBot(token: string, deps: BotDeps): Bot<BotContext> {
       }
       return next();
     }
-    if (Object.keys(ctx.conversation.active()).length > 0) return next();
     const outbound = await handleIncoming(deps.db, { type: "text", text, from: who }, { paidWeather: deps.paidWeather });
     if (outbound.messages.length === 0 && !outbound.edit) return next();
     await speak(ctx, outbound);
   });
 
   bot.on("message:location", async (ctx, next) => {
-    if (Object.keys(ctx.conversation.active()).length > 0) return next();
     const who = person(ctx);
     const location = ctx.message?.location;
     if (!who || !location) return next();
@@ -665,10 +461,13 @@ export function createBot(token: string, deps: BotDeps): Bot<BotContext> {
       const outbound = await handleIncoming(deps.db, { type: "callback", data: ctx.callbackQuery.data, from: who }, {
         paidWeather: deps.paidWeather,
         release: async (input) => {
-          const { releaseStageTx } = await import("../../../src/server/chain/flows.js");
-          const tx = await releaseStageTx(deps.db, input);
-          const hash = tx.txHash ?? "";
-          return { ok: true as const, explorerLink: hash ? `https://sepolia.etherscan.io/tx/${hash}` : "pending" };
+          try {
+            const { releaseStageTx } = await import("../../../src/server/chain/flows.js");
+            const tx = await releaseStageTx(deps.db, input);
+            return released(tx.txHash ?? "");
+          } catch (error) {
+            return { ok: false as const, reason: error instanceof Error ? error.message : "The payment did not go through." };
+          }
         },
       });
       if (retry) {
@@ -709,7 +508,7 @@ export function createBot(token: string, deps: BotDeps): Bot<BotContext> {
   return bot;
 }
 
-export async function deliver(bot: Bot<BotContext>, update: Parameters<Bot<BotContext>["handleUpdate"]>[0], sent: string[]) {
+export async function deliver(bot: Bot<Context>, update: Parameters<Bot<Context>["handleUpdate"]>[0], sent: string[]) {
   const harness = async (_prev: unknown, method: string, payload: unknown) => {
     const record = payload as { text?: string };
     if (method === "sendMessage" && record.text) sent.push(record.text);
@@ -721,7 +520,7 @@ export async function deliver(bot: Bot<BotContext>, update: Parameters<Bot<BotCo
       result: method === "answerCallbackQuery" ? true : { message_id: sent.length + 1, date: 1, chat: { id: 1, type: "private" as const, first_name: "Ada" }, text: record.text ?? "" },
     };
   };
-  bot.api.config.use(harness as Parameters<Bot<BotContext>["api"]["config"]["use"]>[0]);
+  bot.api.config.use(harness as Parameters<Bot<Context>["api"]["config"]["use"]>[0]);
   await bot.init();
   await bot.handleUpdate(update);
 }

@@ -1,4 +1,4 @@
-import { getDatabase, submissions, users } from "@certa/db";
+import { disputes, getDatabase, submissions, users } from "@certa/db";
 import { eq } from "drizzle-orm";
 import Link from "next/link";
 import { MoneyAmount } from "../../components/money";
@@ -8,6 +8,7 @@ import { DataTable } from "../../components/ui/dialog";
 import { InfoTip } from "../../components/ui/chips";
 import { loadProject } from "../../lib/data";
 import { isLockedStage, isReviewStatus } from "../../lib/labels";
+import { noConsultantDispute } from "../../../../src/server/projects/approvalMode";
 
 function total(rows: { amountNgnKobo: bigint; amountUsdc: bigint }[], field: "amountNgnKobo" | "amountUsdc") {
   return rows.reduce((sum, row) => sum + row[field], 0n);
@@ -35,6 +36,8 @@ export default async function StagesPage({ searchParams }: { searchParams?: Prom
   const retention = held(data.stages);
   const db = await getDatabase();
   const notes = await db.select().from(submissions).where(eq(submissions.projectId, data.project.id));
+  const openDisputes = (await db.select().from(disputes).where(eq(disputes.projectId, data.project.id))).filter((row) => row.status === "open" && noConsultantDispute(row.resolution));
+  const flagged = new Set(openDisputes.map((row) => row.stageId));
   const people = await db.select().from(users);
   const sorted = [...data.stages].sort((a, b) => {
     if (query.sort === "amount") return a.amountNgnKobo < b.amountNgnKobo ? -1 : a.amountNgnKobo > b.amountNgnKobo ? 1 : 0;
@@ -101,6 +104,7 @@ export default async function StagesPage({ searchParams }: { searchParams?: Prom
           const party = data.parties.find((row) => row.id === stage.assignedPartyId);
           const person = people.find((row) => row.id === party?.userId);
           const assigned = person?.name ?? "Unassigned";
+          const disputeLabel = flagged.has(stage.id) ? "Disputed: no independent reviewer" : undefined;
           const href = `/app/p/${data.project.id}/stages/${stage.stageIndex + 1}`;
           return {
             key: stage.id,
@@ -108,15 +112,15 @@ export default async function StagesPage({ searchParams }: { searchParams?: Prom
               stage.stageIndex + 1,
               <Link key="name" href={href}>{stage.name}</Link>,
               <MoneyAmount key="money" kobo={stage.amountNgnKobo.toString()} usdc={stage.amountUsdc.toString()} />,
-              <StatusChip key="status" status={stage.status} />,
-              <StatusChip key="event" status={stage.status} />,
+              <StatusChip key="status" status={stage.status} label={disputeLabel} />,
+              <StatusChip key="event" status={stage.status} label={disputeLabel} />,
               assigned,
             ],
             card: (
               <div>
                 <Link href={href}><strong>{stage.stageIndex + 1}. {stage.name}</strong></Link>
                 <p><MoneyAmount kobo={stage.amountNgnKobo.toString()} usdc={stage.amountUsdc.toString()} /></p>
-                <StatusChip status={stage.status} />
+                <StatusChip status={stage.status} label={disputeLabel} />
                 <p className="muted">{assigned}</p>
               </div>
             ),

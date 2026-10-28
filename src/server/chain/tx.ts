@@ -21,6 +21,7 @@ export const TX_KINDS = [
   "refund",
   "x402_payment",
   "gas_topup",
+  "test_usdc",
 ] as const;
 
 export type TxKind = (typeof TX_KINDS)[number];
@@ -110,6 +111,14 @@ export async function sendTx(db: Database, input: SendInput, port: ChainPort = d
     .returning();
   let row = inserted[0] ?? (await loadByKey(db, input.idempotencyKey));
   if (!row) throw new Error("The transaction was not recorded.");
+  if (row.status === "failed" && row.txHash === null && row.attempts < 5) {
+    const reset = await db
+      .update(chainTxs)
+      .set({ status: "pending", error: null })
+      .where(eq(chainTxs.id, row.id))
+      .returning();
+    row = reset[0] ?? row;
+  }
   if (OPEN.has(row.status) || row.status === "failed") return row;
 
   const claimed = await db
@@ -135,7 +144,7 @@ export async function sendTx(db: Database, input: SendInput, port: ChainPort = d
     to: input.to,
     data: input.data,
     valueWei: input.valueWei,
-    idempotencyKey: input.idempotencyKey,
+    idempotencyKey: `${input.idempotencyKey}:a${row.attempts}`,
     feeBps: 10_000,
   });
   const submitted = await db
@@ -157,13 +166,26 @@ export async function sendTx(db: Database, input: SendInput, port: ChainPort = d
   return saved;
 }
 
-export async function waitForTx(db: Database, chainTxId: string, port: ChainPort = defaultPort(), timeoutMs = 180_000) {
+function waitBudget(passed?: number): number {
+  if (passed !== undefined) return passed;
+  const raw = process.env.CERTA_TX_WAIT_MS ?? "";
+  if (/^\d+$/.test(raw)) return parseInt(raw, 10);
+  return 180_000;
+}
+
+function pollPause(): number {
+  const raw = process.env.CERTA_TX_POLL_MS ?? "";
+  if (/^\d+$/.test(raw)) return parseInt(raw, 10);
+  return 4_000;
+}
+
+export async function waitForTx(db: Database, chainTxId: string, port: ChainPort = defaultPort(), timeoutMs = waitBudget()) {
   const started = Date.now();
   let row = (await db.select().from(chainTxs).where(eq(chainTxs.id, chainTxId)))[0];
   while (row && row.status !== "confirmed" && row.status !== "failed" && Date.now() - started < timeoutMs) {
     row = (await confirmTx(db, chainTxId, port)) ?? row;
     if (row.status === "confirmed" || row.status === "failed") return row;
-    await new Promise((resolve) => setTimeout(resolve, 4_000));
+    await new Promise((resolve) => setTimeout(resolve, pollPause()));
   }
   return row;
 }
@@ -268,7 +290,7 @@ async function replaceOrFail(db: Database, row: typeof chainTxs.$inferSelect, po
     accountName: intentAccount(row),
     to: row.toAddress as Hex,
     data: (row.calldata ?? "0x") as Hex,
-    idempotencyKey: `${row.idempotencyKey}:retry:${attempts}`,
+    idempotencyKey: `${row.idempotencyKey}:a${attempts}`,
     nonce: countFromBigint(row.nonce),
     feeBps: 10_000 + attempts * 2_000,
     valueWei: BigInt((JSON.parse(row.intent ?? "{}") as { valueWei?: string }).valueWei ?? "0"),

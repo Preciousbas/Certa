@@ -17,7 +17,9 @@ import type { Database } from "./client.js";
 import { appendAudit, encryptEmail } from "./services.js";
 import {
   changeRequests,
+  contractAcceptances,
   contractSummaries,
+  contractVersions,
   disputes,
   memberships,
   parties,
@@ -33,6 +35,71 @@ function chainAddress(name: string, fallback: string): string {
   return /^0x[a-fA-F0-9]{40}$/.test(value) ? value : fallback;
 }
 
+/** One contract version both sides have accepted, and the project's pointer to it. */
+export async function recordAcceptedPlan(
+  db: Database,
+  input: {
+    projectId: string;
+    contractSumKobo: bigint;
+    koboPerUsdc: bigint;
+    spendingCapMicro: bigint;
+    retentionBps: number;
+    defectsPeriodDays: number;
+    fxSource: string;
+    fxAsOf: string;
+    contentHash: string;
+    createdBy: string;
+    clientUserId: string;
+    contractorUserId: string;
+    termsHash?: string;
+  },
+): Promise<{ id: string; contentHash: string }> {
+  const [agreed] = await db
+    .insert(contractVersions)
+    .values({
+      projectId: input.projectId,
+      version: 1,
+      status: "accepted",
+      contractSumKobo: input.contractSumKobo,
+      retentionBps: input.retentionBps,
+      defectsPeriodDays: input.defectsPeriodDays,
+      koboPerUsdc: input.koboPerUsdc,
+      fxSource: input.fxSource,
+      fxAsOf: input.fxAsOf,
+      spendingCapMicro: input.spendingCapMicro,
+      terms: { retention_bps: input.retentionBps },
+      documentHashes: [],
+      contentHash: input.contentHash,
+      createdBy: input.createdBy,
+    })
+    .returning();
+  if (!agreed) throw new Error("accepted plan failed");
+  await db.insert(contractAcceptances).values([
+    {
+      contractVersionId: agreed.id,
+      userId: input.clientUserId,
+      role: "client",
+      decision: "accepted",
+      contentHash: agreed.contentHash,
+    },
+    {
+      contractVersionId: agreed.id,
+      userId: input.contractorUserId,
+      role: "contractor",
+      decision: "accepted",
+      contentHash: agreed.contentHash,
+    },
+  ]);
+  await db
+    .update(projects)
+    .set({
+      currentContractVersionId: agreed.id,
+      ...(input.termsHash !== undefined ? { termsHash: input.termsHash } : {}),
+    })
+    .where(eq(projects.id, input.projectId));
+  return { id: agreed.id, contentHash: agreed.contentHash };
+}
+
 export async function seedDemo(db: Database) {
   const existing = await db
     .select()
@@ -43,6 +110,7 @@ export async function seedDemo(db: Database) {
   const rate = fxRateFromNaira(DEMO_FX_NAIRA_PER_USDC);
   const sumKobo = nairaToKobo(DEMO_CONTRACT_NAIRA);
   const sumUsdc = usdcFromNgnKobo(sumKobo, rate);
+  const capMicro = usdcFromNgnKobo(nairaToKobo(DEMO_CAP_NAIRA), rate);
 
   const [client] = await db
     .insert(users)
@@ -101,6 +169,7 @@ export async function seedDemo(db: Database) {
       siteLocation: "Lekki Phase 1, Lagos",
       siteLat: 6.4474,
       siteLng: 3.4723,
+      approvalMode: "consultant",
       geofenceRadiusM: DEMO_GEOFENCE_M,
       status: "active",
       fxRateLocked: rate,
@@ -109,7 +178,7 @@ export async function seedDemo(db: Database) {
       escrowAddress: /^0x[a-fA-F0-9]{40}$/.test(process.env.ESCROW_ADDRESS ?? "")
         ? process.env.ESCROW_ADDRESS
         : null,
-      spendingCapUsdc: usdcFromNgnKobo(nairaToKobo(DEMO_CAP_NAIRA), rate),
+      spendingCapUsdc: capMicro,
       retentionBps: DEMO_RETENTION_BPS,
       defectsPeriodDays: DEMO_DEFECTS_DAYS,
       mobilisationBps: DEMO_MOBILISATION_BPS,
@@ -119,6 +188,22 @@ export async function seedDemo(db: Database) {
     })
     .returning();
   if (!project) throw new Error("seed project failed");
+
+  await recordAcceptedPlan(db, {
+    projectId: project.id,
+    contractSumKobo: sumKobo,
+    koboPerUsdc: rate,
+    spendingCapMicro: capMicro,
+    retentionBps: DEMO_RETENTION_BPS,
+    defectsPeriodDays: DEMO_DEFECTS_DAYS,
+    fxSource: "contract acceptance",
+    fxAsOf: "2026-08-01",
+    contentHash: "seeded-terms",
+    createdBy: client.id,
+    clientUserId: client.id,
+    contractorUserId: main.id,
+    termsHash: "seeded-terms",
+  });
 
   const partyRows = await db
     .insert(parties)

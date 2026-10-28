@@ -9,6 +9,7 @@ import {
   beginUpload,
   beginVariation,
   certify,
+  chooseApprovalMode,
   chooseVariationStage,
   declineAsk,
   decideDispute,
@@ -41,13 +42,13 @@ import {
 } from "./flows/actions.js";
 import { loadActor, say, type EngineDeps, type Outbound, type Person } from "./flows/common.js";
 import { joinWithCode } from "./flows/join.js";
-import { begin, onName, onPin, onProjectRole, onSite, onStartDate } from "./flows/project.js";
+import { begin, beginSite, confirmGeocode, onName, onPin, onProjectRole, onSite, onSiteAddress, onStartDate } from "./flows/project.js";
 import { askCode, howItWorks, showMenu, welcome } from "./flows/start.js";
 import { helpText } from "./flows/help.js";
-import { bGe4, bGe9, bIn11, bIn7, bSt7, bUnknown } from "./messages.js";
+import { bGe4, bGe9, bIn7, bInLater, bSt7, bUnknown } from "./messages.js";
 import { writeSession } from "./state.js";
 import { projectSwitchKeyboard } from "./keyboards.js";
-import { memberships, projects, setActiveProject } from "@certa/db";
+import { contractVersions, memberships, projects, setActiveProject, stages } from "@certa/db";
 import { and, eq } from "drizzle-orm";
 
 export type Inbound =
@@ -97,10 +98,13 @@ async function onCommand(
     if (actor.session.step === "dispute_photos") return finishDispute(db, actor, now);
     return finishUpload(db, actor, now);
   }
-  if (command === "photos") return photos(db, actor);
+  if (command === "photos" || command === "submit") return photos(db, actor);
   if (command === "review") return reviewQueue(db, actor, deps);
-  if (command === "fund") return fund(actor, deps);
+  if (command === "fund") return fund(db, actor, deps);
   if (command === "wallet") return wallet(db, actor);
+  if (command === "accept") return showPlan(db, actor, deps);
+  if (command === "stages") return myStages(db, actor);
+  if (command === "site") return beginSite(db, actor, now);
   return say(bUnknown());
 }
 
@@ -116,6 +120,8 @@ async function onText(
   if (step === "join_code") return joinWithCode(db, actor, text, now);
   if (step === "project_name") return onName(db, actor, text, now);
   if (step === "project_site") return onSite(db, actor, text, now);
+  if (step === "project_pin" && /^skip$/i.test(text.trim())) return onPin(db, actor, null, now);
+  if (step === "site_pin") return onSiteAddress(db, actor, text, now);
   if (step === "project_start") return onStartDate(db, actor, person, text, now, now);
   if (step === "project_role") return onProjectRole(db, actor, person, text, now);
   if (step === "reject_reason") return onRejectReason(db, actor, text, now);
@@ -128,6 +134,34 @@ async function onText(
   return { messages: [] };
 }
 
+async function bindActorProject(db: Database, actor: Awaited<ReturnType<typeof loadActor>>, action: string, id: string): Promise<void> {
+  if (!id) return;
+  let projectId: string | undefined;
+  if (action === "ac") {
+    projectId = (await db.select().from(contractVersions).where(eq(contractVersions.id, id)))[0]?.projectId;
+  } else if (action === "cf" || action === "ap" || action === "rj" || action === "dc") {
+    projectId = (await db.select().from(stages).where(eq(stages.id, id)))[0]?.projectId;
+  } else if (action === "am") {
+    projectId = id;
+  } else {
+    return;
+  }
+  if (!projectId) return;
+  const member = (
+    await db
+      .select()
+      .from(memberships)
+      .where(and(eq(memberships.projectId, projectId), eq(memberships.userId, actor.userId), eq(memberships.status, "active")))
+  )[0];
+  if (!member) return;
+  const project = (await db.select().from(projects).where(eq(projects.id, projectId)))[0];
+  if (!project) return;
+  actor.project = project;
+  actor.role = member.role;
+  actor.session = { ...actor.session, projectId };
+  await setActiveProject(db, actor.telegramId, projectId, actor.userId);
+}
+
 async function onCallback(
   db: Database,
   actor: Awaited<ReturnType<typeof loadActor>>,
@@ -137,6 +171,7 @@ async function onCallback(
 ): Promise<Outbound> {
   const parsed = parseCallback(data);
   if (!parsed) return { messages: [], edit: { text: bGe4() } };
+  await bindActorProject(db, actor, parsed.action, parsed.id);
   const { action, id, arg } = parsed;
   if (action === "go" && id === "create") return begin(db, actor, now);
   if (action === "go" && id === "how") return howItWorks();
@@ -146,8 +181,9 @@ async function onCallback(
   if (action === "go" && id === "upload") return beginUpload(db, actor, now);
   if (action === "go" && id === "done") return finishUpload(db, actor, now);
   if (action === "rx") return retryDocuments(db, actor);
-  if (action === "go" && id === "invite") return beginInvite(actor);
-  if (action === "go" && id === "fund") return fund(actor, deps);
+  if (action === "go" && id === "invite") return beginInvite(db, actor);
+  if (action === "go" && id === "fund") return fund(db, actor, deps);
+  if (action === "go" && id === "site") return beginSite(db, actor, now);
   if (action === "go" && id === "photos") return photos(db, actor);
   if (action === "go" && id === "stages") return myStages(db, actor);
   if (action === "go" && id === "wallet") return wallet(db, actor);
@@ -158,13 +194,15 @@ async function onCallback(
   if (action === "go" && id === "disputes") return listDisputes(db, actor, deps);
   if (action === "go" && id === "howpay") return say(bIn7());
   if (action === "go" && id === "skip") return onPin(db, actor, null, now);
+  if (action === "sp") return confirmGeocode(db, actor, id === "yes", now);
   if (action === "sd") return onProjectRole(db, actor, { id: actor.fromId, firstName: actor.firstName }, id, now);
   if (action === "go" && id === "cancel") {
     await writeSession(db, actor.telegramId, { step: null, projectId: actor.project?.id ?? null }, now);
     return { messages: [], edit: { text: bGe9() } };
   }
   if (action === "ir") return issueInvite(db, actor, id, now, deps);
-  if (action === "jn" && arg === "later") return { messages: [], edit: { text: bIn11({ project: actor.project?.name ?? "that project" }) } };
+  if (action === "am") return chooseApprovalMode(db, actor, arg || id);
+  if (action === "jn" && arg === "later") return { messages: [], edit: { text: bInLater({ project: actor.project?.name ?? "that project" }) } };
   if (action === "jn") return joinWithCode(db, actor, id, now);
   if (action === "sw") return switchProject(db, actor, id, deps);
   if (action === "ph") return photoStage(db, actor, id, deps);
