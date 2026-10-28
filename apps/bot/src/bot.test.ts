@@ -1,4 +1,3 @@
-import { extractContract, textFromUpload } from "@certa/ai";
 import { contractVersions, createMemoryDatabase, documents, memberships, projects, seedDemo, stages, startOwnProject, users, workspaces, type Database } from "@certa/db";
 import { formatOfficialRate, fxRateFromNaira, nairaToKobo, usdcFromNgnKobo } from "@certa/shared";
 import { eq } from "drizzle-orm";
@@ -121,7 +120,7 @@ describe("bot", () => {
     expect(text).toMatch(/Agent paid \$0\.01/);
   });
 
-  it("reads a 22-stage contract file and asks for the missing terms", async () => {
+  it("replies Start or open a project first to a contract file with no project open", async () => {
     const lines = ["Stage | Description | Percent"];
     for (let index = 1; index <= 22; index += 1) {
       const percent = index <= 20 ? 4 : 10;
@@ -139,7 +138,6 @@ describe("bot", () => {
       db,
       officialRate: async () => ({ koboPerUsdc: 133111n, asOf: "2026-10-15" }),
       loadDocument: async () => new TextEncoder().encode(csv),
-      studyContract: async (filename, bytes) => extractContract(await textFromUpload(filename, bytes)),
       apiFetch: async (input, init) => {
         const method = String(input).split("/").pop() ?? "";
         const body = init?.body ? (JSON.parse(String(init.body)) as { text?: string }) : {};
