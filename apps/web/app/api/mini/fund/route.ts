@@ -7,7 +7,6 @@ import { chainUpToIndex } from "../../../../../../src/lib/fund-range";
 import { supportEmailOrEmpty } from "../../../../../../src/lib/support";
 import { notifyFundOutcome } from "../../../../../../src/bot/fundNotice";
 import { ChainRejected, ConsultantRequired, fundAccepted } from "../../../../../../src/server/chain/flows";
-import { broadcastClientFund } from "../../../../lib/chain-fund";
 import { chainFundLines } from "../../../../lib/escrow-quote";
 import { rejectIfPaused } from "../../../../../../src/server/projects/pause";
 import { apiError, apiJson, fundInput, fundOutput } from "../../../../lib/schemas";
@@ -59,7 +58,6 @@ export const POST = withAuth(
     let sentHash: Hex | null = null;
     let escrowFromChain = "";
     let locked: "pending" | "confirmed" = "pending";
-    const escrow = project.escrowAddress ?? "";
     const payInNaira = input.data.currency === "ngn";
     const accepted = acceptedRate;
     if (!payInNaira && accepted) {
@@ -93,32 +91,6 @@ export const POST = withAuth(
           idempotencyKey: input.data.idempotencyKey,
         }).catch(() => undefined);
         return apiError(status, message);
-      }
-    } else if (!payInNaira && /^0x[a-fA-F0-9]{40}$/.test(escrow) && process.env.DEPLOYER_PRIVATE_KEY) {
-      try {
-        const sent = await broadcastClientFund(escrow as Hex, chainUpTo);
-        sentHash = sent.hash;
-        locked = "confirmed";
-        amountUsdc = sent.amount;
-        amountNgnKobo = nairaOf(sent.amount);
-      } catch (error) {
-        const message = error instanceof Error ? error.message : "";
-        const plainReason = message === "The client wallet does not hold enough USDC." || message === "That range has nothing left to fund." ? message : "The fund transaction reverted.";
-        await notifyFundOutcome(db, {
-          outcome: "failed",
-          projectId: project.id,
-          projectName: project.name,
-          clientUserId: userId,
-          clientName: client?.name ?? "The client",
-          amountKobo: 0n,
-          fromStage: (rows[0]?.stageIndex ?? 0) + 1,
-          toStage: (rows[rows.length - 1]?.stageIndex ?? 0) + 1,
-          explorerLink: "",
-          plainReason,
-          supportEmail: supportEmailOrEmpty(),
-          idempotencyKey: input.data.idempotencyKey,
-        }).catch(() => undefined);
-        return apiError(502, plainReason);
       }
     }
     const payment = await recordPayment(db, {
