@@ -137,4 +137,18 @@ describe("six-criteria checklist", () => {
     expect(stored?.criteriaResults).toHaveLength(6);
     await opened.close();
   });
+
+  it("stores the checklist question with each answer", async () => {
+    const opened = await createMemoryDatabase();
+    const { submission } = await ready(opened.db);
+    const vision = yesClient();
+    await runVerifyStage(opened.db, submission.id, {
+      client: vision.client,
+      submit: async () => ({ txHash: null }),
+    });
+    const stored = (await opened.db.select().from(aiVerdicts).where(eq(aiVerdicts.submissionId, submission.id)))[0];
+    const rows = stored?.criteriaResults as { text?: string }[];
+    expect(rows.map((row) => row.text)).toEqual([...CRITERIA]);
+    await opened.close();
+  });
 });

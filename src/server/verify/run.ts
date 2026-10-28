@@ -209,7 +209,10 @@ export async function runVerifyStage(
       verdict: verdict.verdict,
       confidence: verdict.confidence,
       rawJson: raw,
-      criteriaResults: verdict.criteria,
+      criteriaResults: verdict.criteria.map((row) => ({
+        ...row,
+        text: checklist?.items.find((item) => item.id === row.id)?.text ?? "",
+      })),
       reasons: [...verdict.reasons],
       issues: [...verdict.issues],
       safetyFlags: [...verdict.safety_flags],
