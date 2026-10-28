@@ -4,8 +4,11 @@ import { getDatabase } from "@certa/db";
 import { VariationError, proposeVariation, type VariationType } from "../../../../src/server/changes/propose";
 import { parseNaira } from "../../../../src/lib/money/kobo";
 import { loadProject } from "../../lib/data";
+import { signedInUserId } from "../../lib/session-user";
 
 export async function proposeChange(formData: FormData): Promise<{ ok: boolean; message: string }> {
+  const userId = await signedInUserId();
+  if (!userId) return { ok: false, message: "Sign in from Telegram." };
   const data = await loadProject();
   if (!data) return { ok: false, message: "No project is open." };
   const title = String(formData.get("title") ?? "");
@@ -23,7 +26,7 @@ export async function proposeChange(formData: FormData): Promise<{ ok: boolean; 
     const db = await getDatabase();
     const sent = await proposeVariation(db, {
       projectId: data.project.id,
-      actorUserId: data.user.id,
+      actorUserId: userId,
       title,
       description,
       type,
