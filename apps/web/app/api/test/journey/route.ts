@@ -1,5 +1,7 @@
 import {
   botSessions,
+  contractAcceptances,
+  contractVersions,
   getDatabase,
   isMemoryDatabase,
   joinCodes,
@@ -8,6 +10,7 @@ import {
   payments,
   playwrightMemoryAllowed,
   projects,
+  recordAcceptedPlan,
   stages,
 } from "@certa/db";
 import { usdcFromNgnKobo } from "@certa/shared";
@@ -40,8 +43,16 @@ export async function POST(request: Request) {
     const extra = or(isNull(projects.termsHash), ne(projects.termsHash, "seeded-terms"));
     const ids = (await db.select({ id: projects.id }).from(projects).where(extra)).map((row) => row.id);
     if (ids.length > 0) {
+      const versionIds = (
+        await db.select({ id: contractVersions.id }).from(contractVersions).where(inArray(contractVersions.projectId, ids))
+      ).map((row) => row.id);
+      if (versionIds.length > 0) {
+        await db.delete(contractAcceptances).where(inArray(contractAcceptances.contractVersionId, versionIds));
+      }
+      await db.update(projects).set({ currentContractVersionId: null }).where(inArray(projects.id, ids));
       await db.delete(payments).where(inArray(payments.projectId, ids));
       await db.delete(stages).where(inArray(stages.projectId, ids));
+      if (versionIds.length > 0) await db.delete(contractVersions).where(inArray(contractVersions.id, versionIds));
       await db.delete(joinCodes).where(inArray(joinCodes.projectId, ids));
       await db.delete(memberships).where(inArray(memberships.projectId, ids));
       await db.delete(parties).where(inArray(parties.projectId, ids));
@@ -55,7 +66,12 @@ export async function POST(request: Request) {
   const project = (await db.select().from(projects).where(eq(projects.id, projectId)))[0];
   if (!project || project.termsHash === "seeded-terms") return closed();
   if (parsed.data.action === "stage") {
+    const members = await db.select().from(memberships).where(eq(memberships.projectId, project.id));
+    const client = members.find((row) => row.role === "client" && row.status === "active");
+    const contractor = members.find((row) => row.role === "contractor" && row.status === "active");
+    if (!client || !contractor) return closed();
     const usdc = usdcFromNgnKobo(KOBO, RATE);
+    const lockedAt = new Date();
     const [stage] = await db
       .insert(stages)
       .values({
@@ -71,12 +87,27 @@ export async function POST(request: Request) {
         onChainIdx: 0,
       })
       .returning();
+    const agreed = await recordAcceptedPlan(db, {
+      projectId: project.id,
+      contractSumKobo: KOBO,
+      koboPerUsdc: RATE,
+      spendingCapMicro: usdc,
+      retentionBps: 0,
+      defectsPeriodDays: project.defectsPeriodDays,
+      fxSource: "manual",
+      fxAsOf: lockedAt.toISOString().slice(0, 10),
+      contentHash: "journey-ground-slab",
+      createdBy: client.userId,
+      clientUserId: client.userId,
+      contractorUserId: contractor.userId,
+    });
+    if (stage) await db.update(stages).set({ contractVersionId: agreed.id }).where(eq(stages.id, stage.id));
     await db
       .update(projects)
       .set({
         fxRateLocked: RATE,
         fxSource: "manual",
-        fxLockedAt: new Date(),
+        fxLockedAt: lockedAt,
         contractSumKobo: KOBO,
         contractSumUsdc: usdc,
         status: "active",

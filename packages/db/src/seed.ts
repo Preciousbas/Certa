@@ -35,6 +35,71 @@ function chainAddress(name: string, fallback: string): string {
   return /^0x[a-fA-F0-9]{40}$/.test(value) ? value : fallback;
 }
 
+/** One contract version both sides have accepted, and the project's pointer to it. */
+export async function recordAcceptedPlan(
+  db: Database,
+  input: {
+    projectId: string;
+    contractSumKobo: bigint;
+    koboPerUsdc: bigint;
+    spendingCapMicro: bigint;
+    retentionBps: number;
+    defectsPeriodDays: number;
+    fxSource: string;
+    fxAsOf: string;
+    contentHash: string;
+    createdBy: string;
+    clientUserId: string;
+    contractorUserId: string;
+    termsHash?: string;
+  },
+): Promise<{ id: string; contentHash: string }> {
+  const [agreed] = await db
+    .insert(contractVersions)
+    .values({
+      projectId: input.projectId,
+      version: 1,
+      status: "accepted",
+      contractSumKobo: input.contractSumKobo,
+      retentionBps: input.retentionBps,
+      defectsPeriodDays: input.defectsPeriodDays,
+      koboPerUsdc: input.koboPerUsdc,
+      fxSource: input.fxSource,
+      fxAsOf: input.fxAsOf,
+      spendingCapMicro: input.spendingCapMicro,
+      terms: { retention_bps: input.retentionBps },
+      documentHashes: [],
+      contentHash: input.contentHash,
+      createdBy: input.createdBy,
+    })
+    .returning();
+  if (!agreed) throw new Error("accepted plan failed");
+  await db.insert(contractAcceptances).values([
+    {
+      contractVersionId: agreed.id,
+      userId: input.clientUserId,
+      role: "client",
+      decision: "accepted",
+      contentHash: agreed.contentHash,
+    },
+    {
+      contractVersionId: agreed.id,
+      userId: input.contractorUserId,
+      role: "contractor",
+      decision: "accepted",
+      contentHash: agreed.contentHash,
+    },
+  ]);
+  await db
+    .update(projects)
+    .set({
+      currentContractVersionId: agreed.id,
+      ...(input.termsHash !== undefined ? { termsHash: input.termsHash } : {}),
+    })
+    .where(eq(projects.id, input.projectId));
+  return { id: agreed.id, contentHash: agreed.contentHash };
+}
+
 export async function seedDemo(db: Database) {
   const existing = await db
     .select()
@@ -124,31 +189,21 @@ export async function seedDemo(db: Database) {
     .returning();
   if (!project) throw new Error("seed project failed");
 
-  const [agreed] = await db
-    .insert(contractVersions)
-    .values({
-      projectId: project.id,
-      version: 1,
-      status: "accepted",
-      contractSumKobo: sumKobo,
-      retentionBps: DEMO_RETENTION_BPS,
-      defectsPeriodDays: DEMO_DEFECTS_DAYS,
-      koboPerUsdc: rate,
-      fxSource: "contract acceptance",
-      fxAsOf: "2026-08-01",
-      spendingCapMicro: capMicro,
-      terms: { retention_bps: DEMO_RETENTION_BPS },
-      documentHashes: [],
-      contentHash: "seeded-terms",
-      createdBy: client.id,
-    })
-    .returning();
-  if (!agreed) throw new Error("seed contract failed");
-  await db.insert(contractAcceptances).values([
-    { contractVersionId: agreed.id, userId: client.id, role: "client", decision: "accepted", contentHash: agreed.contentHash },
-    { contractVersionId: agreed.id, userId: main.id, role: "contractor", decision: "accepted", contentHash: agreed.contentHash },
-  ]);
-  await db.update(projects).set({ currentContractVersionId: agreed.id, termsHash: agreed.contentHash }).where(eq(projects.id, project.id));
+  await recordAcceptedPlan(db, {
+    projectId: project.id,
+    contractSumKobo: sumKobo,
+    koboPerUsdc: rate,
+    spendingCapMicro: capMicro,
+    retentionBps: DEMO_RETENTION_BPS,
+    defectsPeriodDays: DEMO_DEFECTS_DAYS,
+    fxSource: "contract acceptance",
+    fxAsOf: "2026-08-01",
+    contentHash: "seeded-terms",
+    createdBy: client.id,
+    clientUserId: client.id,
+    contractorUserId: main.id,
+    termsHash: "seeded-terms",
+  });
 
   const partyRows = await db
     .insert(parties)
