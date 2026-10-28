@@ -1,35 +1,31 @@
 "use server";
 
-import { getDatabase, projects } from "@certa/db";
-import { eq } from "drizzle-orm";
+import { getDatabase } from "@certa/db";
+import { AuthError } from "../../../../src/server/auth/errors";
 import { manualPin } from "../../../../src/server/site/pin";
-import { setProjectPaused } from "../../../../src/server/projects/pause";
+import { setProjectPausedAs, updateProjectSettings } from "../../../../src/server/projects/settings";
 import { loadProject } from "../../lib/data";
-
-function clamp(value: number, min: number, max: number): number {
-  if (Number.isNaN(value)) return min;
-  return Math.min(max, Math.max(min, value));
-}
+import { signedInUserId } from "../../lib/session-user";
 
 export async function saveSettings(formData: FormData): Promise<{ message: string }> {
+  const userId = await signedInUserId();
+  if (!userId) return { message: "Sign in from Telegram." };
   const data = await loadProject();
   if (!data) return { message: "No project is open." };
-  const radius = clamp(Number(formData.get("radius")), 25, 2000);
-  const chosen = manualPin(String(formData.get("lat") ?? ""), String(formData.get("lng") ?? ""));
-  const pin = chosen ? { siteLat: chosen.lat, siteLng: chosen.lng, sitePinSource: "manual", sitePinSetAt: new Date() } : {};
-  const disputeDays = clamp(Number(formData.get("disputeDays")), 1, 90);
-  const replyHours = clamp(Number(formData.get("replyHours")), 1, 168);
   const db = await getDatabase();
-  await db
-    .update(projects)
-    .set({
-      geofenceRadiusM: radius,
-      ...pin,
-      disputeTimeoutDays: disputeDays,
-      changeReplyHours: replyHours,
-      updatedAt: new Date(),
-    })
-    .where(eq(projects.id, data.project.id));
+  try {
+    await updateProjectSettings(db, {
+      userId,
+      projectId: data.project.id,
+      radius: Number(formData.get("radius")),
+      pin: manualPin(String(formData.get("lat") ?? ""), String(formData.get("lng") ?? "")),
+      disputeDays: Number(formData.get("disputeDays")),
+      replyHours: Number(formData.get("replyHours")),
+    });
+  } catch (error) {
+    if (error instanceof AuthError) return { message: error.message };
+    throw error;
+  }
   if (formData.get("letterhead")) {
     return { message: "Saved. Letterhead upload needs storage before a file can be kept." };
   }
@@ -37,9 +33,16 @@ export async function saveSettings(formData: FormData): Promise<{ message: strin
 }
 
 export async function setPaused(paused: boolean): Promise<{ message: string }> {
+  const userId = await signedInUserId();
+  if (!userId) return { message: "Sign in from Telegram." };
   const data = await loadProject();
   if (!data) return { message: "No project is open." };
   const db = await getDatabase();
-  await setProjectPaused(db, data.project.id, paused);
+  try {
+    await setProjectPausedAs(db, { userId, projectId: data.project.id, paused });
+  } catch (error) {
+    if (error instanceof AuthError) return { message: error.message };
+    throw error;
+  }
   return { message: paused ? "This project is paused." : "The project is active again." };
 }
